@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sealed-Bid Auction — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+          display: ['Instrument Serif', 'serif']
+        },
+        colors: {
+          ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+          violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+          coop: { DEFAULT: '#10B981', glow: '#34D399' },
+          defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+          equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+        }
+      }
+    }
+  };
+</script>
+
+<style>
+  html, body { background: #070612; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    color: #E8E6F5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden; min-height: 100vh;
+  }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  .arena-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410; }
+  .arena-bg::before {
+    content: ''; position: absolute; width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: 0.28; top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute; width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #F59E0B 0%, transparent 70%);
+    filter: blur(120px); opacity: 0.18; bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Gavel-slam screen flash */
+  .screen-flash {
+    position: fixed; inset: 0; z-index: 40; pointer-events: none;
+    background: rgba(251,191,36,0);
+    transition: background .2s ease;
+  }
+  .screen-flash.active { background: rgba(251,191,36,.15); }
+
+  .glass { background: rgba(18,16,42,.55); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); border: 1px solid rgba(255,255,255,.06); }
+  .glass-strong { background: rgba(11,10,26,.75); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); border: 1px solid rgba(255,255,255,.08); }
+  .glass-subtle { background: rgba(255,255,255,.025); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.05); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; font-weight: 500;
+    padding: 14px 30px; border-radius: 12px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124,92,255,.6); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 22px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+  .btn-ghost:active { transform: scale(.98); }
+  .btn-ghost:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* ================ Valuation vault door ================ */
+  .vault {
+    position: relative;
+    border-radius: 24px;
+    padding: 36px 32px;
+    background: linear-gradient(135deg, rgba(124,92,255,.12), rgba(91,61,204,.04));
+    border: 1.5px solid rgba(124,92,255,.3);
+    overflow: hidden;
+    box-shadow: 0 0 60px -20px rgba(124,92,255,.35);
+  }
+  .vault::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(155,123,255,.7), transparent);
+    animation: vaultShimmer 3s ease-in-out infinite;
+  }
+  @keyframes vaultShimmer {
+    0%, 100% { opacity: .3; }
+    50% { opacity: 1; }
+  }
+  .vault-val-wrap { position: relative; min-height: 68px; }
+  .vault-door {
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, #1A1736, #0B0A1A);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(155,123,255,.8);
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    letter-spacing: .08em;
+    border: 1px solid rgba(124,92,255,.3);
+    z-index: 3;
+    transition: transform .8s cubic-bezier(.6,0,.4,1), opacity .4s ease;
+  }
+  .vault-door.open {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  .vault-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 64px; font-weight: 700;
+    letter-spacing: -.03em;
+    background: linear-gradient(135deg, #FFFFFF, #9B7BFF);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    text-align: center;
+    line-height: 1;
+  }
+
+  /* ================ Bid slider ================ */
+  .slider-wrap {
+    position: relative;
+    padding: 8px 4px;
+  }
+  .slider-track {
+    position: relative;
+    height: 56px;
+    border-radius: 12px;
+    background: linear-gradient(90deg, rgba(244,63,94,.15) 0%, rgba(245,158,11,.12) 50%, rgba(16,185,129,.15) 100%);
+    border: 1px solid rgba(255,255,255,.06);
+    overflow: hidden;
+  }
+  .slider-marker {
+    position: absolute;
+    top: -4px; bottom: -4px;
+    width: 4px;
+    border-radius: 2px;
+    transition: left .08s linear;
+  }
+  .slider-marker.your-bid {
+    background: linear-gradient(180deg, #9B7BFF, #5B3DCC);
+    box-shadow: 0 0 14px #7C5CFF;
+    z-index: 3;
+  }
+  .slider-marker.value-line {
+    background: rgba(251,191,36,.7);
+    box-shadow: 0 0 8px rgba(251,191,36,.4);
+    z-index: 2;
+  }
+  .slider-marker.equilibrium-line {
+    background: rgba(52,211,153,.5);
+    z-index: 1;
+  }
+  .slider-track input[type=range] {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    -webkit-appearance: none; appearance: none;
+    background: transparent;
+    margin: 0;
+    cursor: grab;
+  }
+  .slider-track input[type=range]:active { cursor: grabbing; }
+  .slider-track input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 56px; height: 56px;
+    opacity: 0;
+    cursor: grab;
+  }
+  .slider-track input[type=range]::-moz-range-thumb {
+    width: 56px; height: 56px;
+    background: transparent; border: none;
+    cursor: grab;
+  }
+
+  .slider-label {
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: rgba(255,255,255,.45);
+    pointer-events: none;
+    font-weight: 500;
+  }
+  .slider-legend-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+    margin-right: 6px; vertical-align: middle;
+  }
+
+  /* ================ Bid cards (4 bidders) ================ */
+  .bid-card {
+    position: relative;
+    border-radius: 18px;
+    padding: 20px 18px;
+    background: rgba(255,255,255,.025);
+    border: 1.5px solid rgba(255,255,255,.08);
+    transition: all .4s cubic-bezier(.16,1,.3,1);
+    min-height: 150px;
+    display: flex; flex-direction: column;
+  }
+  .bid-card.you {
+    border-color: rgba(124,92,255,.45);
+    background: rgba(124,92,255,.06);
+    box-shadow: 0 0 0 1px rgba(124,92,255,.2);
+  }
+
+  .bid-card .avatar {
+    width: 40px; height: 40px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px;
+    margin-bottom: 12px;
+  }
+  .av-you { background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; }
+  .av-1 { background: linear-gradient(135deg, #F59E0B, #92400E); color: #fff; }
+  .av-2 { background: linear-gradient(135deg, #F43F5E, #9F1239); color: #fff; }
+  .av-3 { background: linear-gradient(135deg, #10B981, #047857); color: #fff; }
+
+  .bid-card .bidder-name { font-weight: 600; font-size: 14px; }
+  .bid-card .bidder-meta { font-size: 11px; color: rgba(255,255,255,.5); margin-top: 2px; }
+
+  .bid-display {
+    margin-top: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 30px; font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1;
+  }
+  .bid-display.hidden-bid {
+    color: rgba(255,255,255,.3);
+    background: repeating-linear-gradient(45deg, rgba(255,255,255,.04), rgba(255,255,255,.04) 6px, rgba(255,255,255,.08) 6px, rgba(255,255,255,.08) 12px);
+    padding: 10px 14px;
+    border-radius: 10px;
+    text-align: center;
+    border: 1px dashed rgba(255,255,255,.15);
+  }
+  .bid-display.revealed {
+    animation: bidReveal .7s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes bidReveal {
+    0% { opacity: 0; transform: scale(.5) rotateY(180deg); }
+    60% { transform: scale(1.15) rotateY(0); }
+    100% { opacity: 1; transform: scale(1) rotateY(0); }
+  }
+
+  .bid-card.winner {
+    border-color: rgba(251,191,36,.6);
+    background: linear-gradient(135deg, rgba(251,191,36,.12), rgba(245,158,11,.04));
+    box-shadow: 0 0 0 2px rgba(251,191,36,.35), 0 20px 60px -12px rgba(251,191,36,.4);
+    animation: winnerShake .4s ease-out;
+  }
+  @keyframes winnerShake {
+    0% { transform: translateY(0); }
+    30% { transform: translateY(-6px); }
+    60% { transform: translateY(2px); }
+    100% { transform: translateY(0); }
+  }
+  .bid-card.winner::before {
+    content: 'WINNER';
+    position: absolute;
+    top: -12px; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(135deg, #FBBF24, #B45309);
+    color: #2C1306;
+    font-size: 10px; font-weight: 800; letter-spacing: .1em;
+    padding: 4px 12px;
+    border-radius: 999px;
+    box-shadow: 0 6px 18px -4px rgba(251,191,36,.5);
+    z-index: 5;
+  }
+  .bid-card.loser {
+    opacity: .5;
+  }
+
+  .rank-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 600;
+    background: rgba(255,255,255,.08);
+    color: rgba(255,255,255,.65);
+    margin-top: 6px;
+  }
+
+  /* ================ Gavel ================ */
+  .gavel-wrap {
+    position: absolute;
+    top: -10px;
+    right: 24px;
+    width: 100px; height: 100px;
+    pointer-events: none;
+    z-index: 25;
+    opacity: 0;
+    transition: opacity .3s ease;
+  }
+  .gavel-wrap.visible { opacity: 1; }
+  .gavel-svg {
+    width: 100%; height: 100%;
+    transform-origin: 30% 80%;
+    transform: rotate(-35deg);
+    transition: transform .35s cubic-bezier(.42, 0, 1, .6);
+  }
+  .gavel-wrap.slam .gavel-svg {
+    transform: rotate(25deg);
+  }
+
+  /* ================ Countdown ring ================ */
+  .countdown-ring {
+    position: relative;
+    width: 140px; height: 140px;
+    margin: 0 auto;
+  }
+  .countdown-ring svg { transform: rotate(-90deg); }
+  .countdown-num {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; font-size: 48px;
+    background: linear-gradient(135deg, #FFFFFF, #9B7BFF);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  /* ================ Tags ================ */
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-violet { background: rgba(124,92,255,.12); border-color: rgba(124,92,255,.3); color: #9B7BFF; }
+  .tag-amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FBBF24; }
+  .tag-coop { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #34D399; }
+  .tag-defect { background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.3); color: #FB7185; }
+
+  /* Logo */
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  /* ================ Format toggle ================ */
+  .format-pill {
+    padding: 10px 18px;
+    border-radius: 10px;
+    font-size: 13px; font-weight: 500;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.06);
+    color: rgba(255,255,255,.6);
+    transition: all .15s ease;
+    cursor: pointer;
+    text-align: left;
+  }
+  .format-pill:hover { background: rgba(255,255,255,.06); color: #fff; }
+  .format-pill.active {
+    background: linear-gradient(135deg, rgba(124,92,255,.15), rgba(124,92,255,.05));
+    border-color: rgba(124,92,255,.45);
+    color: #fff;
+    box-shadow: 0 0 0 1px rgba(124,92,255,.2);
+  }
+
+  /* Reveal sections animate in */
+  .reveal-in { animation: revealIn .5s cubic-bezier(.16,1,.3,1); }
+  @keyframes revealIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Regret banner */
+  .regret-banner {
+    border-radius: 14px;
+    padding: 18px 20px;
+    border: 1.5px solid;
+    display: flex; gap: 16px; align-items: center;
+  }
+  .regret-banner .r-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* Stats row */
+  .stat-cell {
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+
+  /* Thinking dots on opponent cards during bidding */
+  .thinking-dots {
+    display: inline-flex; gap: 4px;
+  }
+  .thinking-dots span {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(255,255,255,.4);
+    animation: thinkPulse 1.2s ease-in-out infinite;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: .2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes thinkPulse {
+    0%, 80%, 100% { opacity: .3; transform: scale(1); }
+    40% { opacity: 1; transform: scale(1.3); }
+  }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+<div class="screen-flash" id="screenFlash"></div>
+
+<!-- ============================================================
+     TOP BAR
+     ============================================================ -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
+      <div class="font-medium tracking-tight">Sealed-Bid Auction</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="hidden md:flex items-center gap-2 text-xs text-white/55 px-3 py-2 rounded-lg glass-subtle">
+      <span>Round</span>
+      <span class="font-mono text-white" id="roundNum">1</span>
+    </div>
+    <button class="btn-ghost text-sm" id="restartBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Reset session
+    </button>
+  </div>
+</header>
+
+<!-- ============================================================
+     MAIN
+     ============================================================ -->
+<main class="px-6 lg:px-10 py-6 max-w-7xl mx-auto">
+
+  <div class="grid lg:grid-cols-[1.5fr_1fr] gap-5">
+
+    <!-- Left column: bidding flow -->
+    <div class="space-y-5">
+
+      <!-- Vault: private valuation -->
+      <div class="vault">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Your private valuation</div>
+            <div class="text-sm text-white/60">Only you can see this number. The object is worth exactly this to you.</div>
+          </div>
+          <span class="tag tag-violet">Confidential</span>
+        </div>
+        <div class="vault-val-wrap">
+          <div class="vault-door" id="vaultDoor">
+            <span class="flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              LOCKED · REVEALING
+            </span>
+          </div>
+          <div class="vault-val" id="vaultVal">$ —</div>
+        </div>
+      </div>
+
+      <!-- Format toggle + place-bid panel -->
+      <div class="glass-strong rounded-3xl p-6 lg:p-7 relative">
+        <div class="gavel-wrap" id="gavelWrap">
+          <svg class="gavel-svg" viewBox="0 0 100 100" fill="none">
+            <!-- handle -->
+            <rect x="20" y="55" width="60" height="10" rx="5" fill="#8B5E3C" stroke="#5C3B1F" stroke-width="1.5"/>
+            <!-- head -->
+            <rect x="65" y="42" width="30" height="36" rx="4" fill="#A0704E" stroke="#5C3B1F" stroke-width="1.5"/>
+            <rect x="68" y="45" width="24" height="30" rx="2" fill="#8B5E3C"/>
+            <!-- highlight -->
+            <rect x="70" y="47" width="20" height="3" rx="1" fill="rgba(255,255,255,.25)"/>
+          </svg>
+        </div>
+
+        <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Place your bid</div>
+            <div class="text-sm text-white/60" id="bidPhaseLabel">How much will you bid for this object?</div>
+          </div>
+          <div class="flex gap-2" id="formatToggle">
+            <button class="format-pill active" data-format="first">
+              <div class="font-medium">First-price</div>
+              <div class="text-[10px] text-white/45">Winner pays their bid</div>
+            </button>
+            <button class="format-pill" data-format="second">
+              <div class="font-medium">Second-price</div>
+              <div class="text-[10px] text-white/45">Winner pays 2nd bid</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Bid slider -->
+        <div class="mb-5">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-xs text-white/50 uppercase tracking-wider font-medium">Your bid</div>
+            <div class="flex items-center gap-4 text-[11px] text-white/55">
+              <span><span class="slider-legend-dot bg-equilibrium/70"></span>Your value</span>
+              <span><span class="slider-legend-dot bg-coop/50"></span>BNE bid</span>
+            </div>
+          </div>
+          <div class="slider-wrap">
+            <div class="slider-track">
+              <div class="slider-marker equilibrium-line" id="eqMarker" style="left: 0%"></div>
+              <div class="slider-marker value-line" id="valMarker" style="left: 0%"></div>
+              <div class="slider-marker your-bid" id="bidMarker" style="left: 0%"></div>
+              <input type="range" id="bidSlider" min="0" max="100" step="1" value="0" />
+              <div class="slider-label" style="left: 1%;">$0</div>
+              <div class="slider-label" style="right: 1%;">$100</div>
+            </div>
+            <div class="flex items-center justify-between mt-4">
+              <div>
+                <div class="text-[10px] text-white/45 uppercase tracking-wider">Bid</div>
+                <div class="font-mono text-3xl font-bold" id="bidAmount">$0</div>
+              </div>
+              <div class="text-center">
+                <div class="text-[10px] text-white/45 uppercase tracking-wider">If you win, profit</div>
+                <div class="font-mono text-xl font-semibold" id="profitPreview">$0</div>
+              </div>
+              <div class="text-right">
+                <div class="text-[10px] text-white/45 uppercase tracking-wider">Shading</div>
+                <div class="font-mono text-xl font-semibold" id="shadingPreview">0%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <button class="btn-primary w-full text-base" id="submitBid">
+          Submit sealed bid
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        </button>
+      </div>
+
+      <!-- Bid cards grid (4 bidders) -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-xs text-violet-glow font-medium tracking-wider uppercase">Bidders · sealed bids</div>
+          <div class="text-[11px] text-white/45" id="biddersStatus">All bids hidden</div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="bidGrid">
+          <!-- populated by JS -->
+        </div>
+      </div>
+
+      <!-- Countdown (shown during reveal) -->
+      <div id="countdownWrap" class="hidden text-center py-10">
+        <div class="countdown-ring">
+          <svg viewBox="0 0 140 140" width="140" height="140">
+            <circle cx="70" cy="70" r="60" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="5"/>
+            <circle cx="70" cy="70" r="60" fill="none" stroke="#7C5CFF" stroke-width="5"
+                    stroke-dasharray="377" stroke-dashoffset="0" stroke-linecap="round" id="countdownRing"
+                    style="transition: stroke-dashoffset 1s linear;"/>
+          </svg>
+          <div class="countdown-num" id="countdownNum">3</div>
+        </div>
+        <div class="text-sm text-white/60 mt-4">Opening sealed envelopes…</div>
+      </div>
+
+    </div>
+
+    <!-- Right column: analysis panel -->
+    <div class="space-y-5">
+
+      <!-- Session stats -->
+      <div class="glass rounded-2xl p-5">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Session stats</div>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="stat-cell">
+            <div class="text-[10px] text-white/45 uppercase tracking-wider mb-1">Rounds played</div>
+            <div class="font-mono text-xl font-semibold" id="statRounds">0</div>
+          </div>
+          <div class="stat-cell">
+            <div class="text-[10px] text-white/45 uppercase tracking-wider mb-1">Won</div>
+            <div class="font-mono text-xl font-semibold" id="statWins">0</div>
+          </div>
+          <div class="stat-cell">
+            <div class="text-[10px] text-white/45 uppercase tracking-wider mb-1">Total profit</div>
+            <div class="font-mono text-xl font-semibold" id="statProfit">$0</div>
+          </div>
+          <div class="stat-cell">
+            <div class="text-[10px] text-white/45 uppercase tracking-wider mb-1">Avg shading</div>
+            <div class="font-mono text-xl font-semibold" id="statShading">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analysis panel (appears after reveal) -->
+      <div id="analysisPanel" class="hidden space-y-4">
+        <div class="glass rounded-2xl p-5" id="regretBox">
+          <!-- populated after reveal -->
+        </div>
+        <div class="glass rounded-2xl p-5" id="lessonBox">
+          <!-- populated after reveal -->
+        </div>
+        <button class="btn-primary w-full text-base" id="newRoundBtn">
+          New auction
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </button>
+      </div>
+
+      <!-- Strategy hints (before first bid) -->
+      <div id="hintsBox" class="glass rounded-2xl p-5">
+        <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Strategic hints</div>
+        <div class="space-y-2.5 text-xs leading-relaxed">
+          <div class="flex gap-2">
+            <span class="text-violet-glow font-mono flex-shrink-0">›</span>
+            <span class="text-white/70">Values are drawn uniformly from $0–$100. Your opponents know this.</span>
+          </div>
+          <div class="flex gap-2">
+            <span class="text-violet-glow font-mono flex-shrink-0">›</span>
+            <span class="text-white/70">Bidding your full value gives you zero profit even if you win.</span>
+          </div>
+          <div class="flex gap-2">
+            <span class="text-violet-glow font-mono flex-shrink-0">›</span>
+            <span class="text-white/70">With <span class="text-white">n</span> bidders, the BNE bid is <span class="font-mono text-coop-glow">(n-1)/n × value</span>.</span>
+          </div>
+          <div class="flex gap-2">
+            <span class="text-violet-glow font-mono flex-shrink-0">›</span>
+            <span class="text-white/70">In second-price auctions, bid your true value.</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</main>
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script>
+/* =================================================================
+   CONFIG
+   ================================================================= */
+const N_BIDDERS = 4;
+const OPPONENTS = [
+  { id: 1, name: 'Ada',   av: 'av-1', meta: 'Aggressive' },
+  { id: 2, name: 'Bosco', av: 'av-2', meta: 'Value-matcher' },
+  { id: 3, name: 'Cora',  av: 'av-3', meta: 'Cautious' }
+];
+
+// BNE for first-price sealed-bid with n bidders, values ~ Uniform(0, 100):
+// b*(v) = (n-1)/n * v
+const BNE_COEF = (N_BIDDERS - 1) / N_BIDDERS;  // = 0.75
+
+/* =================================================================
+   STATE
+   ================================================================= */
+const State = {
+  round: 1,
+  value: 0,                // user's private valuation this round
+  bid: 0,                  // user's current bid
+  format: 'first',         // 'first' | 'second'
+  phase: 'setup',          // 'setup' | 'bidding' | 'reveal' | 'analysis'
+  opponentBids: [],        // [{id, value, bid, style}]
+  bidsLocked: false,
+  session: {
+    rounds: 0,
+    wins: 0,
+    profit: 0,
+    shadingSum: 0,
+    shadingCount: 0
+  }
+};
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+/* =================================================================
+   RNG HELPERS
+   ================================================================= */
+function randUniform(min, max) { return min + Math.random() * (max - min); }
+function randNormal(mean, std) {
+  // Box-Muller
+  const u = Math.random() || 1e-9;
+  const v = Math.random() || 1e-9;
+  return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function clamp(x, min, max) { return Math.max(min, Math.min(max, x)); }
+
+/* =================================================================
+   OPPONENT BIDDING
+   ================================================================= */
+function generateOpponentBid(opp, value, format) {
+  if (format === 'second') {
+    // Truthful bidding is weakly dominant in second-price
+    // Add small noise around truthful
+    const noise = randNormal(0, 1.5);
+    return clamp(Math.round(value + noise), 0, 100);
+  }
+  // First-price: equilibrium with small style-based deviation
+  const baseBid = BNE_COEF * value;
+  let styleAdj = 0;
+  if (opp.meta === 'Aggressive') styleAdj = randNormal(4, 2);   // overbids slightly
+  else if (opp.meta === 'Cautious') styleAdj = randNormal(-4, 2); // underbids slightly
+  else styleAdj = randNormal(0, 2);                              // value-matcher, near eq.
+  return clamp(Math.round(baseBid + styleAdj), 0, 100);
+}
+
+/* =================================================================
+   INIT A NEW ROUND
+   ================================================================= */
+function newRound() {
+  State.phase = 'setup';
+  State.value = Math.round(randUniform(20, 95));  // user's value
+  State.bid = 0;
+  State.bidsLocked = false;
+  State.opponentBids = OPPONENTS.map(opp => {
+    const v = Math.round(randUniform(10, 95));
+    return {
+      id: opp.id,
+      name: opp.name,
+      av: opp.av,
+      meta: opp.meta,
+      value: v,
+      bid: generateOpponentBid(opp, v, State.format),
+      revealed: false
+    };
+  });
+
+  // Reset UI
+  $('#roundNum').textContent = State.round;
+  $('#analysisPanel').classList.add('hidden');
+  $('#hintsBox').classList.remove('hidden');
+  $('#countdownWrap').classList.add('hidden');
+  $('#bidPhaseLabel').textContent = 'How much will you bid for this object?';
+
+  // Slider
+  $('#bidSlider').value = 0;
+  $('#bidSlider').disabled = false;
+  $('#submitBid').disabled = false;
+  $('#submitBid').innerHTML = `Submit sealed bid <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>`;
+  updateBidDisplays();
+
+  // Vault animation — reveal value
+  const door = $('#vaultDoor');
+  const val = $('#vaultVal');
+  door.classList.remove('open');
+  val.textContent = '$ —';
+  setTimeout(() => {
+    door.classList.add('open');
+    // Tween the value number up to its final value
+    tweenNumber(val, 0, State.value, 900, (v) => `$${v}`);
+    // Reposition markers
+    positionMarker('#valMarker', State.value);
+    positionMarker('#eqMarker', Math.round(BNE_COEF * State.value));
+  }, 250);
+
+  // Build bid cards (all hidden initially)
+  renderBidCards();
+}
+
+/* =================================================================
+   BID GRID RENDERING
+   ================================================================= */
+function renderBidCards() {
+  const grid = $('#bidGrid');
+  grid.innerHTML = '';
+
+  // User card (first)
+  const youCard = document.createElement('div');
+  youCard.className = 'bid-card you';
+  youCard.dataset.bidder = 'you';
+  youCard.innerHTML = `
+    <div class="flex items-center justify-between">
+      <div class="avatar av-you">Y</div>
+      <span class="tag tag-violet">You</span>
+    </div>
+    <div class="bidder-name">You</div>
+    <div class="bidder-meta">Live bid</div>
+    <div class="bid-display hidden-bid" id="youBidDisplay">—</div>
+  `;
+  grid.appendChild(youCard);
+
+  // Opponents
+  State.opponentBids.forEach(opp => {
+    const card = document.createElement('div');
+    card.className = 'bid-card';
+    card.dataset.bidder = opp.id;
+    card.innerHTML = `
+      <div class="flex items-center justify-between">
+        <div class="avatar ${opp.av}">${opp.name.charAt(0)}</div>
+        <span class="tag">${opp.meta}</span>
+      </div>
+      <div class="bidder-name">${opp.name}</div>
+      <div class="bidder-meta">Private value unknown</div>
+      <div class="bid-display hidden-bid" data-opp-bid="${opp.id}">
+        <span class="thinking-dots"><span></span><span></span><span></span></span>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+/* =================================================================
+   SLIDER + BID DISPLAYS
+   ================================================================= */
+function positionMarker(selector, val) {
+  $(selector).style.left = val + '%';
+}
+
+function updateBidDisplays() {
+  State.bid = parseInt($('#bidSlider').value, 10);
+  positionMarker('#bidMarker', State.bid);
+  $('#bidAmount').textContent = `$${State.bid}`;
+
+  // Profit preview (if you win)
+  const expectedPayment = State.format === 'first' ? State.bid : null;
+  let profit;
+  if (State.format === 'first') {
+    profit = State.value - State.bid;
+  } else {
+    // In second-price, payment is second-highest bid — we can't know yet
+    // Show "value minus bid" as a rough "surplus if paying 2nd bid" proxy
+    profit = State.value - State.bid;  // will be recalculated after reveal
+  }
+  const profitEl = $('#profitPreview');
+  profitEl.textContent = `$${profit}`;
+  profitEl.style.color = profit > 0 ? '#34D399' : profit < 0 ? '#FB7185' : '#E8E6F5';
+
+  // Shading
+  const shading = State.value > 0 ? Math.round((1 - State.bid / State.value) * 100) : 0;
+  $('#shadingPreview').textContent = `${shading}%`;
+
+  // Update the live bid display on the card
+  const youDisp = $('#youBidDisplay');
+  if (!State.bidsLocked) {
+    if (State.bid === 0) {
+      youDisp.classList.add('hidden-bid');
+      youDisp.textContent = '—';
+    } else {
+      youDisp.classList.remove('hidden-bid');
+      youDisp.textContent = `$${State.bid}`;
+      youDisp.style.color = '#9B7BFF';
+    }
+  }
+}
+
+/* =================================================================
+   TWEEN UTILITY
+   ================================================================= */
+function tweenNumber(el, from, to, duration, formatter) {
+  const t0 = performance.now();
+  function tick(now) {
+    const t = Math.min((now - t0) / duration, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const val = Math.round(from + (to - from) * eased);
+    el.textContent = formatter(val);
+    if (t < 1) requestAnimationFrame(tick);
+    else el.textContent = formatter(to);
+  }
+  requestAnimationFrame(tick);
+}
+
+/* =================================================================
+   SUBMIT BID → COUNTDOWN → REVEAL
+   ================================================================= */
+async function submitBid() {
+  if (State.bid <= 0) {
+    // Shake the slider
+    $('#submitBid').animate(
+      [{ transform: 'translateX(0)' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(4px)' }, { transform: 'translateX(0)' }],
+      { duration: 200 }
+    );
+    return;
+  }
+
+  State.phase = 'reveal';
+  State.bidsLocked = true;
+  $('#bidSlider').disabled = true;
+  $('#submitBid').disabled = true;
+  $('#submitBid').innerHTML = '<span class="opacity-70">Bids locked…</span>';
+  $('#hintsBox').classList.add('hidden');
+
+  $('#bidPhaseLabel').innerHTML = 'Sealed envelopes. <span class="text-violet-glow">Opening soon…</span>';
+  $('#biddersStatus').textContent = 'Opening envelopes…';
+
+  // Brief countdown
+  $('#countdownWrap').classList.remove('hidden');
+  await countdown(3);
+  $('#countdownWrap').classList.add('hidden');
+
+  await revealBids();
+  setTimeout(showAnalysis, 650);
+}
+
+async function countdown(seconds) {
+  const num = $('#countdownNum');
+  const ring = $('#countdownRing');
+  for (let i = seconds; i >= 1; i--) {
+    num.textContent = i;
+    const offset = 377 * (1 - (seconds - i + 1) / seconds);
+    ring.style.strokeDashoffset = offset;
+    await wait(1000);
+  }
+  num.textContent = '!';
+}
+
+async function revealBids() {
+  // Sort bids ascending for dramatic reveal (lowest first, winner last)
+  const allBids = [
+    { bidder: 'you', bid: State.bid, el: $('[data-bidder="you"]'), displayEl: $('#youBidDisplay') }
+  ].concat(
+    State.opponentBids.map(opp => ({
+      bidder: opp.id,
+      bid: opp.bid,
+      el: document.querySelector(`[data-bidder="${opp.id}"]`),
+      displayEl: document.querySelector(`[data-opp-bid="${opp.id}"]`)
+    }))
+  );
+
+  const sorted = [...allBids].sort((a, b) => a.bid - b.bid);
+
+  // Reveal one at a time (lowest to highest), with increasing tension
+  for (let i = 0; i < sorted.length; i++) {
+    const b = sorted[i];
+    const isWinner = (i === sorted.length - 1);
+    const delay = isWinner ? 700 : 420;
+    await wait(delay);
+
+    if (b.bidder === 'you') {
+      b.displayEl.classList.remove('hidden-bid');
+      b.displayEl.classList.add('revealed');
+      b.displayEl.textContent = `$${b.bid}`;
+      b.displayEl.style.color = '#9B7BFF';
+    } else {
+      b.displayEl.classList.remove('hidden-bid');
+      b.displayEl.classList.add('revealed');
+      b.displayEl.innerHTML = `$${b.bid}`;
+      b.displayEl.style.color = '';
+    }
+
+    // Attach rank pill
+    const rankPill = document.createElement('div');
+    rankPill.className = 'rank-pill';
+    rankPill.textContent = `#${sorted.length - i}`;
+    b.el.appendChild(rankPill);
+
+    if (isWinner) {
+      // Gavel + flash + winner styling
+      slamGavel();
+      await wait(150);
+      b.el.classList.add('winner');
+    } else {
+      b.el.classList.add('loser');
+    }
+  }
+
+  // Update status
+  $('#biddersStatus').textContent = 'All bids revealed';
+}
+
+function slamGavel() {
+  const gavel = $('#gavelWrap');
+  gavel.classList.add('visible', 'slam');
+
+  // Screen flash
+  const flash = $('#screenFlash');
+  flash.classList.add('active');
+  setTimeout(() => flash.classList.remove('active'), 200);
+
+  // Reset gavel
+  setTimeout(() => {
+    gavel.classList.remove('slam');
+    setTimeout(() => gavel.classList.remove('visible'), 400);
+  }, 400);
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* =================================================================
+   ANALYSIS (regret + lesson)
+   ================================================================= */
+function showAnalysis() {
+  // Compute outcome
+  const allBids = [
+    { bidder: 'you', bid: State.bid, value: State.value }
+  ].concat(State.opponentBids.map(o => ({ bidder: o.name, bid: o.bid, value: o.value })));
+
+  const sortedDesc = [...allBids].sort((a, b) => b.bid - a.bid);
+  const winner = sortedDesc[0];
+  const secondHighest = sortedDesc[1];
+  const youWon = winner.bidder === 'you';
+
+  // Payment (format-dependent)
+  const payment = State.format === 'first' ? winner.bid : secondHighest.bid;
+  const userProfit = youWon ? (State.value - payment) : 0;
+
+  // Update stats
+  State.session.rounds++;
+  if (youWon) State.session.wins++;
+  State.session.profit += userProfit;
+  if (State.value > 0) {
+    State.session.shadingSum += (1 - State.bid / State.value);
+    State.session.shadingCount++;
+  }
+  $('#statRounds').textContent = State.session.rounds;
+  $('#statWins').textContent = State.session.wins;
+  $('#statProfit').textContent = (State.session.profit >= 0 ? '$' : '-$') + Math.abs(State.session.profit);
+  $('#statShading').textContent = State.session.shadingCount > 0
+    ? Math.round((State.session.shadingSum / State.session.shadingCount) * 100) + '%' : '—';
+
+  // Build regret banner
+  const regretBox = $('#regretBox');
+  const minWinBid = secondHighest.bid + 1;   // would need to beat 2nd highest
+  let regret = {};
+
+  if (youWon) {
+    if (State.value < payment) {
+      // Winner's curse
+      regret = {
+        type: 'curse',
+        tone: 'defect',
+        title: "Winner's curse",
+        body: `You paid <span class="font-mono">$${payment}</span> for something worth <span class="font-mono">$${State.value}</span> to you. Net loss: <span class="font-mono text-defect-glow">-$${payment - State.value}</span>. In auctions, winning the object at a price above your value is worse than not winning at all.`,
+        icon: '!'
+      };
+    } else if (State.format === 'first' && State.bid > minWinBid + 2) {
+      // Overpaid (could have won cheaper)
+      regret = {
+        type: 'overpaid',
+        tone: 'amber',
+        title: 'You overpaid',
+        body: `You won with <span class="font-mono">$${State.bid}</span>. The minimum winning bid was <span class="font-mono text-coop-glow">$${minWinBid}</span> — you overpaid by <span class="font-mono text-equilibrium-glow">$${State.bid - minWinBid}</span>. Your profit would have been <span class="font-mono">$${State.value - minWinBid}</span> instead of <span class="font-mono">$${userProfit}</span>.`,
+        icon: '⚠'
+      };
+    } else {
+      regret = {
+        type: 'winClean',
+        tone: 'coop',
+        title: 'Clean win',
+        body: `You won with <span class="font-mono">$${State.bid}</span>, paying <span class="font-mono">$${payment}</span> for an object worth <span class="font-mono">$${State.value}</span> to you. Profit: <span class="font-mono text-coop-glow">+$${userProfit}</span>.`,
+        icon: '✓'
+      };
+    }
+  } else {
+    // Lost
+    const lostByHowMuch = winner.bid - State.bid;
+    if (State.value > winner.bid) {
+      // Could have profitably won
+      const wouldveProfit = State.value - (State.format === 'first' ? winner.bid + 1 : winner.bid);
+      regret = {
+        type: 'lostProfitable',
+        tone: 'amber',
+        title: 'You left money on the table',
+        body: `The object was worth <span class="font-mono">$${State.value}</span> to you — more than the winning bid of <span class="font-mono">$${winner.bid}</span>. A bid of <span class="font-mono text-coop-glow">$${winner.bid + 1}</span> would have won you <span class="font-mono text-equilibrium-glow">$${wouldveProfit}</span> in profit. You bid too cautiously.`,
+        icon: '⚠'
+      };
+    } else {
+      regret = {
+        type: 'lostOK',
+        tone: 'violet',
+        title: 'No regret',
+        body: `You lost, but your value (<span class="font-mono">$${State.value}</span>) was below the winning bid (<span class="font-mono">$${winner.bid}</span>). Winning would have been unprofitable. Losing was correct.`,
+        icon: '—'
+      };
+    }
+  }
+
+  const toneMap = {
+    defect: { bg: 'rgba(244,63,94,.08)', border: 'rgba(244,63,94,.3)', icon: 'background: rgba(244,63,94,.15); color: #FB7185;' },
+    amber:  { bg: 'rgba(245,158,11,.08)', border: 'rgba(245,158,11,.3)', icon: 'background: rgba(245,158,11,.15); color: #FBBF24;' },
+    coop:   { bg: 'rgba(16,185,129,.08)', border: 'rgba(16,185,129,.3)', icon: 'background: rgba(16,185,129,.15); color: #34D399;' },
+    violet: { bg: 'rgba(124,92,255,.08)', border: 'rgba(124,92,255,.3)', icon: 'background: rgba(124,92,255,.15); color: #9B7BFF;' }
+  };
+  const t = toneMap[regret.tone];
+
+  regretBox.innerHTML = `
+    <div class="regret-banner reveal-in" style="background: ${t.bg}; border-color: ${t.border};">
+      <div class="r-icon" style="${t.icon}">${regret.icon}</div>
+      <div>
+        <div class="text-sm font-semibold mb-1">${regret.title}</div>
+        <div class="text-xs text-white/70 leading-relaxed">${regret.body}</div>
+      </div>
+    </div>
+  `;
+
+  // Lesson
+  const lessonBox = $('#lessonBox');
+  const bneBid = Math.round(BNE_COEF * State.value);
+  let lesson;
+  if (State.format === 'first') {
+    lesson = `
+      <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Optimal bidding · first-price</div>
+      <p class="text-sm text-white/75 leading-relaxed mb-3">
+        With <span class="text-white">${N_BIDDERS}</span> bidders and values drawn from Uniform(0, 100), the Bayesian-Nash equilibrium bid is
+        <span class="font-mono text-coop-glow">b*(v) = (n-1)/n × v</span> = <span class="font-mono">${BNE_COEF} × ${State.value}</span> = <span class="font-mono text-coop-glow">$${bneBid}</span>.
+      </p>
+      <p class="text-sm text-white/75 leading-relaxed">
+        You bid <span class="font-mono">$${State.bid}</span> — <span class="${Math.abs(State.bid - bneBid) <= 3 ? 'text-coop-glow' : 'text-equilibrium-glow'}">${Math.abs(State.bid - bneBid) <= 3 ? 'close to equilibrium' : State.bid > bneBid ? 'above equilibrium (bidding too aggressively)' : 'below equilibrium (bidding too cautiously)'}</span>.
+        The logic: bidding your full value gives zero profit even on wins. Shading down trades some chance of winning for positive profit when you do.
+      </p>
+    `;
+  } else {
+    lesson = `
+      <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Optimal bidding · second-price (Vickrey)</div>
+      <p class="text-sm text-white/75 leading-relaxed mb-3">
+        In a second-price auction, <span class="text-white">bidding your true value is weakly dominant</span>. You can't lose profit by bidding truthfully regardless of what others do.
+      </p>
+      <p class="text-sm text-white/75 leading-relaxed">
+        Your value was <span class="font-mono">$${State.value}</span>. You bid <span class="font-mono">$${State.bid}</span>.
+        ${Math.abs(State.bid - State.value) <= 2
+          ? '<span class="text-coop-glow">You bid truthfully — optimal.</span>'
+          : State.bid < State.value
+            ? '<span class="text-equilibrium-glow">You shaded below your value — unnecessary in second-price; you only lose auctions you\'d want to win.</span>'
+            : '<span class="text-defect-glow">You bid above your value — risks the winner\'s curse if you win.</span>'}
+      </p>
+    `;
+  }
+  lessonBox.innerHTML = lesson;
+
+  $('#analysisPanel').classList.remove('hidden');
+  State.phase = 'analysis';
+}
+
+/* =================================================================
+   NEW ROUND BUTTON
+   ================================================================= */
+function handleNewRound() {
+  State.round++;
+  // Clean up card state
+  $$('.bid-card').forEach(c => {
+    c.classList.remove('winner', 'loser');
+    const pill = c.querySelector('.rank-pill');
+    if (pill) pill.remove();
+  });
+  newRound();
+  // Scroll to top of main
+  $('main').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* =================================================================
+   SESSION RESTART
+   ================================================================= */
+function restartSession() {
+  State.round = 1;
+  State.session = { rounds: 0, wins: 0, profit: 0, shadingSum: 0, shadingCount: 0 };
+  $('#statRounds').textContent = '0';
+  $('#statWins').textContent = '0';
+  $('#statProfit').textContent = '$0';
+  $('#statShading').textContent = '—';
+  newRound();
+}
+
+/* =================================================================
+   EVENTS
+   ================================================================= */
+function bindEvents() {
+  $('#bidSlider').addEventListener('input', updateBidDisplays);
+
+  $('#submitBid').addEventListener('click', submitBid);
+
+  $('#newRoundBtn').addEventListener('click', handleNewRound);
+
+  $('#restartBtn').addEventListener('click', restartSession);
+
+  // Format toggle
+  $$('#formatToggle .format-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (State.phase !== 'setup') return;   // only allow before bidding
+      $$('#formatToggle .format-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      State.format = btn.dataset.format;
+      // Regenerate opponent bids for the new format
+      State.opponentBids.forEach(o => {
+        const oppMeta = OPPONENTS.find(op => op.id === o.id);
+        o.bid = generateOpponentBid(oppMeta, o.value, State.format);
+      });
+    });
+  });
+
+  // Keyboard enter to submit
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && State.phase === 'setup' && State.bid > 0) submitBid();
+  });
+}
+
+/* =================================================================
+   BOOT
+   ================================================================= */
+document.addEventListener('DOMContentLoaded', () => {
+  bindEvents();
+  newRound();
+});
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'auction',
+      getSession: function () {
+        if (typeof State === 'undefined' || !State.session || State.session.rounds === 0) { return null; }
+        var s = State.session;
+        var winRate = s.rounds > 0 ? (s.wins / s.rounds) : 0;
+        return { score: winRate, outcome: 'completed', detail: { rounds: s.rounds, wins: s.wins, profit: s.profit, format: State.format } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

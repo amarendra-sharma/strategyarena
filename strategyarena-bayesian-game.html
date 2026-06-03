@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bayesian Game — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        display: ['Instrument Serif', 'serif']
+      },
+      colors: {
+        ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+        violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+        coop: { DEFAULT: '#10B981', glow: '#34D399' },
+        defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+        equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+      }
+    } }
+  };
+</script>
+
+<style>
+  html, body { background: #070612; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: #E8E6F5; -webkit-font-smoothing: antialiased; overflow-x: hidden; min-height: 100vh; }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  .arena-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410; }
+  .arena-bg::before {
+    content: ''; position: absolute; width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: .28; top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute; width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #34D399 0%, transparent 70%);
+    filter: blur(120px); opacity: .12; bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .glass { background: rgba(18,16,42,.55); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); border: 1px solid rgba(255,255,255,.06); }
+  .glass-strong { background: rgba(11,10,26,.75); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); border: 1px solid rgba(255,255,255,.08); }
+  .glass-subtle { background: rgba(255,255,255,.025); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.05); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; font-weight: 500;
+    padding: 11px 22px; border-radius: 10px; font-size: 14px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124,92,255,.6); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 20px; border-radius: 10px; font-size: 13px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+  .btn-ghost:active { transform: scale(.98); }
+
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-violet { background: rgba(124,92,255,.12); border-color: rgba(124,92,255,.3); color: #9B7BFF; }
+  .tag-amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FBBF24; }
+  .tag-coop { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #34D399; }
+  .tag-defect { background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.3); color: #FB7185; }
+  .tag-soft { background: linear-gradient(135deg,rgba(155,123,255,.18),rgba(124,92,255,.04)); border-color: rgba(155,123,255,.4); color: #9B7BFF; }
+  .tag-tough { background: linear-gradient(135deg,rgba(251,191,36,.15),rgba(245,158,11,.03)); border-color: rgba(251,191,36,.4); color: #FBBF24; }
+
+  /* ============================================================
+     PLAYER CARDS (you / opponent)
+     ============================================================ */
+  .player-card {
+    border-radius: 18px;
+    background: rgba(255,255,255,.025);
+    border: 1.5px solid rgba(255,255,255,.08);
+    padding: 22px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color .3s ease, background .3s ease;
+  }
+  .player-card.you      { border-color: rgba(124,92,255,.3); background: linear-gradient(135deg, rgba(124,92,255,.06), rgba(124,92,255,.01)); }
+  .player-card.opponent { border-color: rgba(245,158,11,.3); background: linear-gradient(135deg, rgba(245,158,11,.05), rgba(245,158,11,.01)); }
+
+  /* Type vault inside player card */
+  .type-vault-wrap { position: relative; min-height: 70px; }
+  .type-vault {
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, #1A1736, #0B0A1A);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(155,123,255,.85);
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    letter-spacing: .08em;
+    z-index: 3;
+    transition: transform .9s cubic-bezier(.6,0,.4,1), opacity .5s ease;
+    border: 1px solid rgba(124,92,255,.3);
+  }
+  .type-vault.open { transform: translateX(-105%); opacity: 0; }
+  .type-vault::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(155,123,255,.7), transparent);
+    animation: vaultShimmer 3s ease-in-out infinite;
+  }
+  @keyframes vaultShimmer { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
+
+  .type-icon {
+    width: 44px; height: 44px;
+    border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+  .type-icon.soft  { background: linear-gradient(135deg, #9B7BFF, #5B3DCC); }
+  .type-icon.tough { background: linear-gradient(135deg, #FBBF24, #B45309); }
+
+  /* ============================================================
+     PRIOR / BELIEF SLIDERS
+     ============================================================ */
+  .belief-bar {
+    height: 14px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.06);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+  }
+  .belief-segment {
+    height: 100%;
+    transition: flex-basis .8s cubic-bezier(.16,1,.3,1);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.15);
+  }
+  .belief-segment.soft  { background: linear-gradient(90deg, rgba(155,123,255,.6), #9B7BFF); }
+  .belief-segment.tough { background: linear-gradient(90deg, #FBBF24, rgba(245,158,11,.7)); }
+
+  .prior-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 6px;
+    background: linear-gradient(90deg, #9B7BFF 0%, #FBBF24 100%);
+    border-radius: 999px; outline: none;
+    margin-top: 12px;
+  }
+  .prior-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    border: 2px solid #7C5CFF;
+    box-shadow: 0 0 0 3px rgba(124,92,255,.2), 0 4px 10px rgba(0,0,0,.3);
+    cursor: grab;
+  }
+  .prior-slider::-moz-range-thumb {
+    width: 18px; height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    border: 2px solid #7C5CFF;
+    box-shadow: 0 0 0 3px rgba(124,92,255,.2);
+    cursor: grab;
+  }
+
+  /* ============================================================
+     PAYOFF MATRIX — the 4-card stack
+     ============================================================ */
+  .matrix-stack-wrap {
+    position: relative;
+    min-height: 280px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .matrix-card {
+    position: absolute;
+    width: 100%; max-width: 380px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.025);
+    border: 1.5px solid rgba(255,255,255,.08);
+    padding: 16px;
+    transition: transform .6s cubic-bezier(.16,1,.3,1), opacity .5s ease;
+    will-change: transform, opacity;
+  }
+  .matrix-card .mc-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .matrix-card .mc-types {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: rgba(255,255,255,.6);
+    font-weight: 600;
+  }
+  .matrix-card .mc-prob {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: rgba(155,123,255,.85);
+  }
+  .matrix-card.active {
+    z-index: 5;
+    transform: translateY(0) rotate(0) scale(1);
+    opacity: 1;
+  }
+  /* Stack the inactive cards behind */
+  .matrix-card.stacked-1 { transform: translateY(-12px) translateX(8px) rotate(2deg) scale(.96); opacity: .35; z-index: 3; }
+  .matrix-card.stacked-2 { transform: translateY(-22px) translateX(-8px) rotate(-2deg) scale(.92); opacity: .2; z-index: 2; }
+  .matrix-card.stacked-3 { transform: translateY(-30px) translateX(2px) rotate(1deg) scale(.88); opacity: .12; z-index: 1; }
+  .matrix-card.collapsed-out { transform: translateY(-40px) scale(.7); opacity: 0; pointer-events: none; }
+
+  /* Matrix grid */
+  .mat-grid {
+    display: grid;
+    grid-template-columns: 80px 1fr 1fr;
+    gap: 6px;
+    font-size: 12px;
+  }
+  .mat-axis {
+    color: rgba(255,255,255,.5);
+    font-size: 10px;
+    text-align: center;
+    padding: 6px 0;
+    text-transform: uppercase; letter-spacing: .04em;
+    font-weight: 500;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .mat-cell {
+    padding: 14px 8px;
+    border-radius: 10px;
+    text-align: center;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+    transition: all .35s ease;
+    position: relative;
+  }
+  .mat-cell .pyou {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600; font-size: 18px;
+    color: #9B7BFF;
+  }
+  .mat-cell .popp {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600; font-size: 18px;
+    color: #FBBF24;
+  }
+  .mat-cell .pdivider { color: rgba(255,255,255,.25); margin: 0 4px; }
+  .mat-cell .clbl { font-size: 9px; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+  .mat-cell.eq-marker {
+    background: rgba(245,158,11,.08);
+    border-color: rgba(251,191,36,.35);
+  }
+  .mat-cell.realized {
+    background: rgba(124,92,255,.15);
+    border-color: rgba(124,92,255,.55);
+    box-shadow: 0 0 0 2px rgba(124,92,255,.3), 0 12px 28px -8px rgba(124,92,255,.5);
+    transform: scale(1.03);
+    z-index: 2;
+  }
+
+  /* ============================================================
+     ACTION BUTTONS
+     ============================================================ */
+  .action-btn {
+    position: relative;
+    padding: 18px 16px;
+    border-radius: 14px;
+    border: 1.5px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.025);
+    transition: all .2s cubic-bezier(.4,0,.2,1);
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .action-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .action-btn:not(:disabled):hover {
+    transform: translateY(-2px);
+    border-color: rgba(124,92,255,.4);
+    background: rgba(124,92,255,.04);
+  }
+  .action-btn.locked {
+    border-color: rgba(124,92,255,.6);
+    background: rgba(124,92,255,.1);
+    box-shadow: 0 0 0 2px rgba(124,92,255,.2);
+  }
+  .action-btn .a-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .action-btn .a-label { font-size: 14px; font-weight: 600; color: #E8E6F5; }
+  .action-btn .a-meta { font-size: 11px; color: rgba(255,255,255,.55); }
+
+  /* ============================================================
+     EXPECTED PAYOFF BARS — the wow visualization
+     ============================================================ */
+  .ep-card {
+    padding: 16px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+  .ep-row { margin-bottom: 12px; }
+  .ep-row:last-child { margin-bottom: 0; }
+  .ep-row-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .ep-row-label { color: rgba(255,255,255,.7); font-weight: 500; }
+  .ep-row-value {
+    font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .ep-track {
+    height: 28px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.05);
+    overflow: hidden;
+    display: flex;
+    position: relative;
+  }
+  .ep-segment {
+    height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;
+    color: rgba(255,255,255,.85);
+    transition: flex-basis .8s cubic-bezier(.16,1,.3,1);
+    border-right: 1px solid rgba(11,10,26,.6);
+  }
+  .ep-segment:last-child { border-right: none; }
+  .ep-segment.soft { background: linear-gradient(90deg, rgba(155,123,255,.5), rgba(124,92,255,.7)); }
+  .ep-segment.tough { background: linear-gradient(90deg, rgba(245,158,11,.55), rgba(180,83,9,.7)); }
+  .ep-best-marker {
+    position: absolute;
+    top: -4px; bottom: -4px;
+    width: 3px;
+    background: #34D399;
+    box-shadow: 0 0 10px #34D399;
+    border-radius: 999px;
+    z-index: 3;
+    transition: left .8s cubic-bezier(.16,1,.3,1);
+  }
+
+  /* ============================================================
+     SCORE
+     ============================================================ */
+  .score-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; font-variant-numeric: tabular-nums;
+    transition: transform .35s cubic-bezier(.34,1.56,.64,1), color .35s ease;
+    display: inline-block; font-size: 26px; letter-spacing: -.02em; line-height: 1;
+  }
+  .score-num.bump { transform: scale(1.2); color: #FBBF24; }
+
+  /* Coin flight */
+  .coin {
+    position: absolute;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #FCD34D, #F59E0B 60%, #B45309);
+    box-shadow: 0 0 14px rgba(251,191,36,.7);
+    z-index: 50;
+    pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+    color: #7c2d12;
+  }
+  .coin::after { content: '$'; }
+
+  /* ============================================================
+     RESULT BANNER
+     ============================================================ */
+  .result-banner {
+    border-radius: 16px;
+    padding: 18px 22px;
+    border: 1.5px solid;
+    display: flex; gap: 16px; align-items: center;
+  }
+  .result-banner .r-icon {
+    width: 48px; height: 48px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 22px; font-weight: 700;
+  }
+  .banner-good { background: rgba(16,185,129,.08); border-color: rgba(16,185,129,.35); }
+  .banner-mixed { background: rgba(245,158,11,.08); border-color: rgba(251,191,36,.35); }
+  .banner-bad { background: rgba(244,63,94,.08); border-color: rgba(251,113,133,.35); }
+
+  /* Reveal animation */
+  .reveal-in { animation: revealIn .55s cubic-bezier(.16,1,.3,1); }
+  @keyframes revealIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ============================================================
+     HISTORY
+     ============================================================ */
+  .hist-row {
+    display: grid;
+    grid-template-columns: 30px 70px 70px 80px 80px 70px 70px;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.02);
+    border: 1px solid rgba(255,255,255,.04);
+    font-size: 12px;
+    transition: background .15s ease;
+  }
+  .hist-row:hover { background: rgba(255,255,255,.04); }
+
+  /* ============================================================
+     EQ DERIVATION CARD
+     ============================================================ */
+  .eq-card {
+    padding: 18px 20px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(245,158,11,.08), rgba(245,158,11,.02));
+    border: 1.5px solid rgba(245,158,11,.3);
+  }
+  .eq-card.match {
+    background: linear-gradient(135deg, rgba(16,185,129,.08), rgba(16,185,129,.02));
+    border-color: rgba(52,211,153,.4);
+  }
+  .eq-step {
+    padding: 10px 14px;
+    background: rgba(255,255,255,.025);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .eq-step:last-child { margin-bottom: 0; }
+  .eq-step .eq-formula {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #FBBF24;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .toast {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-30px);
+    padding: 10px 18px; border-radius: 10px;
+    background: rgba(11,10,26,.95);
+    border: 1px solid rgba(124,92,255,.4);
+    font-size: 13px; color: #fff; z-index: 100;
+    opacity: 0; transition: opacity .3s ease, transform .3s ease;
+    pointer-events: none;
+    box-shadow: 0 10px 30px -8px rgba(124,92,255,.3);
+  }
+  .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+
+<!-- Top bar -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
+      <div class="font-medium tracking-tight">Bayesian Game · Battle of the Sexes (incomplete info)</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="hidden md:flex items-center gap-2 text-xs text-white/55 px-3 py-2 rounded-lg glass-subtle">
+      <span>Round</span>
+      <span class="font-mono text-white" id="roundNum">1</span>
+    </div>
+    <button class="btn-ghost text-sm" id="restartBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Reset session
+    </button>
+  </div>
+</header>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<main class="px-6 lg:px-10 py-6 max-w-7xl mx-auto">
+
+  <!-- ============================================================
+       PLAYERS ROW
+       ============================================================ -->
+  <div class="grid lg:grid-cols-2 gap-3 mb-5">
+
+    <!-- YOU -->
+    <div class="player-card you" id="cardYou">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-violet-glow font-medium mb-1">You</div>
+          <div class="text-sm text-white/65">Your type is private to you.</div>
+        </div>
+        <div class="score-num" id="scoreYou" style="color: #9B7BFF;">0</div>
+      </div>
+      <div class="type-vault-wrap">
+        <div class="type-vault" id="vaultYou">
+          <span class="flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+            ASSIGNING TYPE
+          </span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="type-icon soft" id="typeIconYou">🕊</div>
+          <div>
+            <div class="font-display text-xl tracking-tight" id="typeLabelYou">Soft</div>
+            <div class="text-[11px] text-white/55" id="typeDescYou">Prefers coordinating over winning</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPPONENT -->
+    <div class="player-card opponent" id="cardOpp">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-equilibrium-glow font-medium mb-1">Opponent (AI)</div>
+          <div class="text-sm text-white/65">Their type is hidden until reveal.</div>
+        </div>
+        <div class="score-num" id="scoreOpp" style="color: #FBBF24;">0</div>
+      </div>
+      <div class="type-vault-wrap">
+        <div class="type-vault" id="vaultOpp">
+          <span class="flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+            HIDDEN · OPPONENT TYPE
+          </span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="type-icon soft" id="typeIconOpp">?</div>
+          <div>
+            <div class="font-display text-xl tracking-tight" id="typeLabelOpp">?</div>
+            <div class="text-[11px] text-white/55" id="typeDescOpp">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================================================
+       BELIEFS ROW (prior over opponent's type)
+       ============================================================ -->
+  <div class="glass rounded-2xl p-5 mb-5">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
+      <div>
+        <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Common-knowledge prior</div>
+        <div class="text-sm text-white/55">P(opponent type) — known to both players, but actual type is private.</div>
+      </div>
+      <div class="text-[11px] text-white/55 font-mono">Adjust the slider to change the prior</div>
+    </div>
+    <div class="belief-bar">
+      <div class="belief-segment soft" id="priorSoftSeg" style="flex-basis: 50%"></div>
+      <div class="belief-segment tough" id="priorToughSeg" style="flex-basis: 50%"></div>
+    </div>
+    <div class="flex items-center justify-between mt-2 text-[11px]">
+      <span class="flex items-center gap-1.5 text-violet-glow"><span class="w-2 h-2 rounded-full bg-violet-glow"></span>Soft <span class="font-mono" id="priorSoftPct">50%</span></span>
+      <span class="flex items-center gap-1.5 text-equilibrium-glow font-mono"><span id="priorToughPct">50%</span> Tough <span class="w-2 h-2 rounded-full bg-equilibrium-glow"></span></span>
+    </div>
+    <input type="range" class="prior-slider" id="priorSlider" min="10" max="90" value="50" step="5" />
+    <div class="text-[11px] text-white/50 mt-2 leading-relaxed" id="priorNote">
+      With <span class="font-mono text-violet-glow">P(Soft) = 0.5</span>, both types of opponent are equally likely. Your expected payoffs will be a 50/50 mix of the (you, Soft) and (you, Tough) payoff matrices.
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MAIN GRID — matrix stack + actions on left, expected payoffs on right
+       ============================================================ -->
+  <div class="grid lg:grid-cols-[1.4fr_1fr] gap-5">
+
+    <!-- LEFT — payoff matrix stack + actions -->
+    <div class="space-y-5">
+
+      <div class="glass-strong rounded-3xl p-5 lg:p-6">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Payoff matrix</div>
+            <div class="text-sm text-white/55" id="matrixCaption">The matrix you face depends on the opponent's hidden type.</div>
+          </div>
+          <div class="flex items-center gap-2 text-[11px]">
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm" style="background: rgba(155,123,255,.5);"></span>Your payoff</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-sm" style="background: rgba(251,191,36,.5);"></span>Opp payoff</span>
+          </div>
+        </div>
+
+        <div class="matrix-stack-wrap" id="matrixStackWrap">
+          <!-- 2 cards: one for each opponent type, against your type -->
+        </div>
+      </div>
+
+      <!-- Action buttons -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-xs text-white/50 uppercase tracking-wider font-medium">Choose your action</div>
+          <div class="text-[11px] text-white/45" id="actionSubLabel">Both players commit simultaneously</div>
+        </div>
+        <div class="grid grid-cols-2 gap-3" id="actionRow">
+          <button class="action-btn" data-action="C">
+            <div class="flex items-center gap-3">
+              <div class="a-icon">🤝</div>
+              <div>
+                <div class="a-label">Compromise</div>
+                <div class="a-meta">Coordinate; soft outcome</div>
+              </div>
+            </div>
+          </button>
+          <button class="action-btn" data-action="S">
+            <div class="flex items-center gap-3">
+              <div class="a-icon" style="background: linear-gradient(135deg, #FBBF24, #B45309);">🛡️</div>
+              <div>
+                <div class="a-label">Stand firm</div>
+                <div class="a-meta">Hold your preferred outcome</div>
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT — expected payoff visualization + opponent picker -->
+    <div class="space-y-5">
+
+      <!-- Expected payoff bars -->
+      <div class="ep-card">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-0.5">Expected payoff</div>
+            <div class="text-[11px] text-white/55">Weighted by prior over opponent's type</div>
+          </div>
+          <span class="tag tag-coop" id="bestActionTag">—</span>
+        </div>
+
+        <div class="ep-row">
+          <div class="ep-row-header">
+            <span class="ep-row-label">If you Compromise</span>
+            <span class="ep-row-value" id="epCompTotal">—</span>
+          </div>
+          <div class="ep-track">
+            <div class="ep-segment soft" id="epCompSoft" style="flex-basis: 50%">
+              <span id="epCompSoftLbl">—</span>
+            </div>
+            <div class="ep-segment tough" id="epCompTough" style="flex-basis: 50%">
+              <span id="epCompToughLbl">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ep-row">
+          <div class="ep-row-header">
+            <span class="ep-row-label">If you Stand firm</span>
+            <span class="ep-row-value" id="epStandTotal">—</span>
+          </div>
+          <div class="ep-track">
+            <div class="ep-segment soft" id="epStandSoft" style="flex-basis: 50%">
+              <span id="epStandSoftLbl">—</span>
+            </div>
+            <div class="ep-segment tough" id="epStandTough" style="flex-basis: 50%">
+              <span id="epStandToughLbl">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-[11px] text-white/55 mt-3 leading-relaxed" id="epNote">
+          Each bar = (P(opp Soft) × payoff vs Soft) + (P(opp Tough) × payoff vs Tough). The action with the higher bar is your <span class="text-coop-glow">best response</span> given current beliefs.
+        </div>
+      </div>
+
+      <!-- Opponent strategy picker -->
+      <div class="glass rounded-2xl p-5">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Opponent strategy</div>
+        <div class="flex flex-col gap-2" id="oppPicker">
+          <button class="opp-pick active" data-opp="bne">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">BNE Brigitte</div>
+                <div class="text-[11px] text-white/55">Plays Bayesian Nash equilibrium strategy for her type</div>
+              </div>
+              <span class="tag tag-coop">Equilibrium</span>
+            </div>
+          </button>
+          <button class="opp-pick" data-opp="naive">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Naive Nico</div>
+                <div class="text-[11px] text-white/55">Always plays his preferred action regardless</div>
+              </div>
+              <span class="tag tag-violet">Naive</span>
+            </div>
+          </button>
+          <button class="opp-pick" data-opp="behavioral">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Behavioral Bea</div>
+                <div class="text-[11px] text-white/55">Plays equilibrium 70%, random 30% (level-k noise)</div>
+              </div>
+              <span class="tag tag-amber">Adaptive</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================================
+       RESULT PANEL
+       ============================================================ -->
+  <div id="resultPanel" class="hidden mt-5">
+    <div class="glass-strong rounded-3xl p-6 lg:p-8 reveal-in">
+      <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <div class="text-xs text-equilibrium-glow font-medium tracking-wider uppercase mb-2">Round resolved</div>
+          <h2 class="font-display text-3xl tracking-tight" id="resultHeadline">Outcome</h2>
+        </div>
+        <button class="btn-primary" id="newRoundBtn">
+          Next round
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </button>
+      </div>
+
+      <div id="resultBanner" class="mb-5"></div>
+
+      <!-- 3-column comparison -->
+      <div class="grid md:grid-cols-3 gap-4 mb-5">
+        <div class="ep-card">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2">Your expected payoff</div>
+          <div class="font-mono text-2xl font-semibold" id="rExpected">—</div>
+          <div class="text-[11px] text-white/55 mt-1">Before opponent type revealed</div>
+        </div>
+        <div class="ep-card" style="border-color: rgba(155,123,255,.3); background: rgba(124,92,255,.04);">
+          <div class="text-[10px] uppercase tracking-wider text-violet-glow font-medium mb-2">Realized payoff</div>
+          <div class="font-mono text-2xl font-semibold" id="rRealized" style="color: #9B7BFF;">—</div>
+          <div class="text-[11px] text-white/55 mt-1">Actual once types revealed</div>
+        </div>
+        <div class="ep-card" style="border-color: rgba(52,211,153,.3); background: rgba(16,185,129,.04);">
+          <div class="text-[10px] uppercase tracking-wider text-coop-glow font-medium mb-2">If you played BNE</div>
+          <div class="font-mono text-2xl font-semibold" id="rBNE" style="color: #34D399;">—</div>
+          <div class="text-[11px] text-white/55 mt-1" id="rBNESubtitle">Optimal strategy for your type</div>
+        </div>
+      </div>
+
+      <!-- BNE derivation (only shown after a few rounds) -->
+      <div id="bneDerivation" class="hidden"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       HISTORY
+       ============================================================ -->
+  <div class="mt-5 glass rounded-2xl p-5" id="historyBox">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Round history</div>
+    <div class="grid grid-cols-[30px_70px_70px_80px_80px_70px_70px] gap-2.5 text-[10px] uppercase tracking-wider text-white/40 font-medium px-3 pb-2">
+      <span>#</span>
+      <span>Your type</span>
+      <span>Opp type</span>
+      <span>Your action</span>
+      <span>Opp action</span>
+      <span>Expect.</span>
+      <span class="text-right">Actual</span>
+    </div>
+    <div class="space-y-1.5" id="historyList">
+      <div class="text-[12px] text-white/40 px-3 py-2">No rounds played yet.</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+/* ============================================================
+   GAME PARAMETERS — Battle of the Sexes with type uncertainty
+   ============================================================
+   Both players have a type ∈ {Soft, Tough}. Both privately know own type.
+   Both choose simultaneously: Compromise (C) or Stand firm (S).
+
+   Payoff structure (your payoff, opponent payoff):
+     The classical BoS has two coordination outcomes; both prefer either
+     coordination (C-C or S-S) over miscoordination (C-S or S-C). Soft and
+     Tough types differ in WHICH coordination outcome they prefer:
+
+     - Soft type prefers (C, C) — mutual cooperation: payoff 3
+     - Tough type prefers (S, S) — both stand firm: payoff 3
+     - Both types value SOME coordination over none: any coord = 1+
+     - Miscoordination payoff = 0
+
+   So given (yourType, oppType, yourAction, oppAction), payoff[your] is:
+     If yourAction == oppAction (coordination):
+       3 if it matches your type's preference
+       1 otherwise
+     Else (miscoordination): 0
+
+   This produces 4 distinct 2x2 matrices for each (yourType, oppType) combo.
+   ============================================================ */
+
+const PAYOFF_BASE = (yourType, oppType, ya, oa) => {
+  // Compute YOUR payoff
+  // Coord = same action; miscoord = different
+  if (ya !== oa) return 0;
+  // Coordinated outcome
+  // If you're Soft and outcome is (C,C) -> matches your pref -> 3
+  // If you're Soft and outcome is (S,S) -> opposite pref -> 1
+  // If you're Tough and outcome is (S,S) -> matches your pref -> 3
+  // If you're Tough and outcome is (C,C) -> opposite pref -> 1
+  if (yourType === 'soft') {
+    return ya === 'C' ? 3 : 1;
+  } else {
+    return ya === 'S' ? 3 : 1;
+  }
+};
+
+// Get a payoff entry for the matrix display: returns [your, opp] for given combo
+function payoff(yourType, oppType, ya, oa) {
+  return [
+    PAYOFF_BASE(yourType, oppType, ya, oa),
+    PAYOFF_BASE(oppType, yourType, oa, ya)
+  ];
+}
+
+const CONFIG = {
+  types: ['soft', 'tough'],
+  typeLabels: { soft: 'Soft', tough: 'Tough' },
+  typeIcons: { soft: '🕊', tough: '🦁' },
+  typeDescs: {
+    soft: 'Prefers coordinating over winning',
+    tough: 'Prefers winning over coordinating'
+  },
+  actions: ['C', 'S'],
+  actionLabels: { C: 'Compromise', S: 'Stand firm' }
+};
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const State = {
+  round: 1,
+  prior: 0.5,           // P(opponent is Soft); slider value
+  yourType: null,       // 'soft' | 'tough'  (assigned each round)
+  oppType: null,        // hidden until reveal
+  yourAction: null,
+  oppAction: null,
+  oppKey: 'bne',
+  scoreYou: 0,
+  scoreOpp: 0,
+  busy: false,
+  finished: false,
+  history: []
+};
+
+/* ============================================================
+   BAYESIAN NASH EQUILIBRIUM
+   ============================================================
+   For BoS with incomplete info on types, the BNE depends on the prior.
+   Each type chooses an action that's a best response given beliefs:
+
+   Let p = P(opponent Soft), q = P(opponent Tough) = 1-p.
+   Soft type expects opponent to play Soft's-eq with prob p, Tough's-eq with prob q.
+
+   In our game the BNE at p = 0.5 has a clean structure:
+   - Soft type plays C (matches own pref, hopes opp Soft also plays C)
+   - Tough type plays S (matches own pref, hopes opp Tough also plays S)
+
+   This pure-strategy BNE works because:
+     Given Soft's strategy = C and Tough's strategy = S:
+     Soft type expects opp action: p * C + (1-p) * S
+       E[U(C)] = p * 3 + (1-p) * 0 = 3p
+       E[U(S)] = p * 0 + (1-p) * 1 = 1-p
+       Soft prefers C iff 3p > 1-p, i.e., p > 1/4
+     Tough type expects opp action: p * C + (1-p) * S
+       E[U(C)] = p * 1 + (1-p) * 0 = p
+       E[U(S)] = p * 0 + (1-p) * 3 = 3(1-p)
+       Tough prefers S iff 3(1-p) > p, i.e., p < 3/4
+
+   So pure BNE (Soft → C, Tough → S) holds for p ∈ [1/4, 3/4].
+   Outside that range, the BNE flips type behavior.
+
+   For each prior p, returns the BNE strategy: { soft: 'C'|'S', tough: 'C'|'S' }
+   ============================================================ */
+function computeBNE(p) {
+  // For Soft type, evaluate both pure strategies' expected payoff against Tough's likely response
+  // Simpler: enumerate the 4 pure-strategy profiles { (soft→a, tough→b) } and check best-response
+  // A profile is BNE iff each type's action is a BR given opp plays {C w.p. p × σ_S(C) + (1-p) × σ_T(C)}
+
+  function isBNE(softAction, toughAction) {
+    // Compute opponent's expected play prob given (softAction, toughAction)
+    // P(opp plays C | I am whatever type) = p × [softAction==='C'] + (1-p) × [toughAction==='C']
+    const pOppC = p * (softAction === 'C' ? 1 : 0) + (1 - p) * (toughAction === 'C' ? 1 : 0);
+    const pOppS = 1 - pOppC;
+
+    // Soft type: check chosen action is BR
+    const softU_C = pOppC * 3 + pOppS * 0;
+    const softU_S = pOppC * 0 + pOppS * 1;
+    const softBR = softU_C >= softU_S - 1e-9 ? 'C' : 'S';
+    if (softAction !== softBR && Math.abs(softU_C - softU_S) > 1e-9) return false;
+
+    // Tough type: check chosen action is BR
+    const toughU_C = pOppC * 1 + pOppS * 0;
+    const toughU_S = pOppC * 0 + pOppS * 3;
+    const toughBR = toughU_S >= toughU_C - 1e-9 ? 'S' : 'C';
+    if (toughAction !== toughBR && Math.abs(toughU_C - toughU_S) > 1e-9) return false;
+
+    return true;
+  }
+
+  // Try profiles in order of "most natural" first
+  const candidates = [
+    { soft: 'C', tough: 'S' },   // canonical separating
+    { soft: 'S', tough: 'C' },   // swap
+    { soft: 'C', tough: 'C' },   // both compromise
+    { soft: 'S', tough: 'S' }    // both stand firm
+  ];
+  for (const c of candidates) {
+    if (isBNE(c.soft, c.tough)) return c;
+  }
+  return { soft: 'C', tough: 'S' };  // fallback
+}
+
+function expectedPayoff(yourType, yourAction, prior, oppStrategy) {
+  // Given prior P(opp Soft) and opponent strategy oppStrategy = {soft: action, tough: action},
+  // compute E[your payoff] for yourAction
+  const softPayoff = payoff(yourType, 'soft', yourAction, oppStrategy.soft)[0];
+  const toughPayoff = payoff(yourType, 'tough', yourAction, oppStrategy.tough)[0];
+  return prior * softPayoff + (1 - prior) * toughPayoff;
+}
+
+/* ============================================================
+   OPPONENT STRATEGIES
+   ============================================================ */
+const OPPONENTS = {
+  bne: {
+    label: 'BNE',
+    pickAction: (oppType, prior) => {
+      const eq = computeBNE(prior);
+      return eq[oppType];
+    }
+  },
+  naive: {
+    // Soft always Compromises; Tough always Stands firm
+    label: 'Naive',
+    pickAction: (oppType) => oppType === 'soft' ? 'C' : 'S'
+  },
+  behavioral: {
+    // 70% BNE, 30% random
+    label: 'Behavioral',
+    pickAction: (oppType, prior) => {
+      const eq = computeBNE(prior);
+      if (Math.random() < 0.7) return eq[oppType];
+      return Math.random() < 0.5 ? 'C' : 'S';
+    }
+  }
+};
+
+/* ============================================================
+   NEW ROUND
+   ============================================================ */
+function newRound() {
+  // Assign user type
+  State.yourType = Math.random() < 0.5 ? 'soft' : 'tough';
+  State.oppType = Math.random() < State.prior ? 'soft' : 'tough';
+  State.yourAction = null;
+  State.oppAction = null;
+  State.busy = false;
+  State.finished = false;
+
+  // Reset UI
+  $('#roundNum').textContent = State.round;
+  $('#resultPanel').classList.add('hidden');
+
+  // Open user's vault, animate
+  $('#vaultYou').classList.remove('open');
+  $('#vaultOpp').classList.remove('open');
+  // Pre-fill user info
+  setTypeCard('you', State.yourType);
+  // Reset opponent display to hidden
+  $('#typeIconOpp').className = 'type-icon';
+  $('#typeIconOpp').textContent = '?';
+  $('#typeIconOpp').style.background = 'rgba(255,255,255,.1)';
+  $('#typeLabelOpp').textContent = '?';
+  $('#typeDescOpp').textContent = 'Hidden until both choose';
+
+  // Open YOU's vault after a beat
+  setTimeout(() => {
+    $('#vaultYou').classList.add('open');
+  }, 350);
+
+  // Reset action buttons
+  $$('.action-btn').forEach(b => {
+    b.disabled = false;
+    b.classList.remove('locked');
+  });
+
+  // Build matrix stack and EP bars
+  renderMatrixStack();
+  updateExpectedPayoffs();
+}
+
+function setTypeCard(who, type) {
+  const iconEl = $(`#typeIcon${who === 'you' ? 'You' : 'Opp'}`);
+  const labelEl = $(`#typeLabel${who === 'you' ? 'You' : 'Opp'}`);
+  const descEl = $(`#typeDesc${who === 'you' ? 'You' : 'Opp'}`);
+  iconEl.className = 'type-icon ' + type;
+  iconEl.textContent = CONFIG.typeIcons[type];
+  iconEl.style.background = '';   // restore class-based bg
+  labelEl.textContent = CONFIG.typeLabels[type];
+  descEl.textContent = CONFIG.typeDescs[type];
+}
+
+/* ============================================================
+   MATRIX STACK
+   - Build 2 cards: one for "vs Soft opponent" and one for "vs Tough opponent"
+   - With probability indicators
+   - Stack the lower-prob one behind
+   ============================================================ */
+function renderMatrixStack() {
+  const wrap = $('#matrixStackWrap');
+  wrap.innerHTML = '';
+
+  const oppTypes = ['soft', 'tough'];
+  const probs = { soft: State.prior, tough: 1 - State.prior };
+  // Sort so that the higher-prob matrix is "active" (front), lower-prob is stacked behind
+  oppTypes.sort((a, b) => probs[b] - probs[a]);
+
+  oppTypes.forEach((oppType, idx) => {
+    const card = document.createElement('div');
+    card.className = 'matrix-card ' + (idx === 0 ? 'active' : 'stacked-1');
+    card.dataset.oppType = oppType;
+    card.innerHTML = buildMatrixCardHTML(State.yourType || 'soft', oppType, probs[oppType]);
+    wrap.appendChild(card);
+  });
+}
+
+function buildMatrixCardHTML(yourType, oppType, prob) {
+  // Build 2x2 matrix: rows = your action {C, S}, cols = opp action {C, S}
+  const cells = [];
+  ['C', 'S'].forEach(ya => {
+    ['C', 'S'].forEach(oa => {
+      const [py, po] = payoff(yourType, oppType, ya, oa);
+      cells.push({ ya, oa, py, po });
+    });
+  });
+
+  return `
+    <div class="mc-header">
+      <span class="mc-types">vs ${CONFIG.typeLabels[oppType]} ${CONFIG.typeIcons[oppType]}</span>
+      <span class="mc-prob">P = ${(prob * 100).toFixed(0)}%</span>
+    </div>
+    <div class="mat-grid">
+      <div></div>
+      <div class="mat-axis">Opp: Comp</div>
+      <div class="mat-axis">Opp: Stand</div>
+
+      <div class="mat-axis">You: Comp</div>
+      <div class="mat-cell" data-row="C" data-col="C">
+        <div><span class="pyou">${cells[0].py}</span><span class="pdivider">/</span><span class="popp">${cells[0].po}</span></div>
+      </div>
+      <div class="mat-cell" data-row="C" data-col="S">
+        <div><span class="pyou">${cells[1].py}</span><span class="pdivider">/</span><span class="popp">${cells[1].po}</span></div>
+      </div>
+
+      <div class="mat-axis">You: Stand</div>
+      <div class="mat-cell" data-row="S" data-col="C">
+        <div><span class="pyou">${cells[2].py}</span><span class="pdivider">/</span><span class="popp">${cells[2].po}</span></div>
+      </div>
+      <div class="mat-cell" data-row="S" data-col="S">
+        <div><span class="pyou">${cells[3].py}</span><span class="pdivider">/</span><span class="popp">${cells[3].po}</span></div>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   EXPECTED PAYOFF BARS
+   ============================================================ */
+function updateExpectedPayoffs() {
+  if (!State.yourType) return;
+  const opp = OPPONENTS[State.oppKey];
+  // The opponent's strategy depends on their type; we compute the BNE for the realized opp strategy
+  // For displaying expected payoffs: the user is uncertain about opp's TYPE, but knows opp's STRATEGY (per-type)
+  // We use the BNE strategy as the opponent's expected play for the EP calc, since that's the "rational" hypothesis
+  // For non-BNE opponents, we use their actual per-type rule
+  let oppStrategy;
+  if (State.oppKey === 'naive') {
+    oppStrategy = { soft: 'C', tough: 'S' };
+  } else {
+    // For both BNE and Behavioral, the strategy core is BNE
+    oppStrategy = computeBNE(State.prior);
+  }
+
+  // Compute E[U(your action)] for each
+  const epC = expectedPayoff(State.yourType, 'C', State.prior, oppStrategy);
+  const epS = expectedPayoff(State.yourType, 'S', State.prior, oppStrategy);
+
+  // Decompose into soft and tough contributions
+  const cVsSoft  = State.prior * payoff(State.yourType, 'soft',  'C', oppStrategy.soft)[0];
+  const cVsTough = (1 - State.prior) * payoff(State.yourType, 'tough', 'C', oppStrategy.tough)[0];
+  const sVsSoft  = State.prior * payoff(State.yourType, 'soft',  'S', oppStrategy.soft)[0];
+  const sVsTough = (1 - State.prior) * payoff(State.yourType, 'tough', 'S', oppStrategy.tough)[0];
+
+  // Update bar widths (proportional to payoff contribution)
+  // Use a max scale of 3 (max payoff per action under EP)
+  const maxEP = 3;
+  function setSegments(soft, tough, totalSel, ssEl, tsEl, ssLbl, tsLbl) {
+    const total = soft + tough;
+    $(totalSel).textContent = total.toFixed(2);
+    // Visualize as two segments out of maxEP scale
+    const softPct = (soft / maxEP) * 100;
+    const toughPct = (tough / maxEP) * 100;
+    $(ssEl).style.flexBasis = softPct + '%';
+    $(tsEl).style.flexBasis = toughPct + '%';
+    $(ssLbl).textContent = soft > 0.05 ? soft.toFixed(2) : '';
+    $(tsLbl).textContent = tough > 0.05 ? tough.toFixed(2) : '';
+  }
+
+  setSegments(cVsSoft, cVsTough, '#epCompTotal', '#epCompSoft', '#epCompTough', '#epCompSoftLbl', '#epCompToughLbl');
+  setSegments(sVsSoft, sVsTough, '#epStandTotal', '#epStandSoft', '#epStandTough', '#epStandSoftLbl', '#epStandToughLbl');
+
+  // Best action tag
+  const bestAction = epC >= epS ? 'C' : 'S';
+  $('#bestActionTag').textContent = `Best: ${CONFIG.actionLabels[bestAction]}`;
+
+  // EP note explains the BR
+  $('#epNote').innerHTML = `Given the prior, your <span class="text-coop-glow">best response</span> is <span class="text-coop-glow font-medium">${CONFIG.actionLabels[bestAction]}</span> (E[U] = ${Math.max(epC, epS).toFixed(2)}). Your other action yields E[U] = ${Math.min(epC, epS).toFixed(2)}.`;
+}
+
+/* ============================================================
+   USER ACTION
+   ============================================================ */
+async function chooseAction(action) {
+  if (State.busy || State.finished || State.yourAction) return;
+  State.busy = true;
+  State.yourAction = action;
+
+  // Lock action UI
+  $$('.action-btn').forEach(b => {
+    b.disabled = true;
+    if (b.dataset.action === action) b.classList.add('locked');
+  });
+
+  showToast('Both players committing simultaneously…');
+
+  await wait(900);
+
+  // Opponent picks (its action depends on its hidden type and the chosen strategy)
+  const oppFn = OPPONENTS[State.oppKey];
+  State.oppAction = oppFn.pickAction(State.oppType, State.prior);
+
+  // Reveal opponent type with vault animation
+  await revealOpponent();
+
+  // Collapse matrix stack to the realized matrix
+  await collapseMatrixToRealized();
+
+  // Highlight realized cell + fly coins
+  await animatePayoffResolution();
+
+  // Show result
+  showResult();
+  State.finished = true;
+  State.busy = false;
+}
+
+async function revealOpponent() {
+  setTypeCard('opp', State.oppType);
+  $('#vaultOpp').classList.add('open');
+  await wait(800);
+}
+
+async function collapseMatrixToRealized() {
+  // Hide the non-realized card; bring the realized card to active position
+  const wrap = $('#matrixStackWrap');
+  // Re-render in collapsed state
+  wrap.innerHTML = '';
+  const card = document.createElement('div');
+  card.className = 'matrix-card active reveal-in';
+  card.dataset.oppType = State.oppType;
+  card.style.borderColor = 'rgba(124,92,255,.35)';
+  card.innerHTML = buildMatrixCardHTML(State.yourType, State.oppType, 1);
+  // Add a "REALIZED" tag
+  card.querySelector('.mc-prob').innerHTML = '<span class="tag tag-violet">REALIZED</span>';
+  wrap.appendChild(card);
+  await wait(300);
+}
+
+async function animatePayoffResolution() {
+  // Highlight the cell corresponding to (yourAction, oppAction)
+  const cell = document.querySelector(`.mat-cell[data-row="${State.yourAction}"][data-col="${State.oppAction}"]`);
+  if (cell) {
+    cell.classList.add('realized');
+  }
+
+  await wait(400);
+
+  // Fly coins to scoreboards
+  const [pyou, popp] = payoff(State.yourType, State.oppType, State.yourAction, State.oppAction);
+  if (pyou > 0) flyCoinsTo(cell, '#scoreYou', Math.min(pyou, 3));
+  if (popp > 0) flyCoinsTo(cell, '#scoreOpp', Math.min(popp, 3), 100);
+
+  await wait(900);
+
+  // Bump scores
+  bumpScore('#scoreYou', State.scoreYou + pyou);
+  bumpScore('#scoreOpp', State.scoreOpp + popp);
+  State.scoreYou += pyou;
+  State.scoreOpp += popp;
+}
+
+function flyCoinsTo(fromEl, targetSel, count, delay = 0) {
+  if (!fromEl || count <= 0) return;
+  const fromRect = fromEl.getBoundingClientRect();
+  const targetEl = document.querySelector(targetSel);
+  const targetRect = targetEl.getBoundingClientRect();
+  const startX = fromRect.left + fromRect.width / 2;
+  const startY = fromRect.top + fromRect.height / 2;
+  const endX = targetRect.left + targetRect.width / 2;
+  const endY = targetRect.top + targetRect.height / 2;
+
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      const coin = document.createElement('div');
+      coin.className = 'coin';
+      coin.style.left = startX + 'px';
+      coin.style.top = startY + 'px';
+      document.body.appendChild(coin);
+      const a = coin.animate([
+        { transform: 'translate(-50%,-50%) scale(.6)', opacity: 0 },
+        { transform: 'translate(-50%,-50%) scale(1.1)', opacity: 1, offset: 0.15 },
+        { left: endX + 'px', top: endY + 'px', transform: 'translate(-50%,-50%) scale(.7)', opacity: 0 }
+      ], { duration: 800, easing: 'cubic-bezier(.5,-.2,.5,1.2)', fill: 'forwards' });
+      a.onfinish = () => coin.remove();
+    }, delay + i * 90);
+  }
+}
+
+function bumpScore(sel, target) {
+  const el = $(sel);
+  const start = parseInt(el.textContent.replace(/,/g, ''), 10) || 0;
+  el.classList.add('bump');
+  const dur = 600;
+  const t0 = performance.now();
+  function tick(now) {
+    const t = Math.min((now - t0) / dur, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = Math.round(start + (target - start) * eased);
+    if (t < 1) requestAnimationFrame(tick);
+    else el.textContent = target;
+  }
+  requestAnimationFrame(tick);
+  setTimeout(() => el.classList.remove('bump'), 600);
+}
+
+/* ============================================================
+   RESULT PANEL
+   ============================================================ */
+function showResult() {
+  const [pyou, popp] = payoff(State.yourType, State.oppType, State.yourAction, State.oppAction);
+  const eq = computeBNE(State.prior);
+  const bneAction = eq[State.yourType];
+  const oppFn = OPPONENTS[State.oppKey];
+  // Opponent's strategy (per type) for EP calc
+  let oppStrategy = State.oppKey === 'naive' ? { soft: 'C', tough: 'S' } : eq;
+  const expected = expectedPayoff(State.yourType, State.yourAction, State.prior, oppStrategy);
+  const bnePayoff = expectedPayoff(State.yourType, bneAction, State.prior, oppStrategy);
+
+  // Coordination check
+  const coordinated = State.yourAction === State.oppAction;
+  const matchedPref = coordinated && (
+    (State.yourType === 'soft' && State.yourAction === 'C') ||
+    (State.yourType === 'tough' && State.yourAction === 'S')
+  );
+
+  // Banner
+  let banner;
+  if (matchedPref) {
+    banner = `<div class="result-banner banner-good">
+      <div class="r-icon" style="background: rgba(16,185,129,.2); color: #34D399;">★</div>
+      <div>
+        <div class="font-semibold text-base mb-1">Best-case coordination</div>
+        <div class="text-sm text-white/70">You both played your matching outcome and you got your preferred coordination. Payoff: <span class="font-mono text-coop-glow">${pyou}</span>.</div>
+      </div>
+    </div>`;
+  } else if (coordinated) {
+    banner = `<div class="result-banner banner-mixed">
+      <div class="r-icon" style="background: rgba(251,191,36,.2); color: #FBBF24;">⚖</div>
+      <div>
+        <div class="font-semibold text-base mb-1">Coordinated, but not on your preferred outcome</div>
+        <div class="text-sm text-white/70">Both played the same action, but it matched the opponent's preference, not yours. Payoff: <span class="font-mono">${pyou}</span>.</div>
+      </div>
+    </div>`;
+  } else {
+    banner = `<div class="result-banner banner-bad">
+      <div class="r-icon" style="background: rgba(244,63,94,.2); color: #FB7185;">✕</div>
+      <div>
+        <div class="font-semibold text-base mb-1">Miscoordination</div>
+        <div class="text-sm text-white/70">You and the opponent picked different actions — both walk away with nothing. Payoff: <span class="font-mono text-defect-glow">0</span>.</div>
+      </div>
+    </div>`;
+  }
+  $('#resultBanner').innerHTML = banner;
+
+  $('#resultHeadline').textContent =
+    `(${CONFIG.actionLabels[State.yourAction]}, ${CONFIG.actionLabels[State.oppAction]}) → ${pyou} for you, ${popp} for opp`;
+
+  // 3-column comparison
+  $('#rExpected').textContent = expected.toFixed(2);
+  $('#rRealized').textContent = pyou.toString();
+  $('#rBNE').textContent = bnePayoff.toFixed(2);
+  $('#rBNESubtitle').textContent = `Plays ${CONFIG.actionLabels[bneAction]} as ${CONFIG.typeLabels[State.yourType]}`;
+
+  // Record history
+  State.history.push({
+    round: State.round,
+    yourType: State.yourType, oppType: State.oppType,
+    yourAction: State.yourAction, oppAction: State.oppAction,
+    expected, realized: pyou, bne: bneAction
+  });
+  renderHistory();
+
+  // BNE derivation walkthrough (after 3 rounds)
+  if (State.history.length >= 3) {
+    renderBNEDerivation();
+    $('#bneDerivation').classList.remove('hidden');
+  } else {
+    $('#bneDerivation').classList.add('hidden');
+  }
+
+  $('#resultPanel').classList.remove('hidden');
+  setTimeout(() => $('#resultPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
+}
+
+/* ============================================================
+   BNE DERIVATION WALKTHROUGH
+   ============================================================ */
+function renderBNEDerivation() {
+  const eq = computeBNE(State.prior);
+  const p = State.prior;
+  // Examine if user's action history matches BNE
+  const matchCount = State.history.filter(h => {
+    const eqRound = computeBNE(p);   // approximation: uses current prior
+    return h.yourAction === eqRound[h.yourType];
+  }).length;
+  const matchPct = matchCount / State.history.length;
+
+  let cardClass = 'eq-card';
+  let conclusion;
+  if (matchPct >= 0.8) {
+    cardClass = 'eq-card match';
+    conclusion = `<span class="text-coop-glow">You're playing the Bayesian Nash equilibrium.</span> ${matchCount} of ${State.history.length} rounds matched the equilibrium strategy for your type.`;
+  } else if (matchPct >= 0.5) {
+    conclusion = `<span class="text-equilibrium-glow">Partial equilibrium play.</span> ${matchCount} of ${State.history.length} rounds matched BNE — try to commit to your type's equilibrium action consistently.`;
+  } else {
+    conclusion = `<span class="text-defect-glow">Off-equilibrium play.</span> Only ${matchCount} of ${State.history.length} rounds matched BNE. The optimal strategy depends on your type, not your gut.`;
+  }
+
+  $('#bneDerivation').innerHTML = `
+    <div class="${cardClass}">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-equilibrium-glow font-medium mb-1">Bayesian Nash equilibrium · derivation</div>
+          <div class="font-display text-2xl tracking-tight">For prior P(Soft) = ${p.toFixed(2)}</div>
+        </div>
+        <span class="tag tag-amber">σ*(Soft) = ${CONFIG.actionLabels[eq.soft]}, σ*(Tough) = ${CONFIG.actionLabels[eq.tough]}</span>
+      </div>
+
+      <div class="eq-step">
+        <div class="font-medium mb-1">Step 1 · Set up beliefs</div>
+        Each player privately knows their type. The prior <span class="eq-formula">P(Soft) = ${p.toFixed(2)}, P(Tough) = ${(1-p).toFixed(2)}</span> is common knowledge.
+      </div>
+
+      <div class="eq-step">
+        <div class="font-medium mb-1">Step 2 · Soft type's expected payoffs</div>
+        If opponent plays the candidate equilibrium <span class="eq-formula">σ*(Soft)=${eq.soft}, σ*(Tough)=${eq.tough}</span>:<br/>
+        <span class="eq-formula">E[U_Soft(Compromise)]  = ${p.toFixed(2)}·${payoff('soft','soft','C',eq.soft)[0]} + ${(1-p).toFixed(2)}·${payoff('soft','tough','C',eq.tough)[0]} = ${(p*payoff('soft','soft','C',eq.soft)[0] + (1-p)*payoff('soft','tough','C',eq.tough)[0]).toFixed(2)}</span><br/>
+        <span class="eq-formula">E[U_Soft(Stand firm)] = ${p.toFixed(2)}·${payoff('soft','soft','S',eq.soft)[0]} + ${(1-p).toFixed(2)}·${payoff('soft','tough','S',eq.tough)[0]} = ${(p*payoff('soft','soft','S',eq.soft)[0] + (1-p)*payoff('soft','tough','S',eq.tough)[0]).toFixed(2)}</span>
+      </div>
+
+      <div class="eq-step">
+        <div class="font-medium mb-1">Step 3 · Tough type's expected payoffs</div>
+        <span class="eq-formula">E[U_Tough(Compromise)]  = ${p.toFixed(2)}·${payoff('tough','soft','C',eq.soft)[0]} + ${(1-p).toFixed(2)}·${payoff('tough','tough','C',eq.tough)[0]} = ${(p*payoff('tough','soft','C',eq.soft)[0] + (1-p)*payoff('tough','tough','C',eq.tough)[0]).toFixed(2)}</span><br/>
+        <span class="eq-formula">E[U_Tough(Stand firm)] = ${p.toFixed(2)}·${payoff('tough','soft','S',eq.soft)[0]} + ${(1-p).toFixed(2)}·${payoff('tough','tough','S',eq.tough)[0]} = ${(p*payoff('tough','soft','S',eq.soft)[0] + (1-p)*payoff('tough','tough','S',eq.tough)[0]).toFixed(2)}</span>
+      </div>
+
+      <div class="eq-step">
+        <div class="font-medium mb-1">Step 4 · Verify each type plays a best response</div>
+        Soft prefers <span class="text-violet-glow font-medium">${CONFIG.actionLabels[eq.soft]}</span>; Tough prefers <span class="text-equilibrium-glow font-medium">${CONFIG.actionLabels[eq.tough]}</span>. Neither type wants to deviate → this is a Bayesian Nash equilibrium.
+      </div>
+
+      <div class="text-sm text-white/80 leading-relaxed mt-4 pt-3 border-t border-white/10">
+        ${conclusion}
+      </div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   HISTORY
+   ============================================================ */
+function renderHistory() {
+  const list = $('#historyList');
+  if (State.history.length === 0) {
+    list.innerHTML = '<div class="text-[12px] text-white/40 px-3 py-2">No rounds played yet.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  [...State.history].reverse().forEach(h => {
+    const row = document.createElement('div');
+    row.className = 'hist-row';
+    const yourTypeTag = h.yourType === 'soft' ? 'tag-soft' : 'tag-tough';
+    const oppTypeTag = h.oppType === 'soft' ? 'tag-soft' : 'tag-tough';
+    const realizedColor = h.realized === 0 ? 'text-defect-glow' : (h.realized >= 2 ? 'text-coop-glow' : 'text-equilibrium-glow');
+    row.innerHTML = `
+      <span class="font-mono text-white/40 text-[11px] text-center">${h.round}</span>
+      <span class="tag ${yourTypeTag}">${CONFIG.typeLabels[h.yourType]} ${CONFIG.typeIcons[h.yourType]}</span>
+      <span class="tag ${oppTypeTag}">${CONFIG.typeLabels[h.oppType]} ${CONFIG.typeIcons[h.oppType]}</span>
+      <span class="text-violet-glow">${CONFIG.actionLabels[h.yourAction]}</span>
+      <span class="text-equilibrium-glow">${CONFIG.actionLabels[h.oppAction]}</span>
+      <span class="font-mono text-white/55">${h.expected.toFixed(2)}</span>
+      <span class="font-mono text-right ${realizedColor}">${h.realized}</span>
+    `;
+    list.appendChild(row);
+  });
+}
+
+/* ============================================================
+   PRIOR SLIDER
+   ============================================================ */
+function bindPriorSlider() {
+  const slider = $('#priorSlider');
+  slider.addEventListener('input', (e) => {
+    State.prior = parseInt(e.target.value, 10) / 100;
+    updatePriorDisplay();
+    renderMatrixStack();
+    updateExpectedPayoffs();
+  });
+  // Init
+  updatePriorDisplay();
+}
+
+function updatePriorDisplay() {
+  const pSoft = Math.round(State.prior * 100);
+  const pTough = 100 - pSoft;
+  $('#priorSoftSeg').style.flexBasis = pSoft + '%';
+  $('#priorToughSeg').style.flexBasis = pTough + '%';
+  $('#priorSoftPct').textContent = pSoft + '%';
+  $('#priorToughPct').textContent = pTough + '%';
+
+  // Update note based on regime
+  const eq = computeBNE(State.prior);
+  let regime;
+  if (eq.soft === 'C' && eq.tough === 'S') {
+    regime = `In this regime, the BNE is the canonical separating strategy: <span class="text-violet-glow">Soft → Compromise</span>, <span class="text-equilibrium-glow">Tough → Stand firm</span>.`;
+  } else {
+    regime = `In this regime (extreme prior), the BNE is <span class="text-violet-glow">Soft → ${CONFIG.actionLabels[eq.soft]}</span>, <span class="text-equilibrium-glow">Tough → ${CONFIG.actionLabels[eq.tough]}</span>.`;
+  }
+  $('#priorNote').innerHTML = `With <span class="font-mono text-violet-glow">P(Soft) = ${State.prior.toFixed(2)}</span>, ${regime}`;
+}
+
+/* ============================================================
+   OPPONENT PICKER
+   ============================================================ */
+function bindOppPicker() {
+  $$('#oppPicker .opp-pick').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (State.busy) return;
+      $$('#oppPicker .opp-pick').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      State.oppKey = btn.dataset.opp;
+      if (!State.yourAction) updateExpectedPayoffs();
+    });
+  });
+}
+
+/* ============================================================
+   ACTIONS
+   ============================================================ */
+function bindActions() {
+  $$('.action-btn').forEach(btn => {
+    btn.addEventListener('click', () => chooseAction(btn.dataset.action));
+  });
+  $('#newRoundBtn').addEventListener('click', () => {
+    State.round++;
+    newRound();
+  });
+  $('#restartBtn').addEventListener('click', () => {
+    State.round = 1;
+    State.scoreYou = 0;
+    State.scoreOpp = 0;
+    State.history = [];
+    $('#scoreYou').textContent = '0';
+    $('#scoreOpp').textContent = '0';
+    renderHistory();
+    newRound();
+  });
+}
+
+function showToast(text, duration = 1300) {
+  const t = $('#toast');
+  t.textContent = text;
+  t.classList.add('visible');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('visible'), duration);
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', () => {
+  bindPriorSlider();
+  bindOppPicker();
+  bindActions();
+  newRound();
+});
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'bayesian-game',
+      getSession: function () {
+        if (typeof State === 'undefined' || (State.scoreYou === 0 && State.scoreOpp === 0)) { return null; }
+        var you = State.scoreYou, opp = State.scoreOpp, total = you + opp;
+        var score = total > 0 ? (you / total) : 0.5;
+        var outcome = you > opp ? 'win' : (you < opp ? 'loss' : 'draw');
+        return { score: score, outcome: outcome, detail: { you: you, opp: opp, opponent: State.oppKey } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

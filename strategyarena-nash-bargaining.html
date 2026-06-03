@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nash Bargaining — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        display: ['Instrument Serif', 'serif']
+      },
+      colors: {
+        ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+        violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+        coop: { DEFAULT: '#10B981', glow: '#34D399' },
+        defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+        equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+      }
+    } }
+  };
+</script>
+
+<style>
+  html, body { background: #070612; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    color: #E8E6F5; -webkit-font-smoothing: antialiased;
+    overflow-x: hidden; min-height: 100vh;
+  }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  .arena-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410; }
+  .arena-bg::before {
+    content: ''; position: absolute; width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: .28; top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute; width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #10B981 0%, transparent 70%);
+    filter: blur(120px); opacity: .14; bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .glass { background: rgba(18,16,42,.55); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); border: 1px solid rgba(255,255,255,.06); }
+  .glass-strong { background: rgba(11,10,26,.75); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); border: 1px solid rgba(255,255,255,.08); }
+  .glass-subtle { background: rgba(255,255,255,.025); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.05); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; font-weight: 500;
+    padding: 12px 22px; border-radius: 10px; font-size: 14px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124,92,255,.6); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 20px; border-radius: 10px; font-size: 13px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+  .btn-ghost:active { transform: scale(.98); }
+
+  /* Logo */
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  /* Tags */
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-violet { background: rgba(124,92,255,.12); border-color: rgba(124,92,255,.3); color: #9B7BFF; }
+  .tag-amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FBBF24; }
+  .tag-coop { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #34D399; }
+  .tag-defect { background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.3); color: #FB7185; }
+
+  /* The bargaining canvas (SVG) */
+  .canvas-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .bargain-svg {
+    width: 100%; height: 100%;
+    display: block;
+    cursor: crosshair;
+  }
+
+  /* Drag handle */
+  .proposal-handle {
+    cursor: grab;
+    transition: filter .15s ease;
+  }
+  .proposal-handle:active { cursor: grabbing; }
+  .proposal-handle:hover .handle-circle {
+    filter: drop-shadow(0 0 18px #9B7BFF) brightness(1.15);
+  }
+
+  /* Score / payoff displays */
+  .payoff-card {
+    padding: 16px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+  .payoff-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; font-variant-numeric: tabular-nums;
+    font-size: 28px; letter-spacing: -.02em; line-height: 1;
+    transition: color .25s ease, transform .25s ease;
+  }
+  .payoff-num.flash {
+    animation: payoffFlash .35s ease-out;
+  }
+  @keyframes payoffFlash {
+    0% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+
+  /* Nash product display */
+  .product-display {
+    padding: 18px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(245,158,11,.12), rgba(245,158,11,.03));
+    border: 1.5px solid rgba(245,158,11,.3);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .product-display::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(251,191,36,.15) 0%, transparent 70%);
+  }
+  .product-display .relative-pct {
+    position: relative;
+  }
+  .product-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; font-size: 36px; letter-spacing: -.02em;
+    line-height: 1;
+    background: linear-gradient(135deg, #FBBF24, #F59E0B);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  /* Quality meter — how close to optimum */
+  .quality-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.05);
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .quality-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #FB7185 0%, #FBBF24 50%, #34D399 100%);
+    border-radius: 999px;
+    transition: width .25s ease;
+  }
+
+  /* Opponent picker */
+  .opp-pick {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.02);
+    transition: all .15s ease;
+    cursor: pointer;
+    text-align: left;
+  }
+  .opp-pick:hover { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.18); }
+  .opp-pick.active {
+    background: rgba(124,92,255,.08);
+    border-color: rgba(124,92,255,.4);
+    box-shadow: 0 0 0 1px rgba(124,92,255,.2);
+  }
+
+  /* Result banner */
+  .result-banner {
+    border-radius: 16px;
+    padding: 18px 22px;
+    border: 1.5px solid;
+    display: flex; gap: 16px; align-items: center;
+  }
+  .result-banner .r-icon {
+    width: 48px; height: 48px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 22px; font-weight: 700;
+  }
+  .banner-accept { background: rgba(16,185,129,.08); border-color: rgba(16,185,129,.35); }
+  .banner-reject { background: rgba(244,63,94,.08); border-color: rgba(244,63,94,.35); }
+  .banner-optimal { background: rgba(245,158,11,.1); border-color: rgba(251,191,36,.4); }
+
+  /* Final analysis panel */
+  .reveal-in { animation: revealIn .55s cubic-bezier(.16,1,.3,1); }
+  @keyframes revealIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .axiom-card {
+    padding: 14px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    top: 80px; left: 50%; transform: translateX(-50%) translateY(-30px);
+    padding: 10px 18px;
+    border-radius: 10px;
+    background: rgba(11,10,26,.95);
+    border: 1px solid rgba(124,92,255,.4);
+    font-size: 13px;
+    color: #fff;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity .3s ease, transform .3s ease;
+    pointer-events: none;
+    box-shadow: 0 10px 30px -8px rgba(124,92,255,.3);
+  }
+  .toast.visible {
+    opacity: 1; transform: translateX(-50%) translateY(0);
+  }
+
+  /* Confetti */
+  .confetti-piece {
+    position: fixed;
+    width: 8px; height: 14px;
+    border-radius: 2px;
+    pointer-events: none;
+    z-index: 60;
+    will-change: transform;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  /* SVG element styles */
+  .feasible-region { fill: rgba(124,92,255,.08); stroke: rgba(155,123,255,.6); stroke-width: 1.5; }
+  .pareto-frontier { fill: none; stroke: rgba(155,123,255,.85); stroke-width: 2; }
+  .axis-line { stroke: rgba(255,255,255,.12); stroke-width: 1; }
+  .axis-tick-line { stroke: rgba(255,255,255,.06); stroke-width: 1; stroke-dasharray: 2 4; }
+  .axis-label { fill: rgba(255,255,255,.45); font-size: 10px; font-family: 'JetBrains Mono', monospace; }
+  .axis-title { fill: rgba(255,255,255,.7); font-size: 12px; font-family: 'Inter', sans-serif; font-weight: 500; }
+
+  .contour { fill: none; pointer-events: none; }
+  .contour.user { stroke: #FBBF24; stroke-width: 1.6; stroke-dasharray: 4 3; opacity: .85; }
+  .contour.bg { stroke: rgba(251,191,36,.18); stroke-width: 1; }
+  .contour.optimum { stroke: #34D399; stroke-width: 2; opacity: .85; }
+
+  .disagreement-marker { fill: #FB7185; stroke: #fff; stroke-width: 1.5; }
+  .reference-line { stroke: rgba(244,63,94,.3); stroke-width: 1; stroke-dasharray: 3 4; }
+
+  .handle-circle { fill: #9B7BFF; stroke: #fff; stroke-width: 2.5; filter: drop-shadow(0 0 12px #7C5CFF); transition: r .15s ease; }
+  .handle-pulse {
+    fill: rgba(155,123,255,.3);
+    animation: handlePulse 2s ease-in-out infinite;
+  }
+  @keyframes handlePulse {
+    0%, 100% { r: 14; opacity: .6; }
+    50% { r: 22; opacity: 0; }
+  }
+
+  .optimum-marker { fill: #34D399; stroke: #fff; stroke-width: 2; filter: drop-shadow(0 0 16px #34D399); }
+  .optimum-marker-pulse {
+    fill: rgba(52,211,153,.4);
+    animation: handlePulse 1.6s ease-in-out infinite;
+  }
+
+  .nash-product-label {
+    fill: #FBBF24;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    pointer-events: none;
+  }
+
+  .info-tip {
+    position: absolute;
+    pointer-events: none;
+    background: rgba(11,10,26,.95);
+    border: 1px solid rgba(124,92,255,.4);
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: rgba(232,230,245,.9);
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+    transform: translate(-50%, -120%);
+    box-shadow: 0 8px 22px -6px rgba(124,92,255,.3);
+  }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+
+<!-- Top bar -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
+      <div class="font-medium tracking-tight">Nash Bargaining</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="hidden md:inline-flex tag tag-violet">2D feasible set · drag to propose</span>
+    <button class="btn-ghost text-sm" id="restartBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      New round
+    </button>
+  </div>
+</header>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Main -->
+<main class="px-6 lg:px-10 py-6 max-w-7xl mx-auto">
+
+  <!-- Player payoffs at top -->
+  <div class="grid grid-cols-3 gap-3 mb-5">
+    <div class="payoff-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1.5">You (Player 1)</div>
+      <div class="flex items-baseline gap-2">
+        <span class="payoff-num" id="payoffYou" style="color: #9B7BFF;">5.0</span>
+        <span class="text-xs text-white/40">utils</span>
+      </div>
+      <div class="text-[11px] text-white/45 mt-1">Above disagreement: <span class="font-mono text-white/70" id="surplusYou">+3.0</span></div>
+    </div>
+    <div class="product-display">
+      <div class="relative-pct">
+        <div class="text-[10px] uppercase tracking-wider text-equilibrium-glow font-medium mb-1.5">Nash product</div>
+        <div class="product-num" id="nashProductNum">9.0</div>
+        <div class="text-[11px] text-white/55 mt-1.5"><span id="nashPctOfOpt">—</span> of optimum</div>
+        <div class="quality-bar mt-2">
+          <div class="quality-fill" id="qualityFill" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+    <div class="payoff-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1.5 text-right" id="oppPayoffLabel">Fiona (Fair)</div>
+      <div class="flex items-baseline gap-2 justify-end">
+        <span class="text-xs text-white/40">utils</span>
+        <span class="payoff-num" id="payoffOpp" style="color: #FBBF24;">5.0</span>
+      </div>
+      <div class="text-[11px] text-white/45 mt-1 text-right">Above disagreement: <span class="font-mono text-white/70" id="surplusOpp">+3.0</span></div>
+    </div>
+  </div>
+
+  <div class="grid lg:grid-cols-[1.4fr_1fr] gap-5">
+
+    <!-- Bargaining canvas -->
+    <div class="glass-strong rounded-3xl p-5 lg:p-6 relative">
+      <div class="flex items-center justify-between mb-3">
+        <div>
+          <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Feasible set</div>
+          <div class="text-sm text-white/55" id="canvasHint">Drag the violet point to propose a split.</div>
+        </div>
+        <div class="flex items-center gap-3 text-[11px]">
+          <span class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-sm" style="background: rgba(124,92,255,.3); border: 1px solid #9B7BFF;"></span>
+            Feasible
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-sm" style="background: #FBBF24; border-radius: 0;"></span>
+            Iso-product
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-sm bg-coop"></span>
+            Optimum
+          </span>
+        </div>
+      </div>
+
+      <div class="canvas-wrap">
+        <svg class="bargain-svg" id="bargainSVG" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
+          <!-- Built dynamically -->
+        </svg>
+        <div class="info-tip" id="infoTip" style="display: none;"></div>
+      </div>
+    </div>
+
+    <!-- Right rail -->
+    <div class="space-y-5">
+
+      <!-- Action buttons -->
+      <div class="glass rounded-2xl p-5">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Your move</div>
+        <div class="flex flex-col gap-2">
+          <button class="btn-primary w-full justify-center" id="submitOfferBtn">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+            Submit this proposal
+          </button>
+          <button class="btn-ghost w-full justify-center text-sm" id="snapToOptBtn">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+            Snap to Nash optimum
+          </button>
+        </div>
+      </div>
+
+      <!-- Disagreement point info -->
+      <div class="glass rounded-2xl p-5">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Disagreement point</div>
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-lg bg-defect/15 border border-defect-glow/40 flex items-center justify-center text-sm font-bold text-defect-glow">d</div>
+          <div class="flex-1">
+            <div class="text-sm font-mono">(<span id="dispVal1">2</span>, <span id="dispVal2">2</span>)</div>
+            <div class="text-[11px] text-white/45 mt-0.5">If you both walk away</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Opponent picker -->
+      <div class="glass rounded-2xl p-5">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Opponent</div>
+        <div class="flex flex-col gap-2" id="oppPicker">
+          <button class="opp-pick active" data-opp="fair">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Fiona</div>
+                <div class="text-[11px] text-white/50">Fair · accepts ≥ 40% of surplus</div>
+              </div>
+              <span class="tag tag-coop">Easy</span>
+            </div>
+          </button>
+          <button class="opp-pick" data-opp="tough">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Tomás</div>
+                <div class="text-[11px] text-white/50">Tough · demands ≥ 60% of surplus</div>
+              </div>
+              <span class="tag tag-defect">Hard</span>
+            </div>
+          </button>
+          <button class="opp-pick" data-opp="strategic">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Sven</div>
+                <div class="text-[11px] text-white/50">Strategic · accepts iff Nash product ≥ 70% optimum</div>
+              </div>
+              <span class="tag tag-violet">Theoretical</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Hints -->
+      <div class="glass rounded-2xl p-5">
+        <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Strategic hints</div>
+        <div class="space-y-2 text-xs leading-relaxed">
+          <div class="flex gap-2">
+            <span class="text-violet-glow font-mono flex-shrink-0">›</span>
+            <span class="text-white/70">Move toward the curved boundary (Pareto frontier) — interior points are inefficient.</span>
+          </div>
+          <div class="flex gap-2">
+            <span class="text-violet-glow font-mono flex-shrink-0">›</span>
+            <span class="text-white/70">The Nash solution is where the highest gold contour kisses the boundary.</span>
+          </div>
+          <div class="flex gap-2">
+            <span class="text-violet-glow font-mono flex-shrink-0">›</span>
+            <span class="text-white/70">Symmetric problem? The optimum sits on the 45° line.</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================================
+       RESULT PANEL (after proposal submitted)
+       ============================================================ -->
+  <div id="resultPanel" class="hidden mt-5">
+    <div class="glass-strong rounded-3xl p-6 lg:p-8 reveal-in">
+      <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-2" id="resultTag">Bargain complete</div>
+          <h2 class="font-display text-3xl tracking-tight" id="resultHeadline">Outcome</h2>
+        </div>
+      </div>
+
+      <!-- Result banner (accept / reject / optimal) -->
+      <div id="resultBanner" class="mb-5"></div>
+
+      <!-- Three-column comparison -->
+      <div class="grid md:grid-cols-3 gap-4 mb-6">
+        <div class="payoff-card">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2">Your proposal</div>
+          <div class="font-mono text-xl mb-1">(<span id="rPropU1">—</span>, <span id="rPropU2">—</span>)</div>
+          <div class="text-xs text-white/55">Nash product: <span class="font-mono text-equilibrium-glow" id="rPropProd">—</span></div>
+        </div>
+        <div class="payoff-card" style="border-color: rgba(52,211,153,.3); background: rgba(16,185,129,.04);">
+          <div class="text-[10px] uppercase tracking-wider text-coop-glow font-medium mb-2">Nash bargaining solution</div>
+          <div class="font-mono text-xl mb-1">(<span id="rOptU1">—</span>, <span id="rOptU2">—</span>)</div>
+          <div class="text-xs text-white/55">Nash product: <span class="font-mono text-coop-glow" id="rOptProd">—</span></div>
+        </div>
+        <div class="payoff-card">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2">Distance from optimum</div>
+          <div class="font-mono text-xl mb-1"><span id="rDistance">—</span> utils</div>
+          <div class="text-xs text-white/55"><span id="rPctOpt">—</span> of optimal product</div>
+        </div>
+      </div>
+
+      <!-- Why Nash maximizes the product -->
+      <div class="glass-subtle rounded-2xl p-5 mb-5">
+        <div class="text-[10px] uppercase tracking-wider text-equilibrium-glow font-medium mb-2">Why Nash maximizes the product</div>
+        <p class="text-sm text-white/75 leading-relaxed">
+          The <span class="text-white">Nash product</span> is <code class="font-mono text-equilibrium-glow">(u₁ - d₁) × (u₂ - d₂)</code> — the product of each player's <em>surplus over disagreement</em>. Maximizing this product over the feasible set produces a unique solution that satisfies four axioms simultaneously: <span class="text-white">Pareto efficiency</span> (no waste), <span class="text-white">symmetry</span> (equal players get equal shares), <span class="text-white">scale invariance</span> (utility units don't matter), and <span class="text-white">independence of irrelevant alternatives</span>. Geometrically, the optimum is the point where the highest hyperbolic contour <code class="font-mono text-equilibrium-glow">(u₁ - d₁)(u₂ - d₂) = k</code> just touches the Pareto frontier. The two curves are <em>tangent</em> at that point.
+        </p>
+      </div>
+
+      <!-- The four axioms -->
+      <div class="grid md:grid-cols-2 gap-3">
+        <div class="axiom-card">
+          <div class="flex items-center gap-2 mb-1.5">
+            <div class="w-6 h-6 rounded bg-violet-primary/20 text-violet-glow flex items-center justify-center font-bold text-xs">1</div>
+            <div class="text-sm font-medium">Pareto efficiency</div>
+          </div>
+          <p class="text-xs text-white/60 leading-relaxed">No agreement that makes both better off should be left on the table. The solution sits on the boundary, not the interior.</p>
+        </div>
+        <div class="axiom-card">
+          <div class="flex items-center gap-2 mb-1.5">
+            <div class="w-6 h-6 rounded bg-violet-primary/20 text-violet-glow flex items-center justify-center font-bold text-xs">2</div>
+            <div class="text-sm font-medium">Symmetry</div>
+          </div>
+          <p class="text-xs text-white/60 leading-relaxed">Players in identical bargaining positions receive identical shares. Symmetry of the problem ⇒ symmetry of the solution.</p>
+        </div>
+        <div class="axiom-card">
+          <div class="flex items-center gap-2 mb-1.5">
+            <div class="w-6 h-6 rounded bg-violet-primary/20 text-violet-glow flex items-center justify-center font-bold text-xs">3</div>
+            <div class="text-sm font-medium">Scale invariance</div>
+          </div>
+          <p class="text-xs text-white/60 leading-relaxed">If you measure Player 1's utility in dollars vs cents, the bargain doesn't change. Linear utility transformations leave the solution unchanged.</p>
+        </div>
+        <div class="axiom-card">
+          <div class="flex items-center gap-2 mb-1.5">
+            <div class="w-6 h-6 rounded bg-violet-primary/20 text-violet-glow flex items-center justify-center font-bold text-xs">4</div>
+            <div class="text-sm font-medium">IIA</div>
+          </div>
+          <p class="text-xs text-white/60 leading-relaxed">Removing options that wouldn't have been chosen anyway shouldn't change the bargain. The solution depends on the local geometry near itself.</p>
+        </div>
+      </div>
+
+      <div class="mt-6 flex flex-wrap gap-2 justify-center">
+        <button class="btn-primary" id="newRoundFromResult">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+          New round
+        </button>
+        <button class="btn-ghost" id="changeOppFromResult">Different opponent</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script>
+/* ============================================================
+   GAME CONFIG
+   - Feasible set: defined by Pareto frontier f(u1) = sqrt(R^2 - (u1-cx)^2)*sy + cy
+     Actually, simpler: an ellipse centered at (cx, cy) with semi-axes (a, b)
+     The feasible set is the intersection of the ellipse with {u1 >= d1, u2 >= d2}
+     and the rectangle [u1Min, u1Max] x [u2Min, u2Max].
+   - For pedagogical clarity, we use a concave Pareto frontier of the form:
+       u2 = U_MAX_2 * sqrt(1 - (u1 / U_MAX_1)^2)
+     which is a quarter-ellipse from (0, U_MAX_2) to (U_MAX_1, 0).
+   - Disagreement point d = (D1, D2)
+   ============================================================ */
+const CONFIG = {
+  U1_MAX: 10,    // max possible payoff for player 1
+  U2_MAX: 10,    // max possible payoff for player 2
+  D1: 2, D2: 2,  // disagreement point
+  // Frontier: u2 = U2_MAX * sqrt(1 - (u1 / U1_MAX)^2) for u1 in [0, U1_MAX]
+};
+
+const VIEW = { w: 600, h: 600, padL: 60, padR: 30, padT: 30, padB: 60 };
+function plotW() { return VIEW.w - VIEW.padL - VIEW.padR; }
+function plotH() { return VIEW.h - VIEW.padT - VIEW.padB; }
+
+/* ============================================================
+   COORDINATE TRANSFORMS
+   ============================================================ */
+function uToX(u1) { return VIEW.padL + (u1 / CONFIG.U1_MAX) * plotW(); }
+function uToY(u2) { return VIEW.padT + plotH() - (u2 / CONFIG.U2_MAX) * plotH(); }
+function xToU1(x) { return ((x - VIEW.padL) / plotW()) * CONFIG.U1_MAX; }
+function yToU2(y) { return ((VIEW.padT + plotH() - y) / plotH()) * CONFIG.U2_MAX; }
+
+/* ============================================================
+   FEASIBLE SET FUNCTIONS
+   - frontier(u1) gives u2 max on the boundary at u1
+   - inside(u1, u2) tests if a point is feasible (above d, below frontier)
+   ============================================================ */
+function frontierU2(u1) {
+  if (u1 < 0 || u1 > CONFIG.U1_MAX) return 0;
+  return CONFIG.U2_MAX * Math.sqrt(Math.max(0, 1 - Math.pow(u1 / CONFIG.U1_MAX, 2)));
+}
+function frontierU1(u2) {
+  if (u2 < 0 || u2 > CONFIG.U2_MAX) return 0;
+  return CONFIG.U1_MAX * Math.sqrt(Math.max(0, 1 - Math.pow(u2 / CONFIG.U2_MAX, 2)));
+}
+function isInside(u1, u2) {
+  if (u1 < CONFIG.D1 || u2 < CONFIG.D2) return false;
+  return u2 <= frontierU2(u1) + 1e-6;
+}
+/** Project (u1, u2) onto the feasible set (clamp to disagreement quadrant + frontier) */
+function project(u1, u2) {
+  // Clamp to [D1, U1_MAX] and [D2, U2_MAX]
+  u1 = Math.max(CONFIG.D1, Math.min(CONFIG.U1_MAX, u1));
+  u2 = Math.max(CONFIG.D2, Math.min(CONFIG.U2_MAX, u2));
+  // If above frontier, project radially toward origin until on frontier
+  const fy = frontierU2(u1);
+  if (u2 > fy) {
+    // Easiest: scale point toward origin until on frontier
+    // (u1*t, u2*t) on frontier: (u2*t / U2_MAX)^2 + (u1*t / U1_MAX)^2 = 1
+    const a = Math.pow(u1 / CONFIG.U1_MAX, 2);
+    const b = Math.pow(u2 / CONFIG.U2_MAX, 2);
+    const t = 1 / Math.sqrt(a + b);
+    u1 = u1 * t; u2 = u2 * t;
+    // Re-clamp to disagreement after projection (rare edge case)
+    u1 = Math.max(CONFIG.D1, u1);
+    u2 = Math.max(CONFIG.D2, u2);
+  }
+  return [u1, u2];
+}
+
+/* ============================================================
+   NASH PRODUCT & OPTIMUM
+   ============================================================ */
+function nashProduct(u1, u2) {
+  return Math.max(0, u1 - CONFIG.D1) * Math.max(0, u2 - CONFIG.D2);
+}
+
+/** Find the Nash bargaining solution numerically via search along the frontier. */
+function nashOptimum() {
+  // Search u1 in [D1, U1_MAX], compute u2 = frontier(u1), maximize Nash product
+  let best = { u1: CONFIG.D1, u2: CONFIG.D2, prod: 0 };
+  const N = 2000;
+  for (let i = 0; i <= N; i++) {
+    const u1 = CONFIG.D1 + (i / N) * (CONFIG.U1_MAX - CONFIG.D1);
+    const u2 = frontierU2(u1);
+    if (u2 < CONFIG.D2) continue;
+    const p = nashProduct(u1, u2);
+    if (p > best.prod) best = { u1, u2, prod: p };
+  }
+  return best;
+}
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const State = {
+  proposal: { u1: 5, u2: 5 },     // user's current proposal (in u-space)
+  optimum: null,                  // computed at boot
+  oppKey: 'fair',
+  busy: false,
+  finished: false,
+  isDragging: false
+};
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+/* ============================================================
+   OPPONENTS
+   - Each has a decide(proposal) -> { accept: bool, reasoning: string }
+   ============================================================ */
+const OPPONENTS = {
+  fair: {
+    name: 'Fiona', label: 'Fair',
+    decide: ({ u1, u2 }) => {
+      // Accept if Fiona's surplus is at least 40% of total surplus
+      const sYou = u1 - CONFIG.D1, sOpp = u2 - CONFIG.D2;
+      const totalS = sYou + sOpp;
+      const oppShare = totalS > 0 ? sOpp / totalS : 0;
+      const accept = oppShare >= 0.40 && sOpp >= 0;
+      return {
+        accept,
+        reasoning: accept
+          ? `Fiona accepts: she'd get ${(oppShare * 100).toFixed(0)}% of the joint surplus, comfortably above her 40% threshold.`
+          : `Fiona rejects: ${(oppShare * 100).toFixed(0)}% of the surplus is below her 40% acceptance bar.`
+      };
+    }
+  },
+  tough: {
+    name: 'Tomás', label: 'Tough',
+    decide: ({ u1, u2 }) => {
+      const sYou = u1 - CONFIG.D1, sOpp = u2 - CONFIG.D2;
+      const totalS = sYou + sOpp;
+      const oppShare = totalS > 0 ? sOpp / totalS : 0;
+      const accept = oppShare >= 0.60 && sOpp >= 0;
+      return {
+        accept,
+        reasoning: accept
+          ? `Tomás accepts: he'd get ${(oppShare * 100).toFixed(0)}% of the joint surplus — meeting his 60% demand.`
+          : `Tomás rejects: he demands at least 60% of the joint surplus, and your offer gives him only ${(oppShare * 100).toFixed(0)}%.`
+      };
+    }
+  },
+  strategic: {
+    name: 'Sven', label: 'Strategic',
+    decide: ({ u1, u2 }) => {
+      const yourProd = nashProduct(u1, u2);
+      const optProd = State.optimum.prod;
+      const efficiency = optProd > 0 ? yourProd / optProd : 0;
+      const accept = efficiency >= 0.70 && (u2 - CONFIG.D2) >= 0;
+      return {
+        accept,
+        reasoning: accept
+          ? `Sven accepts: your offer's Nash product is ${(efficiency * 100).toFixed(0)}% of the optimum — efficient enough.`
+          : `Sven rejects: your offer captures only ${(efficiency * 100).toFixed(0)}% of the optimal Nash product. He won't accept inefficient bargains.`
+      };
+    }
+  }
+};
+
+/* ============================================================
+   SVG BUILDING
+   ============================================================ */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function buildSVG() {
+  const svg = $('#bargainSVG');
+  svg.innerHTML = '';
+
+  // ===== AXES =====
+  // y-axis
+  svg.appendChild(svgEl('line', {
+    class: 'axis-line',
+    x1: VIEW.padL, y1: VIEW.padT, x2: VIEW.padL, y2: VIEW.padT + plotH()
+  }));
+  // x-axis
+  svg.appendChild(svgEl('line', {
+    class: 'axis-line',
+    x1: VIEW.padL, y1: VIEW.padT + plotH(), x2: VIEW.padL + plotW(), y2: VIEW.padT + plotH()
+  }));
+
+  // tick gridlines
+  for (let i = 0; i <= 10; i += 2) {
+    const x = uToX(i), y = uToY(i);
+    if (i > 0) {
+      svg.appendChild(svgEl('line', {
+        class: 'axis-tick-line',
+        x1: x, y1: VIEW.padT, x2: x, y2: VIEW.padT + plotH()
+      }));
+      svg.appendChild(svgEl('line', {
+        class: 'axis-tick-line',
+        x1: VIEW.padL, y1: y, x2: VIEW.padL + plotW(), y2: y
+      }));
+    }
+  }
+  // tick labels
+  for (let i = 0; i <= 10; i += 2) {
+    const x = uToX(i), y = uToY(i);
+    const lblX = svgEl('text', {
+      class: 'axis-label',
+      x: x, y: VIEW.padT + plotH() + 16, 'text-anchor': 'middle'
+    });
+    lblX.textContent = i;
+    svg.appendChild(lblX);
+    if (i > 0) {
+      const lblY = svgEl('text', {
+        class: 'axis-label',
+        x: VIEW.padL - 8, y: y + 3, 'text-anchor': 'end'
+      });
+      lblY.textContent = i;
+      svg.appendChild(lblY);
+    }
+  }
+
+  // axis titles
+  const titleX = svgEl('text', {
+    class: 'axis-title',
+    x: VIEW.padL + plotW() / 2, y: VIEW.h - 14, 'text-anchor': 'middle'
+  });
+  titleX.textContent = "Player 1 utility (you)";
+  svg.appendChild(titleX);
+
+  const titleY = svgEl('text', {
+    class: 'axis-title',
+    x: 0, y: 0, 'text-anchor': 'middle',
+    transform: `translate(18, ${VIEW.padT + plotH() / 2}) rotate(-90)`
+  });
+  titleY.textContent = "Player 2 utility (opponent)";
+  svg.appendChild(titleY);
+
+  // ===== FEASIBLE REGION =====
+  // Build path along frontier from (0, U2_MAX) sweeping to (U1_MAX, 0), then back through (0,0)
+  let path = `M ${uToX(0)} ${uToY(0)}`;
+  const N = 50;
+  for (let i = 0; i <= N; i++) {
+    const u1 = (i / N) * CONFIG.U1_MAX;
+    const u2 = frontierU2(u1);
+    path += ` L ${uToX(u1).toFixed(2)} ${uToY(u2).toFixed(2)}`;
+  }
+  path += ` L ${uToX(CONFIG.U1_MAX)} ${uToY(0)} Z`;
+  svg.appendChild(svgEl('path', { class: 'feasible-region', d: path }));
+
+  // Frontier curve (highlighted on top of region)
+  let frontierPath = '';
+  for (let i = 0; i <= N; i++) {
+    const u1 = (i / N) * CONFIG.U1_MAX;
+    const u2 = frontierU2(u1);
+    frontierPath += (i === 0 ? 'M ' : ' L ') + uToX(u1).toFixed(2) + ' ' + uToY(u2).toFixed(2);
+  }
+  svg.appendChild(svgEl('path', { class: 'pareto-frontier', d: frontierPath }));
+
+  // ===== BACKGROUND CONTOURS (faint iso-Nash-product curves) =====
+  // For levels k = 4, 9, 16 (etc.) draw u2 = D2 + k / (u1 - D1)
+  const bgGroup = svgEl('g', { id: 'bgContours' });
+  [3, 6, 9, 12, 16].forEach(k => {
+    const pts = [];
+    const M = 80;
+    for (let i = 0; i <= M; i++) {
+      const u1 = CONFIG.D1 + 0.05 + (i / M) * (CONFIG.U1_MAX - CONFIG.D1 - 0.05);
+      const u2 = CONFIG.D2 + k / (u1 - CONFIG.D1);
+      if (u2 > CONFIG.U2_MAX + 0.5 || u2 < 0) continue;
+      pts.push([u1, u2]);
+    }
+    if (pts.length < 2) return;
+    const d = pts.map((p, i) => (i === 0 ? 'M ' : ' L ') + uToX(p[0]).toFixed(2) + ' ' + uToY(p[1]).toFixed(2)).join('');
+    bgGroup.appendChild(svgEl('path', { class: 'contour bg', d }));
+  });
+  svg.appendChild(bgGroup);
+
+  // ===== USER CONTOUR (gold dashed, level = current Nash product) =====
+  svg.appendChild(svgEl('path', { id: 'userContour', class: 'contour user', d: '' }));
+
+  // ===== DISAGREEMENT POINT =====
+  const dG = svgEl('g', { id: 'disagreementGroup' });
+  // Lines from disagreement to proposal
+  dG.appendChild(svgEl('line', { id: 'refLine1', class: 'reference-line', x1: 0, y1: 0, x2: 0, y2: 0 }));
+  dG.appendChild(svgEl('line', { id: 'refLine2', class: 'reference-line', x1: 0, y1: 0, x2: 0, y2: 0 }));
+  // Square marker
+  dG.appendChild(svgEl('rect', {
+    class: 'disagreement-marker',
+    x: uToX(CONFIG.D1) - 6, y: uToY(CONFIG.D2) - 6,
+    width: 12, height: 12, rx: 2
+  }));
+  const dLbl = svgEl('text', {
+    x: uToX(CONFIG.D1) - 12, y: uToY(CONFIG.D2) + 5,
+    fill: '#FB7185', 'font-family': 'JetBrains Mono', 'font-size': '11', 'text-anchor': 'end',
+    'font-weight': '600'
+  });
+  dLbl.textContent = `d (${CONFIG.D1}, ${CONFIG.D2})`;
+  dG.appendChild(dLbl);
+  svg.appendChild(dG);
+
+  // ===== OPTIMUM MARKER (hidden initially) =====
+  const optG = svgEl('g', { id: 'optimumGroup', style: 'opacity: 0; pointer-events: none;' });
+  optG.appendChild(svgEl('circle', {
+    id: 'optimumPulse', class: 'optimum-marker-pulse',
+    cx: uToX(State.optimum?.u1 || 0), cy: uToY(State.optimum?.u2 || 0), r: 14
+  }));
+  optG.appendChild(svgEl('circle', {
+    id: 'optimumDot', class: 'optimum-marker',
+    cx: uToX(State.optimum?.u1 || 0), cy: uToY(State.optimum?.u2 || 0), r: 8
+  }));
+  const optLbl = svgEl('text', {
+    id: 'optimumLabel',
+    x: 0, y: 0, fill: '#34D399', 'font-family': 'JetBrains Mono', 'font-size': '11',
+    'font-weight': '700', 'text-anchor': 'start'
+  });
+  optG.appendChild(optLbl);
+  svg.appendChild(optG);
+
+  // ===== USER PROPOSAL HANDLE =====
+  const handleG = svgEl('g', { id: 'proposalHandle', class: 'proposal-handle' });
+  handleG.appendChild(svgEl('circle', { id: 'handlePulse', class: 'handle-pulse', cx: 0, cy: 0, r: 14 }));
+  handleG.appendChild(svgEl('circle', { id: 'handleDot', class: 'handle-circle', cx: 0, cy: 0, r: 9 }));
+  // Coordinates label
+  const handleLbl = svgEl('text', {
+    id: 'handleLabel',
+    x: 0, y: 0, fill: '#fff', 'font-family': 'JetBrains Mono', 'font-size': '11',
+    'font-weight': '600', 'text-anchor': 'start'
+  });
+  handleG.appendChild(handleLbl);
+  svg.appendChild(handleG);
+
+  bindHandleInteraction();
+}
+
+function svgEl(tag, attrs = {}) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+/* ============================================================
+   UPDATE FUNCTIONS — called whenever proposal changes
+   ============================================================ */
+function updateProposalVisuals() {
+  const { u1, u2 } = State.proposal;
+  const x = uToX(u1), y = uToY(u2);
+
+  // Move handle group
+  $('#handlePulse').setAttribute('cx', x);
+  $('#handlePulse').setAttribute('cy', y);
+  $('#handleDot').setAttribute('cx', x);
+  $('#handleDot').setAttribute('cy', y);
+  // Position label
+  const lbl = $('#handleLabel');
+  // Place label slightly to the right and above the handle, but flip if near right edge
+  const labelOffsetX = u1 > 7 ? -14 : 14;
+  const labelAnchor = u1 > 7 ? 'end' : 'start';
+  lbl.setAttribute('x', x + labelOffsetX);
+  lbl.setAttribute('y', y - 14);
+  lbl.setAttribute('text-anchor', labelAnchor);
+  lbl.textContent = `(${u1.toFixed(1)}, ${u2.toFixed(1)})`;
+
+  // Reference lines (disagreement → proposal)
+  $('#refLine1').setAttribute('x1', uToX(CONFIG.D1));
+  $('#refLine1').setAttribute('y1', uToY(CONFIG.D2));
+  $('#refLine1').setAttribute('x2', x);
+  $('#refLine1').setAttribute('y2', uToY(CONFIG.D2));
+  $('#refLine2').setAttribute('x1', x);
+  $('#refLine2').setAttribute('y1', uToY(CONFIG.D2));
+  $('#refLine2').setAttribute('x2', x);
+  $('#refLine2').setAttribute('y2', y);
+
+  // Update gold contour for current Nash product level
+  const k = nashProduct(u1, u2);
+  let contourPath = '';
+  if (k > 0.05) {
+    const M = 100;
+    let started = false;
+    for (let i = 0; i <= M; i++) {
+      const cu1 = CONFIG.D1 + 0.02 + (i / M) * (CONFIG.U1_MAX - CONFIG.D1 - 0.02);
+      const cu2 = CONFIG.D2 + k / (cu1 - CONFIG.D1);
+      if (cu2 > CONFIG.U2_MAX + 0.5 || cu2 < 0) { started = false; continue; }
+      contourPath += (started ? ' L ' : 'M ') + uToX(cu1).toFixed(2) + ' ' + uToY(cu2).toFixed(2);
+      started = true;
+    }
+  }
+  $('#userContour').setAttribute('d', contourPath);
+
+  // Update payoff displays
+  flashUpdate('#payoffYou', u1.toFixed(1));
+  flashUpdate('#payoffOpp', u2.toFixed(1));
+  $('#surplusYou').textContent = '+' + (u1 - CONFIG.D1).toFixed(1);
+  $('#surplusOpp').textContent = '+' + (u2 - CONFIG.D2).toFixed(1);
+
+  // Update Nash product
+  flashUpdate('#nashProductNum', k.toFixed(2));
+  const optProd = State.optimum.prod;
+  const pct = optProd > 0 ? Math.min(100, (k / optProd) * 100) : 0;
+  $('#nashPctOfOpt').textContent = pct.toFixed(0) + '%';
+  $('#qualityFill').style.width = pct + '%';
+}
+
+let lastFlash = {};
+function flashUpdate(sel, newText) {
+  const el = $(sel);
+  if (!el) return;
+  if (el.textContent !== newText) {
+    el.textContent = newText;
+    if (lastFlash[sel] && performance.now() - lastFlash[sel] < 100) return;
+    lastFlash[sel] = performance.now();
+    el.classList.remove('flash');
+    void el.offsetWidth;
+    el.classList.add('flash');
+  }
+}
+
+/* ============================================================
+   DRAG INTERACTION
+   ============================================================ */
+function bindHandleInteraction() {
+  const svg = $('#bargainSVG');
+  const handle = $('#proposalHandle');
+
+  let pointerActive = false;
+
+  function getMouseUValues(e) {
+    const rect = svg.getBoundingClientRect();
+    const sx = (e.clientX - rect.left) / rect.width * VIEW.w;
+    const sy = (e.clientY - rect.top) / rect.height * VIEW.h;
+    let u1 = xToU1(sx);
+    let u2 = yToU2(sy);
+    return project(u1, u2);
+  }
+
+  function onDown(e) {
+    if (State.finished) return;
+    pointerActive = true;
+    State.isDragging = true;
+    e.preventDefault();
+    onMove(e);
+    document.body.style.cursor = 'grabbing';
+  }
+  function onMove(e) {
+    if (!pointerActive) return;
+    const ev = e.touches ? e.touches[0] : e;
+    const [u1, u2] = getMouseUValues(ev);
+    State.proposal = { u1, u2 };
+    updateProposalVisuals();
+  }
+  function onUp() {
+    pointerActive = false;
+    State.isDragging = false;
+    document.body.style.cursor = '';
+  }
+
+  // Allow drag start on the handle OR by clicking anywhere in the canvas
+  handle.addEventListener('mousedown', onDown);
+  svg.addEventListener('mousedown', onDown);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+
+  // Touch support
+  handle.addEventListener('touchstart', onDown, { passive: false });
+  svg.addEventListener('touchstart', onDown, { passive: false });
+  document.addEventListener('touchmove', (e) => {
+    if (pointerActive) { e.preventDefault(); onMove(e); }
+  }, { passive: false });
+  document.addEventListener('touchend', onUp);
+}
+
+/* ============================================================
+   SUBMIT PROPOSAL
+   ============================================================ */
+async function submitProposal() {
+  if (State.finished || State.busy) return;
+  State.busy = true;
+
+  const opp = OPPONENTS[State.oppKey];
+  const decision = opp.decide(State.proposal);
+
+  showToast(`${opp.name} is considering…`);
+  await wait(1100);
+
+  showResult(decision);
+  State.finished = true;
+  State.busy = false;
+}
+
+/* ============================================================
+   SHOW RESULT — animate optimum reveal
+   ============================================================ */
+async function showResult(decision) {
+  const { u1, u2 } = State.proposal;
+  const opt = State.optimum;
+  const yourProd = nashProduct(u1, u2);
+  const optProd = opt.prod;
+  const efficiency = optProd > 0 ? yourProd / optProd : 0;
+
+  // Reveal optimum on the canvas
+  await revealOptimum(opt);
+
+  // Build banner
+  const banner = $('#resultBanner');
+  if (decision.accept) {
+    if (efficiency >= 0.97) {
+      banner.className = '';
+      banner.innerHTML = `
+        <div class="result-banner banner-optimal">
+          <div class="r-icon" style="background: rgba(251,191,36,.2); color: #FBBF24;">★</div>
+          <div>
+            <div class="font-semibold text-base mb-1">Nash bargaining solution found!</div>
+            <div class="text-sm text-white/70">Your proposal is at <span class="text-equilibrium-glow">${(efficiency * 100).toFixed(0)}%</span> of the theoretical optimum. ${decision.reasoning}</div>
+          </div>
+        </div>
+      `;
+      spawnConfetti();
+    } else {
+      banner.innerHTML = `
+        <div class="result-banner banner-accept">
+          <div class="r-icon" style="background: rgba(16,185,129,.2); color: #34D399;">✓</div>
+          <div>
+            <div class="font-semibold text-base mb-1">Accepted by ${OPPONENTS[State.oppKey].name}</div>
+            <div class="text-sm text-white/70">${decision.reasoning}</div>
+          </div>
+        </div>
+      `;
+    }
+  } else {
+    banner.innerHTML = `
+      <div class="result-banner banner-reject">
+        <div class="r-icon" style="background: rgba(244,63,94,.2); color: #FB7185;">✕</div>
+        <div>
+          <div class="font-semibold text-base mb-1">Rejected by ${OPPONENTS[State.oppKey].name}</div>
+          <div class="text-sm text-white/70">${decision.reasoning} Both players fall back to disagreement.</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Result text
+  $('#resultTag').textContent = decision.accept ? 'Bargain reached' : 'Bargain failed';
+  $('#resultHeadline').textContent = decision.accept
+    ? `Final split: (${u1.toFixed(1)}, ${u2.toFixed(1)})`
+    : `Disagreement: (${CONFIG.D1.toFixed(1)}, ${CONFIG.D2.toFixed(1)})`;
+
+  // Three-column comparison
+  $('#rPropU1').textContent = u1.toFixed(2);
+  $('#rPropU2').textContent = u2.toFixed(2);
+  $('#rPropProd').textContent = yourProd.toFixed(2);
+  $('#rOptU1').textContent = opt.u1.toFixed(2);
+  $('#rOptU2').textContent = opt.u2.toFixed(2);
+  $('#rOptProd').textContent = opt.prod.toFixed(2);
+  const dist = Math.sqrt(Math.pow(u1 - opt.u1, 2) + Math.pow(u2 - opt.u2, 2));
+  $('#rDistance').textContent = dist.toFixed(2);
+  $('#rPctOpt').textContent = (efficiency * 100).toFixed(0) + '%';
+
+  $('#resultPanel').classList.remove('hidden');
+  setTimeout(() => $('#resultPanel').scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+}
+
+/* ============================================================
+   ANIMATE OPTIMUM REVEAL
+   - Slide a gold marker from the user's proposal to the optimum
+   - Fade in the green optimum marker + label
+   - Briefly emphasize the optimum's contour
+   ============================================================ */
+async function revealOptimum(opt) {
+  // Position optimum marker
+  const ox = uToX(opt.u1), oy = uToY(opt.u2);
+  $('#optimumPulse').setAttribute('cx', ox);
+  $('#optimumPulse').setAttribute('cy', oy);
+  $('#optimumDot').setAttribute('cx', ox);
+  $('#optimumDot').setAttribute('cy', oy);
+  const lbl = $('#optimumLabel');
+  // Place the label on the side that has more room (typically up-right)
+  lbl.setAttribute('x', ox + 14);
+  lbl.setAttribute('y', oy - 14);
+  lbl.textContent = `Nash optimum (${opt.u1.toFixed(1)}, ${opt.u2.toFixed(1)})`;
+
+  // Fade in
+  const optG = $('#optimumGroup');
+  optG.style.transition = 'opacity .8s ease';
+  optG.style.opacity = '1';
+
+  // Animate user contour to match the optimum's level (so it grows visibly to envelop the optimum)
+  const startK = nashProduct(State.proposal.u1, State.proposal.u2);
+  const endK = opt.prod;
+  await tween(700, (t) => {
+    const k = startK + (endK - startK) * easeInOut(t);
+    setContour('#userContour', k, '#34D399', 2.2, 'none');
+  });
+
+  // Lock the contour as the optimum contour (green, solid)
+  setContour('#userContour', endK, '#34D399', 2.2, 'none');
+  $('#userContour').style.opacity = '0.85';
+}
+
+function setContour(selector, k, stroke, width, dash) {
+  const path = $(selector);
+  let d = '';
+  if (k > 0.05) {
+    const M = 100;
+    let started = false;
+    for (let i = 0; i <= M; i++) {
+      const cu1 = CONFIG.D1 + 0.02 + (i / M) * (CONFIG.U1_MAX - CONFIG.D1 - 0.02);
+      const cu2 = CONFIG.D2 + k / (cu1 - CONFIG.D1);
+      if (cu2 > CONFIG.U2_MAX + 0.5 || cu2 < 0) { started = false; continue; }
+      d += (started ? ' L ' : 'M ') + uToX(cu1).toFixed(2) + ' ' + uToY(cu2).toFixed(2);
+      started = true;
+    }
+  }
+  path.setAttribute('d', d);
+  path.setAttribute('stroke', stroke);
+  path.setAttribute('stroke-width', width);
+  path.setAttribute('stroke-dasharray', dash);
+}
+
+function tween(durationMs, fn) {
+  return new Promise(resolve => {
+    const t0 = performance.now();
+    function tick(now) {
+      const t = Math.min((now - t0) / durationMs, 1);
+      fn(t);
+      if (t < 1) requestAnimationFrame(tick);
+      else resolve();
+    }
+    requestAnimationFrame(tick);
+  });
+}
+function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ============================================================
+   SNAP TO OPTIMUM
+   ============================================================ */
+async function snapToOptimum() {
+  if (State.finished) return;
+  // Animate from current proposal to optimum
+  const start = { ...State.proposal };
+  const end = { u1: State.optimum.u1, u2: State.optimum.u2 };
+  await tween(900, (t) => {
+    const e = easeInOut(t);
+    State.proposal = {
+      u1: start.u1 + (end.u1 - start.u1) * e,
+      u2: start.u2 + (end.u2 - start.u2) * e
+    };
+    updateProposalVisuals();
+  });
+  showToast('Snapped to Nash bargaining solution');
+}
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+function showToast(text, duration = 1800) {
+  const t = $('#toast');
+  t.textContent = text;
+  t.classList.add('visible');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('visible'), duration);
+}
+
+/* ============================================================
+   CONFETTI
+   ============================================================ */
+function spawnConfetti() {
+  const colors = ['#7C5CFF', '#9B7BFF', '#34D399', '#FBBF24', '#FB7185', '#10B981'];
+  const count = 60;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  for (let i = 0; i < count; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = (vw / 2 + (Math.random() - 0.5) * 100) + 'px';
+    piece.style.top = '40%';
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.transform = `rotate(${Math.random() * 360}deg)`;
+    document.body.appendChild(piece);
+
+    const dx = (Math.random() - 0.5) * 800;
+    const dy = -300 - Math.random() * 300;
+    const rot = (Math.random() - 0.5) * 720;
+    const dur = 1400 + Math.random() * 1000;
+
+    const a = piece.animate([
+      { transform: 'translate(0, 0) rotate(0)', opacity: 1 },
+      { transform: `translate(${dx}px, ${dy}px) rotate(${rot}deg)`, opacity: 1, offset: 0.55 },
+      { transform: `translate(${dx * 1.2}px, ${vh}px) rotate(${rot * 1.5}deg)`, opacity: 0 }
+    ], { duration: dur, easing: 'cubic-bezier(.5,.1,.7,1)', fill: 'forwards' });
+    a.onfinish = () => piece.remove();
+  }
+}
+
+/* ============================================================
+   OPPONENT PICKER
+   ============================================================ */
+function bindOppPicker() {
+  $$('#oppPicker .opp-pick').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (State.busy) return;
+      if (State.finished) {
+        State.oppKey = btn.dataset.opp;
+        $$('#oppPicker .opp-pick').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        $('#oppPayoffLabel').textContent = `${OPPONENTS[State.oppKey].name} (${OPPONENTS[State.oppKey].label})`;
+        restart();
+        return;
+      }
+      State.oppKey = btn.dataset.opp;
+      $$('#oppPicker .opp-pick').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      $('#oppPayoffLabel').textContent = `${OPPONENTS[State.oppKey].name} (${OPPONENTS[State.oppKey].label})`;
+    });
+  });
+}
+
+/* ============================================================
+   RESTART
+   ============================================================ */
+function restart() {
+  State.proposal = { u1: 5, u2: 5 };
+  State.busy = false;
+  State.finished = false;
+  $('#resultPanel').classList.add('hidden');
+  // Hide optimum
+  $('#optimumGroup').style.opacity = '0';
+  // Reset user contour to dashed gold
+  setContour('#userContour', nashProduct(5, 5), '#FBBF24', 1.6, '4 3');
+  $('#userContour').style.opacity = '0.85';
+  updateProposalVisuals();
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', () => {
+  // Compute optimum
+  State.optimum = nashOptimum();
+
+  // Update disagreement display
+  $('#dispVal1').textContent = CONFIG.D1;
+  $('#dispVal2').textContent = CONFIG.D2;
+
+  buildSVG();
+  updateProposalVisuals();
+  bindOppPicker();
+
+  $('#submitOfferBtn').addEventListener('click', submitProposal);
+  $('#snapToOptBtn').addEventListener('click', snapToOptimum);
+  $('#restartBtn').addEventListener('click', restart);
+  $('#newRoundFromResult').addEventListener('click', restart);
+  $('#changeOppFromResult').addEventListener('click', () => {
+    restart();
+    document.querySelector('#oppPicker').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+});
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'nash-bargaining',
+      getSession: function () {
+        if (typeof State === 'undefined' || !State.finished) { return null; }
+        var p = State.proposal || { u1: 0, u2: 0 };
+        return { score: null, outcome: 'completed', detail: { u1: p.u1, u2: p.u2, opponent: State.oppKey } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

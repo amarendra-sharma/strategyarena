@@ -1,0 +1,1723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Evolutionary Game Theory — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        display: ['Instrument Serif', 'serif']
+      },
+      colors: {
+        ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+        violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+        coop: { DEFAULT: '#10B981', glow: '#34D399' },
+        defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+        equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+      }
+    } }
+  };
+</script>
+
+<style>
+  html, body { background: #070612; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: #E8E6F5; -webkit-font-smoothing: antialiased; overflow-x: hidden; min-height: 100vh; }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  .arena-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410; }
+  .arena-bg::before {
+    content: ''; position: absolute; width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: .25; top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute; width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #34D399 0%, transparent 70%);
+    filter: blur(120px); opacity: .12; bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .glass { background: rgba(18,16,42,.55); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); border: 1px solid rgba(255,255,255,.06); }
+  .glass-strong { background: rgba(11,10,26,.75); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); border: 1px solid rgba(255,255,255,.08); }
+  .glass-subtle { background: rgba(255,255,255,.025); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.05); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; font-weight: 500;
+    padding: 11px 22px; border-radius: 10px; font-size: 14px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124,92,255,.6); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 20px; border-radius: 10px; font-size: 13px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-violet { background: rgba(124,92,255,.12); border-color: rgba(124,92,255,.3); color: #9B7BFF; }
+  .tag-amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FBBF24; }
+  .tag-coop { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #34D399; }
+  .tag-defect { background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.3); color: #FB7185; }
+
+  /* ============================================================
+     GAME TOGGLE
+     ============================================================ */
+  .game-toggle {
+    display: inline-flex;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+  }
+  .toggle-btn {
+    padding: 9px 18px;
+    border-radius: 8px;
+    font-size: 13px; font-weight: 500;
+    color: rgba(255,255,255,.55);
+    transition: all .2s ease;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .toggle-btn:hover { color: #fff; background: rgba(255,255,255,.04); }
+  .toggle-btn.active {
+    background: linear-gradient(135deg, rgba(124,92,255,.15), rgba(124,92,255,.05));
+    color: #fff;
+    box-shadow: 0 0 0 1px rgba(124,92,255,.4);
+  }
+
+  /* ============================================================
+     PHASE DIAGRAM
+     ============================================================ */
+  .phase-svg {
+    width: 100%; height: auto;
+    display: block;
+    cursor: crosshair;
+  }
+  .phase-axis-line { stroke: rgba(255,255,255,.15); stroke-width: 1; }
+  .phase-tick { stroke: rgba(255,255,255,.3); stroke-width: 1; }
+  .phase-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    fill: rgba(255,255,255,.45);
+  }
+  .phase-flow-arrow {
+    fill: none;
+    stroke: rgba(155,123,255,.5);
+    stroke-width: 1.2;
+    stroke-linecap: round;
+  }
+  .phase-flow-arrow-head {
+    fill: rgba(155,123,255,.6);
+    stroke: none;
+  }
+  .phase-ess-marker {
+    fill: rgba(52,211,153,.25);
+    stroke: #34D399;
+    stroke-width: 2;
+    filter: drop-shadow(0 0 8px #34D399);
+  }
+  .phase-ess-line {
+    stroke: rgba(52,211,153,.4);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 4;
+    fill: none;
+  }
+  .phase-ess-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    fill: #34D399; font-weight: 600;
+    text-anchor: middle;
+  }
+  .phase-pop-dot {
+    fill: #fff;
+    stroke: #7C5CFF;
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 12px rgba(124,92,255,.7));
+    cursor: grab;
+  }
+  .phase-pop-dot:active { cursor: grabbing; }
+  .phase-pop-glow {
+    fill: rgba(155,123,255,.3);
+    animation: phaseGlow 2s ease-in-out infinite;
+  }
+  @keyframes phaseGlow {
+    0%, 100% { r: 14; opacity: .55; }
+    50% { r: 22; opacity: 0; }
+  }
+  .phase-trail {
+    fill: none;
+    stroke: rgba(155,123,255,.5);
+    stroke-width: 2;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 4px rgba(155,123,255,.4));
+  }
+  .phase-trail-fade {
+    stroke: url(#trailGradient);
+  }
+
+  /* Triangle (for RPS) */
+  .ternary-edge {
+    stroke: rgba(255,255,255,.2);
+    stroke-width: 1.5;
+    fill: rgba(124,92,255,.04);
+  }
+  .ternary-corner-circle { stroke: #fff; stroke-width: 1.5; }
+  .ternary-corner-circle.r { fill: #FB7185; }
+  .ternary-corner-circle.p { fill: #9B7BFF; }
+  .ternary-corner-circle.s { fill: #FBBF24; }
+  .ternary-corner-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 700;
+    fill: #fff;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+  }
+
+  /* ============================================================
+     POPULATION TIME SERIES CHART
+     ============================================================ */
+  .pop-chart-svg {
+    width: 100%; height: 220px;
+    display: block;
+  }
+  .pop-band {
+    transition: opacity .25s ease;
+  }
+  .pop-band.h { fill: rgba(244,63,94,.5); }      /* Hawk */
+  .pop-band.d { fill: rgba(52,211,153,.5); }     /* Dove */
+  .pop-band.r { fill: rgba(244,63,94,.5); }      /* Rock */
+  .pop-band.p { fill: rgba(124,92,255,.5); }     /* Paper */
+  .pop-band.s { fill: rgba(245,158,11,.5); }     /* Scissors */
+
+  .pop-line {
+    fill: none;
+    stroke-width: 2;
+  }
+  .pop-line.h { stroke: #FB7185; }
+  .pop-line.d { stroke: #34D399; }
+  .pop-line.r { stroke: #FB7185; }
+  .pop-line.p { stroke: #9B7BFF; }
+  .pop-line.s { stroke: #FBBF24; }
+
+  .pop-eq-line {
+    stroke: rgba(52,211,153,.45);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 4;
+    fill: none;
+  }
+
+  /* ============================================================
+     STRATEGY SLIDERS (initial proportions)
+     ============================================================ */
+  .strat-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 8px;
+    border-radius: 999px; outline: none;
+    background: rgba(255,255,255,.06);
+  }
+  .strat-slider.h, .strat-slider.r { background: linear-gradient(90deg, rgba(244,63,94,.15), rgba(244,63,94,.5)); }
+  .strat-slider.d { background: linear-gradient(90deg, rgba(52,211,153,.15), rgba(52,211,153,.5)); }
+  .strat-slider.p { background: linear-gradient(90deg, rgba(124,92,255,.15), rgba(124,92,255,.5)); }
+  .strat-slider.s { background: linear-gradient(90deg, rgba(245,158,11,.15), rgba(245,158,11,.5)); }
+  .strat-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 22px; height: 22px;
+    background: #fff;
+    border-radius: 50%;
+    border: 2px solid;
+    box-shadow: 0 0 0 3px rgba(255,255,255,.08), 0 4px 10px rgba(0,0,0,.3);
+    cursor: grab;
+  }
+  .strat-slider.h::-webkit-slider-thumb, .strat-slider.r::-webkit-slider-thumb { border-color: #FB7185; }
+  .strat-slider.d::-webkit-slider-thumb { border-color: #34D399; }
+  .strat-slider.p::-webkit-slider-thumb { border-color: #9B7BFF; }
+  .strat-slider.s::-webkit-slider-thumb { border-color: #FBBF24; }
+
+  .strategy-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; color: #fff;
+    flex-shrink: 0;
+  }
+  .strategy-icon.h { background: linear-gradient(135deg, #FB7185, #BE185D); }
+  .strategy-icon.d { background: linear-gradient(135deg, #34D399, #047857); }
+  .strategy-icon.r { background: linear-gradient(135deg, #FB7185, #BE185D); }
+  .strategy-icon.p { background: linear-gradient(135deg, #9B7BFF, #5B3DCC); }
+  .strategy-icon.s { background: linear-gradient(135deg, #FBBF24, #B45309); }
+
+  /* Param sliders for V, C */
+  .param-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 6px;
+    border-radius: 999px; outline: none;
+    background: linear-gradient(90deg, rgba(124,92,255,.15), rgba(124,92,255,.5));
+    margin-top: 8px;
+  }
+  .param-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    border: 2px solid #7C5CFF;
+    box-shadow: 0 0 0 3px rgba(124,92,255,.2);
+    cursor: grab;
+  }
+
+  .prob-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-size: 18px;
+  }
+
+  /* Speed control */
+  .speed-control {
+    display: flex; gap: 4px;
+    padding: 4px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 10px;
+  }
+  .speed-btn {
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    color: rgba(255,255,255,.6);
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .speed-btn:hover { color: #fff; background: rgba(255,255,255,.04); }
+  .speed-btn.active { background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; box-shadow: 0 2px 8px rgba(124,92,255,.3); }
+
+  /* ============================================================
+     STATS CARDS
+     ============================================================ */
+  .stat-card {
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+  .stat-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  /* ============================================================
+     STABILITY BADGE
+     ============================================================ */
+  .stability-badge {
+    padding: 14px 18px;
+    border-radius: 14px;
+    border: 1.5px solid;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .stability-stable { background: rgba(16,185,129,.06); border-color: rgba(52,211,153,.4); }
+  .stability-cyclic { background: rgba(124,92,255,.06); border-color: rgba(155,123,255,.4); }
+  .stability-unstable { background: rgba(244,63,94,.06); border-color: rgba(251,113,133,.4); }
+  .stability-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .stability-stable .stability-icon { background: rgba(52,211,153,.2); color: #34D399; }
+  .stability-cyclic .stability-icon { background: rgba(155,123,255,.2); color: #9B7BFF; }
+  .stability-unstable .stability-icon { background: rgba(251,113,133,.2); color: #FB7185; }
+
+  /* ============================================================
+     PRESETS
+     ============================================================ */
+  .preset-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    font-size: 11px;
+    color: rgba(255,255,255,.7);
+    cursor: pointer;
+    transition: all .15s ease;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .preset-btn:hover {
+    background: rgba(124,92,255,.1);
+    border-color: rgba(124,92,255,.4);
+    color: #fff;
+  }
+
+  /* ============================================================
+     EQUATION DISPLAY
+     ============================================================ */
+  .eq-box {
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(0,0,0,.25);
+    border: 1px solid rgba(255,255,255,.06);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: rgba(232,230,245,.85);
+  }
+  .eq-highlight { color: #FBBF24; }
+  .eq-comment { color: rgba(155,123,255,.6); }
+
+  /* ============================================================
+     LIVE INDICATOR
+     ============================================================ */
+  .live-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #34D399;
+    box-shadow: 0 0 10px #34D399;
+    animation: livePulse 1.5s ease-in-out infinite;
+  }
+  @keyframes livePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .5; transform: scale(.85); }
+  }
+  .live-dot.paused {
+    background: rgba(255,255,255,.3);
+    box-shadow: none;
+    animation: none;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .toast {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-30px);
+    padding: 10px 18px; border-radius: 10px;
+    background: rgba(11,10,26,.95);
+    border: 1px solid rgba(124,92,255,.4);
+    font-size: 13px; color: #fff; z-index: 100;
+    opacity: 0; transition: opacity .3s ease, transform .3s ease;
+    pointer-events: none;
+    box-shadow: 0 10px 30px -8px rgba(124,92,255,.3);
+  }
+  .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+
+<!-- Top bar -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
+      <div class="font-medium tracking-tight">Evolutionary Game Theory · Population dynamics</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="game-toggle">
+      <button class="toggle-btn active" data-game="hawk-dove">
+        <span>🦅</span><span>Hawk-Dove</span>
+      </button>
+      <button class="toggle-btn" data-game="rps">
+        <span>🪨</span><span>RPS</span>
+      </button>
+    </div>
+    <button class="btn-ghost text-sm" id="restartBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Reset
+    </button>
+  </div>
+</header>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<main class="px-6 lg:px-10 py-6 max-w-7xl mx-auto">
+
+  <!-- Hero -->
+  <div class="mb-5 max-w-3xl">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-2">Module 14 · Replicator dynamics</div>
+    <h1 class="font-display text-3xl lg:text-4xl tracking-tight mb-2">
+      Watch a population <span class="text-gradient">evolve</span>.
+    </h1>
+    <p class="text-sm text-white/60 leading-relaxed">
+      Set the initial proportions of each strategy, choose payoffs, and let the replicator equation play out — strategies whose fitness exceeds the population average grow; below-average ones shrink.
+    </p>
+  </div>
+
+  <!-- =========================================================
+       LIVE STATS ROW
+       ========================================================= -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Sim time</div>
+      <div class="stat-num" id="statSimTime">0.0</div>
+      <div class="text-[11px] text-white/45 mt-1">in evolutionary units</div>
+    </div>
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Population state</div>
+      <div class="font-mono text-sm font-semibold mt-1.5" id="statPopState">—</div>
+      <div class="text-[11px] text-white/45 mt-1">current proportions</div>
+    </div>
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Avg fitness</div>
+      <div class="stat-num" id="statAvgFitness" style="color: #FBBF24;">—</div>
+      <div class="text-[11px] text-white/45 mt-1" id="statAvgFitnessSub">f̄(x) = Σ xᵢfᵢ(x)</div>
+    </div>
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Distance to ESS</div>
+      <div class="stat-num" id="statDistESS" style="color: #34D399;">—</div>
+      <div class="text-[11px] text-white/45 mt-1" id="statDistESSSub">L₂ norm</div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       MAIN GRID
+       ========================================================= -->
+  <div class="grid lg:grid-cols-[1.4fr_1fr] gap-5 mb-5">
+
+    <!-- LEFT — phase diagram + time series -->
+    <div class="space-y-5">
+
+      <!-- Phase diagram -->
+      <div class="glass-strong rounded-3xl p-5 lg:p-6">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Phase diagram</div>
+            <div class="text-sm text-white/55" id="phaseHint">Drag the dot to set initial conditions. Arrows show flow direction.</div>
+          </div>
+          <div class="flex items-center gap-2 text-[11px]">
+            <span class="live-dot paused" id="liveDot"></span>
+            <span class="text-white/55" id="liveLabel">Idle</span>
+          </div>
+        </div>
+
+        <div class="relative">
+          <svg class="phase-svg" id="phaseSVG" viewBox="0 0 600 360" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+      </div>
+
+      <!-- Population time series -->
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Population shares over time</div>
+            <div class="text-[11px] text-white/55">Stacked area · dashed lines = ESS proportions</div>
+          </div>
+          <div class="flex items-center gap-3 text-[11px]" id="popLegend"></div>
+        </div>
+        <svg class="pop-chart-svg" id="popChart" viewBox="0 0 700 220" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+
+    <!-- RIGHT — controls -->
+    <div class="space-y-5">
+
+      <!-- Initial proportions -->
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-0.5">Initial proportions</div>
+            <div class="text-[11px] text-white/55">Set the starting population</div>
+          </div>
+          <div class="flex gap-1.5 flex-wrap" id="presetRow"></div>
+        </div>
+
+        <div class="space-y-3" id="initSliders"></div>
+      </div>
+
+      <!-- Payoff parameters -->
+      <div class="glass rounded-2xl p-5">
+        <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Payoff parameters</div>
+        <div id="paramSliders"></div>
+        <div class="mt-3 pt-3 border-t border-white/5">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2">Current payoff matrix</div>
+          <div id="payoffMatrix" class="text-[11px]"></div>
+        </div>
+      </div>
+
+      <!-- Play controls -->
+      <div class="glass rounded-2xl p-5">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Simulation</div>
+        <div class="flex gap-2 mb-3">
+          <button class="btn-primary flex-1" id="playPauseBtn">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" id="playIcon"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+            <span id="playPauseLabel">Run</span>
+          </button>
+          <button class="btn-ghost" id="stepBtn">Step</button>
+        </div>
+        <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2">Speed</div>
+        <div class="speed-control" id="speedControl">
+          <div class="speed-btn" data-speed="0.5">0.5×</div>
+          <div class="speed-btn active" data-speed="1">1×</div>
+          <div class="speed-btn" data-speed="2">2×</div>
+          <div class="speed-btn" data-speed="4">4×</div>
+        </div>
+      </div>
+
+      <!-- Stability badge -->
+      <div id="stabilityWrap"></div>
+
+    </div>
+  </div>
+
+  <!-- =========================================================
+       EDUCATIONAL PANEL
+       ========================================================= -->
+  <div class="grid lg:grid-cols-2 gap-5">
+
+    <div class="glass rounded-2xl p-5">
+      <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Replicator dynamics</div>
+      <div class="text-[12px] text-white/70 leading-relaxed mb-3">
+        The replicator equation governs how strategy frequencies evolve. The growth rate of strategy <span class="font-mono text-violet-glow">i</span> is its fitness <span class="font-mono text-violet-glow">fᵢ(x)</span> minus the average fitness <span class="font-mono text-violet-glow">f̄(x)</span> of the population.
+      </div>
+      <div class="eq-box">
+        <span class="eq-comment">// Growth rate proportional to fitness advantage</span><br/>
+        dxᵢ/dt = xᵢ × (<span class="eq-highlight">fᵢ(x)</span> − <span class="eq-highlight">f̄(x)</span>)<br/>
+        <br/>
+        <span class="eq-comment">// where</span><br/>
+        fᵢ(x) = Σⱼ Aᵢⱼ · xⱼ &nbsp;&nbsp;<span class="eq-comment">// fitness of strategy i</span><br/>
+        f̄(x)  = Σᵢ xᵢ · fᵢ(x) &nbsp;<span class="eq-comment">// population avg fitness</span>
+      </div>
+      <div class="text-[12px] text-white/65 leading-relaxed mt-3" id="dynamicsExplanation">
+        Above-average strategies grow at the expense of below-average ones — the system flows toward states where all surviving strategies have equal fitness.
+      </div>
+    </div>
+
+    <div class="glass rounded-2xl p-5">
+      <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Evolutionary stable strategy</div>
+      <div class="text-[12px] text-white/70 leading-relaxed mb-3" id="essExplanation">
+        An <span class="text-coop-glow font-medium">ESS</span> is a strategy that, once adopted by a population, cannot be invaded by any rare mutant. It corresponds to a <span class="text-equilibrium-glow">stable rest point</span> of the replicator dynamics.
+      </div>
+      <div class="space-y-3" id="essDetails"></div>
+    </div>
+
+  </div>
+
+</main>
+
+<script>
+/* ============================================================
+   GAMES
+   ============================================================ */
+const GAMES = {
+  'hawk-dove': {
+    name: 'Hawk-Dove',
+    icon: '🦅',
+    strategies: [
+      { key: 'H', name: 'Hawk',  icon: '🦅', color: '#FB7185', desc: 'Always escalates fights' },
+      { key: 'D', name: 'Dove',  icon: '🕊️', color: '#34D399', desc: 'Avoids escalation' }
+    ],
+    // Payoff matrix params: V (resource value), C (fight cost)
+    // A[Hawk][Hawk] = (V-C)/2, A[Hawk][Dove] = V, A[Dove][Hawk] = 0, A[Dove][Dove] = V/2
+    params: { V: { value: 4, min: 1, max: 10, step: 0.5, label: 'V (resource value)' },
+              C: { value: 8, min: 1, max: 12, step: 0.5, label: 'C (fight cost)' } },
+    payoffMatrix: (params) => {
+      const { V, C } = params;
+      return {
+        H: { H: (V - C) / 2, D: V },
+        D: { H: 0,           D: V / 2 }
+      };
+    },
+    presets: [
+      { name: 'All Hawks',  init: { H: 0.95, D: 0.05 } },
+      { name: 'All Doves',  init: { H: 0.05, D: 0.95 } },
+      { name: '50/50',      init: { H: 0.5, D: 0.5 } }
+    ],
+    // ESS computation
+    computeEquilibria: (params) => {
+      const { V, C } = params;
+      const eqs = [];
+      // x_H = V/C is interior ESS if V < C (stable mixed)
+      if (V < C) {
+        eqs.push({ name: 'Mixed ESS', proportions: { H: V/C, D: 1 - V/C }, kind: 'stable',
+          interpretation: `x*_H = V/C = ${(V/C).toFixed(3)}. With V < C, fights are too costly — pure Hawk gets invaded by Doves, pure Dove gets invaded by Hawks.` });
+      } else {
+        eqs.push({ name: 'Pure Hawks', proportions: { H: 1, D: 0 }, kind: 'stable',
+          interpretation: `When V ≥ C, fighting always pays off — Hawks dominate and Doves go extinct.` });
+      }
+      // Pure equilibria are unstable in V<C regime
+      if (V < C) {
+        eqs.push({ name: 'Pure Hawks', proportions: { H: 1, D: 0 }, kind: 'unstable',
+          interpretation: 'Pure Hawk population is invasible by Doves (Doves do better against Hawks than Hawks do).' });
+        eqs.push({ name: 'Pure Doves', proportions: { H: 0, D: 1 }, kind: 'unstable',
+          interpretation: 'Pure Dove population is invasible by Hawks (Hawks always win against Doves).' });
+      }
+      return eqs;
+    }
+  },
+  'rps': {
+    name: 'Rock-Paper-Scissors',
+    icon: '🪨',
+    strategies: [
+      { key: 'R', name: 'Rock',     icon: '🪨', color: '#FB7185', desc: 'Beats Scissors' },
+      { key: 'P', name: 'Paper',    icon: '📄', color: '#9B7BFF', desc: 'Beats Rock' },
+      { key: 'S', name: 'Scissors', icon: '✂️', color: '#FBBF24', desc: 'Beats Paper' }
+    ],
+    // Asymmetry parameter epsilon ∈ [-0.5, 0.5]:
+    //   ε > 0 → wins reward more than losses cost (W+L > 0) → inward spiral, ESS
+    //   ε = 0 → zero-sum (W+L = 0) → cyclic orbits, no ESS
+    //   ε < 0 → losses cost more than wins reward (W+L < 0) → outward spiral, unstable
+    // Implementation: W = 1, L = -(1 - ε), so W + L = ε.
+    params: { epsilon: { value: 0, min: -0.5, max: 0.5, step: 0.05, label: 'ε (asymmetry)' } },
+    payoffMatrix: (params) => {
+      const { epsilon } = params;
+      // R beats S, P beats R, S beats P
+      const W = 1, L = -(1 - epsilon);
+      return {
+        R: { R: 0, P: L, S: W },
+        P: { R: W, P: 0, S: L },
+        S: { R: L, P: W, S: 0 }
+      };
+    },
+    presets: [
+      { name: '⅓ ⅓ ⅓ (eq)', init: { R: 1/3, P: 1/3, S: 1/3 } },
+      { name: 'Rock heavy',  init: { R: 0.7, P: 0.2, S: 0.1 } },
+      { name: 'Paper heavy', init: { R: 0.2, P: 0.7, S: 0.1 } },
+      { name: 'Random',      init: 'random' }
+    ],
+    computeEquilibria: (params) => {
+      const { epsilon } = params;
+      const eqs = [{ name: 'Interior fixed point', proportions: { R: 1/3, P: 1/3, S: 1/3 }, kind:
+        epsilon > 1e-6 ? 'stable' : (epsilon < -1e-6 ? 'unstable' : 'cyclic') }];
+      if (epsilon > 1e-6) {
+        eqs[0].interpretation = `With ε > 0 (wins reward more than losses cost), trajectories spiral inward to (⅓, ⅓, ⅓) — the centroid is an ESS.`;
+      } else if (epsilon < -1e-6) {
+        eqs[0].interpretation = `With ε < 0 (losses cost more than wins reward), trajectories spiral outward — population orbits the simplex boundary chasing dominant strategies that get overthrown.`;
+      } else {
+        eqs[0].interpretation = `Zero-sum (ε = 0) → trajectories form closed orbits around (⅓, ⅓, ⅓). The Nash equilibrium is not an ESS — population perpetually cycles.`;
+      }
+      return eqs;
+    }
+  }
+};
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const State = {
+  gameKey: 'hawk-dove',
+  // Current strategy proportions (live during simulation)
+  population: { H: 0.5, D: 0.5 },
+  // Initial conditions (used for restart)
+  initial: { H: 0.5, D: 0.5 },
+  // Simulation params
+  params: { V: 4, C: 8 },
+  simTime: 0,
+  speed: 1,
+  running: false,
+  // Trajectory history for charting
+  history: [],   // [{t, props: {...}}]
+  // Animation frame handle
+  rafId: null,
+  // Last frame time (for time delta)
+  lastFrameTime: null,
+  // Drag state
+  isDragging: false
+};
+
+const HISTORY_MAX_POINTS = 600;
+
+/* ============================================================
+   REPLICATOR DYNAMICS — RK4 INTEGRATION
+   ============================================================ */
+function fitnessVector(pop, payoff, strategies) {
+  // f_i = Σ_j A_ij * x_j
+  const f = {};
+  strategies.forEach(s => {
+    f[s.key] = strategies.reduce((sum, sj) => sum + payoff[s.key][sj.key] * pop[sj.key], 0);
+  });
+  return f;
+}
+
+function avgFitness(pop, fitness, strategies) {
+  return strategies.reduce((sum, s) => sum + pop[s.key] * fitness[s.key], 0);
+}
+
+function replicatorDeriv(pop, payoff, strategies) {
+  const f = fitnessVector(pop, payoff, strategies);
+  const fbar = avgFitness(pop, f, strategies);
+  const dx = {};
+  strategies.forEach(s => {
+    dx[s.key] = pop[s.key] * (f[s.key] - fbar);
+  });
+  return dx;
+}
+
+function rk4Step(pop, dt, payoff, strategies) {
+  // RK4 integration
+  function copy(o) { return Object.assign({}, o); }
+  function scale(o, c) { const r = {}; for (const k in o) r[k] = o[k] * c; return r; }
+  function add(...os) {
+    const r = {};
+    for (const k in os[0]) {
+      r[k] = os.reduce((s, o) => s + (o[k] || 0), 0);
+    }
+    return r;
+  }
+
+  const k1 = replicatorDeriv(pop, payoff, strategies);
+  const k2 = replicatorDeriv(add(pop, scale(k1, dt / 2)), payoff, strategies);
+  const k3 = replicatorDeriv(add(pop, scale(k2, dt / 2)), payoff, strategies);
+  const k4 = replicatorDeriv(add(pop, scale(k3, dt)), payoff, strategies);
+
+  // newPop = pop + dt/6 * (k1 + 2k2 + 2k3 + k4)
+  const newPop = {};
+  for (const k in pop) {
+    newPop[k] = pop[k] + (dt / 6) * (k1[k] + 2 * k2[k] + 2 * k3[k] + k4[k]);
+  }
+
+  // Numerical stability: clamp negative values to 0 and re-normalize
+  let sum = 0;
+  for (const k in newPop) {
+    if (newPop[k] < 0) newPop[k] = 0;
+    sum += newPop[k];
+  }
+  if (sum > 0) {
+    for (const k in newPop) newPop[k] /= sum;
+  }
+  return newPop;
+}
+
+/* ============================================================
+   ANIMATION LOOP
+   ============================================================ */
+function animationFrame(now) {
+  if (!State.running) return;
+  if (!State.lastFrameTime) State.lastFrameTime = now;
+  const realDt = (now - State.lastFrameTime) / 1000;   // seconds since last frame
+  State.lastFrameTime = now;
+
+  const game = GAMES[State.gameKey];
+  const payoff = game.payoffMatrix(State.params);
+  const strategies = game.strategies;
+
+  // Sim time advances at speed × real time, but use small substeps
+  const targetSimDt = realDt * State.speed;
+  const subSteps = Math.max(1, Math.ceil(targetSimDt / 0.02));   // step <= 0.02
+  const subDt = targetSimDt / subSteps;
+  for (let i = 0; i < subSteps; i++) {
+    State.population = rk4Step(State.population, subDt, payoff, strategies);
+    State.simTime += subDt;
+    // Record history
+    State.history.push({ t: State.simTime, props: Object.assign({}, State.population) });
+    if (State.history.length > HISTORY_MAX_POINTS) State.history.shift();
+  }
+
+  updateLiveStats();
+  renderPhase();
+  renderPopChart();
+
+  State.rafId = requestAnimationFrame(animationFrame);
+}
+
+function startSim() {
+  if (State.running) return;
+  State.running = true;
+  State.lastFrameTime = null;
+  $('#liveDot').classList.remove('paused');
+  $('#liveLabel').textContent = 'Evolving';
+  $('#playPauseLabel').textContent = 'Pause';
+  $('#playIcon').innerHTML = '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>';
+  State.rafId = requestAnimationFrame(animationFrame);
+}
+
+function pauseSim() {
+  State.running = false;
+  if (State.rafId) cancelAnimationFrame(State.rafId);
+  State.rafId = null;
+  $('#liveDot').classList.add('paused');
+  $('#liveLabel').textContent = 'Paused';
+  $('#playPauseLabel').textContent = 'Run';
+  $('#playIcon').innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>';
+}
+
+function stepSim() {
+  pauseSim();
+  const game = GAMES[State.gameKey];
+  const payoff = game.payoffMatrix(State.params);
+  // Single 0.5-time-unit step
+  for (let i = 0; i < 25; i++) {
+    State.population = rk4Step(State.population, 0.02, payoff, game.strategies);
+    State.simTime += 0.02;
+    State.history.push({ t: State.simTime, props: Object.assign({}, State.population) });
+    if (State.history.length > HISTORY_MAX_POINTS) State.history.shift();
+  }
+  updateLiveStats();
+  renderPhase();
+  renderPopChart();
+}
+
+function resetSim() {
+  pauseSim();
+  State.population = Object.assign({}, State.initial);
+  State.simTime = 0;
+  State.history = [{ t: 0, props: Object.assign({}, State.population) }];
+  updateLiveStats();
+  renderPhase();
+  renderPopChart();
+}
+
+/* ============================================================
+   PHASE DIAGRAM
+   ============================================================ */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+const PHASE = { W: 600, H: 360 };
+
+function renderPhase() {
+  if (State.gameKey === 'hawk-dove') renderPhaseHD();
+  else renderPhaseRPS();
+}
+
+/* ----------------- HAWK-DOVE PHASE LINE ----------------- */
+function renderPhaseHD() {
+  const svg = $('#phaseSVG');
+  svg.innerHTML = '';
+  const W = PHASE.W, H = PHASE.H;
+  const padL = 60, padR = 60, padT = 60, padB = 60;
+  const lineY = H / 2;
+  const x0 = padL, x1 = W - padR;
+  const trackW = x1 - x0;
+
+  // Defs for trail gradient
+  const defs = svgEl('defs', {});
+  const grad = svgEl('linearGradient', { id: 'trailGradient', x1: '0%', x2: '100%', y1: '0%', y2: '0%' });
+  grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': 'rgba(155,123,255,0)' }));
+  grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': 'rgba(155,123,255,0.7)' }));
+  defs.appendChild(grad);
+  svg.appendChild(defs);
+
+  // Title labels for endpoints
+  const lblL = svgEl('text', { class: 'phase-label', x: x0, y: lineY - 36, 'text-anchor': 'middle', 'font-size': 13, fill: '#34D399', 'font-weight': 700 });
+  lblL.textContent = 'All Doves';
+  svg.appendChild(lblL);
+  const lblR = svgEl('text', { class: 'phase-label', x: x1, y: lineY - 36, 'text-anchor': 'middle', 'font-size': 13, fill: '#FB7185', 'font-weight': 700 });
+  lblR.textContent = 'All Hawks';
+  svg.appendChild(lblR);
+
+  // Sub-labels
+  const slL = svgEl('text', { class: 'phase-label', x: x0, y: lineY - 18, 'text-anchor': 'middle' });
+  slL.textContent = 'x_H = 0';
+  svg.appendChild(slL);
+  const slR = svgEl('text', { class: 'phase-label', x: x1, y: lineY - 18, 'text-anchor': 'middle' });
+  slR.textContent = 'x_H = 1';
+  svg.appendChild(slR);
+
+  // Phase line (the strategy interval [0,1])
+  svg.appendChild(svgEl('line', {
+    x1: x0, y1: lineY, x2: x1, y2: lineY,
+    stroke: 'rgba(255,255,255,.18)', 'stroke-width': 3, 'stroke-linecap': 'round'
+  }));
+
+  // Tick marks at 0, 0.25, 0.5, 0.75, 1
+  [0, 0.25, 0.5, 0.75, 1].forEach(p => {
+    const tx = x0 + p * trackW;
+    svg.appendChild(svgEl('line', { x1: tx, y1: lineY - 5, x2: tx, y2: lineY + 5, stroke: 'rgba(255,255,255,.4)', 'stroke-width': 1 }));
+    const lbl = svgEl('text', { class: 'phase-label', x: tx, y: lineY + 22, 'text-anchor': 'middle' });
+    lbl.textContent = p.toFixed(2);
+    svg.appendChild(lbl);
+  });
+
+  // Compute & draw flow arrows along the line
+  const game = GAMES['hawk-dove'];
+  const payoff = game.payoffMatrix(State.params);
+  const arrowPositions = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95];
+  arrowPositions.forEach(p => {
+    const pop = { H: p, D: 1 - p };
+    const dx = replicatorDeriv(pop, payoff, game.strategies);
+    const direction = Math.sign(dx.H);
+    if (Math.abs(dx.H) < 1e-4) return;
+    const ax = x0 + p * trackW;
+    const arrowLen = 14;
+    const arrowOffsetY = -38;
+    const startX = ax - direction * arrowLen / 2;
+    const endX = ax + direction * arrowLen / 2;
+    // Arrow line
+    svg.appendChild(svgEl('line', {
+      class: 'phase-flow-arrow',
+      x1: startX, y1: lineY + arrowOffsetY,
+      x2: endX, y2: lineY + arrowOffsetY
+    }));
+    // Arrowhead
+    const ahPath = direction > 0
+      ? `M ${endX} ${lineY + arrowOffsetY} L ${endX - 4} ${lineY + arrowOffsetY - 3} L ${endX - 4} ${lineY + arrowOffsetY + 3} Z`
+      : `M ${endX} ${lineY + arrowOffsetY} L ${endX + 4} ${lineY + arrowOffsetY - 3} L ${endX + 4} ${lineY + arrowOffsetY + 3} Z`;
+    svg.appendChild(svgEl('path', { class: 'phase-flow-arrow-head', d: ahPath }));
+  });
+
+  // ESS marker
+  const eqs = game.computeEquilibria(State.params);
+  const stableEq = eqs.find(e => e.kind === 'stable');
+  if (stableEq) {
+    const xEss = x0 + stableEq.proportions.H * trackW;
+    // Vertical dashed line through ESS
+    svg.appendChild(svgEl('line', {
+      class: 'phase-ess-line',
+      x1: xEss, y1: lineY - 60, x2: xEss, y2: lineY + 80
+    }));
+    // Glow circle
+    svg.appendChild(svgEl('circle', { class: 'phase-ess-marker', cx: xEss, cy: lineY, r: 10 }));
+    // Label
+    const lbl = svgEl('text', { class: 'phase-ess-label', x: xEss, y: lineY + 75 });
+    lbl.textContent = `ESS · x*_H = ${stableEq.proportions.H.toFixed(3)}`;
+    svg.appendChild(lbl);
+  }
+
+  // Trail (history of population states)
+  if (State.history.length > 1) {
+    let d = '';
+    State.history.forEach((h, i) => {
+      const x = x0 + h.props.H * trackW;
+      const y = lineY;
+      d += (i === 0 ? 'M ' : ' L ') + x.toFixed(1) + ' ' + y.toFixed(1);
+    });
+    // Skip drawing trail on a 1D line (not useful) — show as a fading fade-back instead
+  }
+
+  // Population dot
+  const popX = x0 + State.population.H * trackW;
+  svg.appendChild(svgEl('circle', { class: 'phase-pop-glow', cx: popX, cy: lineY, r: 14 }));
+  const dot = svgEl('circle', { class: 'phase-pop-dot', cx: popX, cy: lineY, r: 9 });
+  dot.dataset.role = 'pop-dot';
+  svg.appendChild(dot);
+  // Coordinate label below
+  const coord = svgEl('text', { class: 'phase-label', x: popX, y: lineY + 50, 'text-anchor': 'middle', fill: '#9B7BFF', 'font-weight': 600, 'font-size': 11 });
+  coord.textContent = `(${State.population.H.toFixed(2)} H, ${(1 - State.population.H).toFixed(2)} D)`;
+  svg.appendChild(coord);
+
+  // Bind drag interaction to the SVG (allow click anywhere on track to set position)
+  bindPhaseHDDrag(svg, x0, x1, lineY);
+}
+
+function bindPhaseHDDrag(svg, x0, x1, lineY) {
+  const trackW = x1 - x0;
+  function eventToProportion(e) {
+    const rect = svg.getBoundingClientRect();
+    const sx = (e.clientX - rect.left) / rect.width * PHASE.W;
+    const p = (sx - x0) / trackW;
+    return Math.max(0, Math.min(1, p));
+  }
+  let isDown = false;
+  function onDown(e) {
+    if (State.running) return;  // don't allow drag during sim
+    isDown = true;
+    State.isDragging = true;
+    onMove(e);
+  }
+  function onMove(e) {
+    if (!isDown) return;
+    const ev = e.touches ? e.touches[0] : e;
+    const p = eventToProportion(ev);
+    State.population = { H: p, D: 1 - p };
+    State.initial = Object.assign({}, State.population);
+    syncSliders();
+    updateLiveStats();
+    renderPhase();
+    // Reset history when dragging
+    State.simTime = 0;
+    State.history = [{ t: 0, props: Object.assign({}, State.population) }];
+    renderPopChart();
+  }
+  function onUp() {
+    isDown = false;
+    State.isDragging = false;
+  }
+  svg.addEventListener('mousedown', onDown);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+  svg.addEventListener('touchstart', onDown, { passive: false });
+  document.addEventListener('touchmove', (e) => { if (isDown) { e.preventDefault(); onMove(e); } }, { passive: false });
+  document.addEventListener('touchend', onUp);
+}
+
+/* ----------------- RPS TERNARY PHASE PLOT ----------------- */
+function renderPhaseRPS() {
+  const svg = $('#phaseSVG');
+  svg.innerHTML = '';
+  const W = PHASE.W, H = PHASE.H;
+  const padX = 80;
+  const sideHorizontal = W - 2 * padX;
+  const triangleHeight = sideHorizontal * Math.sqrt(3) / 2;
+  const padTop = (H - triangleHeight) / 2 - 10;
+  // R at left, P at right, S at top
+  const Rx = padX, Ry = padTop + triangleHeight;
+  const Px = padX + sideHorizontal, Py = Ry;
+  const Sx = padX + sideHorizontal / 2, Sy = padTop;
+
+  function ternToXY(pR, pP, pS) {
+    return [pR * Rx + pP * Px + pS * Sx, pR * Ry + pP * Py + pS * Sy];
+  }
+
+  // Background triangle
+  svg.appendChild(svgEl('path', {
+    class: 'ternary-edge',
+    d: `M ${Rx} ${Ry} L ${Px} ${Py} L ${Sx} ${Sy} Z`
+  }));
+
+  // Inner gridlines at 1/3 and 2/3
+  for (let frac = 1/3; frac <= 2/3 + 1e-6; frac += 1/3) {
+    let [x1, y1] = ternToXY(0, 1 - frac, frac);
+    let [x2, y2] = ternToXY(1 - frac, 0, frac);
+    svg.appendChild(svgEl('line', { stroke: 'rgba(255,255,255,.05)', 'stroke-width': 1, 'stroke-dasharray': '2 4', x1, y1, x2, y2 }));
+    [x1, y1] = ternToXY(frac, 1 - frac, 0);
+    [x2, y2] = ternToXY(frac, 0, 1 - frac);
+    svg.appendChild(svgEl('line', { stroke: 'rgba(255,255,255,.05)', 'stroke-width': 1, 'stroke-dasharray': '2 4', x1, y1, x2, y2 }));
+    [x1, y1] = ternToXY(1 - frac, frac, 0);
+    [x2, y2] = ternToXY(0, frac, 1 - frac);
+    svg.appendChild(svgEl('line', { stroke: 'rgba(255,255,255,.05)', 'stroke-width': 1, 'stroke-dasharray': '2 4', x1, y1, x2, y2 }));
+  }
+
+  // Flow vectors at a grid of interior points
+  const game = GAMES.rps;
+  const payoff = game.payoffMatrix(State.params);
+  const stratKeys = ['R', 'P', 'S'];
+  // Sample a triangular grid
+  const gridLevels = 6;
+  for (let i = 1; i < gridLevels; i++) {
+    for (let j = 1; j < gridLevels - i; j++) {
+      const k = gridLevels - i - j;
+      if (k < 1) continue;
+      const pR = i / gridLevels, pP = j / gridLevels, pS = k / gridLevels;
+      const pop = { R: pR, P: pP, S: pS };
+      const dx = replicatorDeriv(pop, payoff, game.strategies);
+      // Project derivative into screen space
+      const [x, y] = ternToXY(pR, pP, pS);
+      const [x2, y2] = ternToXY(pR + dx.R * 0.1, pP + dx.P * 0.1, pS + dx.S * 0.1);
+      const vx = x2 - x, vy = y2 - y;
+      const len = Math.sqrt(vx*vx + vy*vy);
+      if (len < 0.5) continue;
+      const scale = Math.min(20, len * 4) / len;
+      const ex = x + vx * scale, ey = y + vy * scale;
+      // Arrow line
+      svg.appendChild(svgEl('line', {
+        x1: x, y1: y, x2: ex, y2: ey,
+        stroke: 'rgba(155,123,255,.3)', 'stroke-width': 1
+      }));
+      // Arrowhead
+      const angle = Math.atan2(vy, vx);
+      const ahLen = 4;
+      const ahP1x = ex - ahLen * Math.cos(angle - Math.PI / 6);
+      const ahP1y = ey - ahLen * Math.sin(angle - Math.PI / 6);
+      const ahP2x = ex - ahLen * Math.cos(angle + Math.PI / 6);
+      const ahP2y = ey - ahLen * Math.sin(angle + Math.PI / 6);
+      svg.appendChild(svgEl('path', {
+        class: 'phase-flow-arrow-head',
+        d: `M ${ex} ${ey} L ${ahP1x} ${ahP1y} L ${ahP2x} ${ahP2y} Z`,
+        fill: 'rgba(155,123,255,.4)'
+      }));
+    }
+  }
+
+  // ESS marker (centroid for RPS)
+  const [eqX, eqY] = ternToXY(1/3, 1/3, 1/3);
+  const stableKind = game.computeEquilibria(State.params)[0].kind;
+  if (stableKind === 'stable') {
+    svg.appendChild(svgEl('circle', { class: 'phase-ess-marker', cx: eqX, cy: eqY, r: 8 }));
+  } else if (stableKind === 'cyclic') {
+    svg.appendChild(svgEl('circle', { cx: eqX, cy: eqY, r: 8, fill: 'rgba(155,123,255,.2)', stroke: '#9B7BFF', 'stroke-width': 2 }));
+  } else {
+    svg.appendChild(svgEl('circle', { cx: eqX, cy: eqY, r: 8, fill: 'rgba(244,63,94,.2)', stroke: '#FB7185', 'stroke-width': 2 }));
+  }
+  const eqLbl = svgEl('text', { class: 'phase-ess-label', x: eqX, y: eqY + 18, 'text-anchor': 'middle' });
+  eqLbl.textContent = stableKind === 'stable' ? 'ESS' : stableKind === 'cyclic' ? 'Center' : 'Unstable';
+  eqLbl.setAttribute('fill', stableKind === 'stable' ? '#34D399' : (stableKind === 'cyclic' ? '#9B7BFF' : '#FB7185'));
+  svg.appendChild(eqLbl);
+
+  // Trajectory trail
+  if (State.history.length > 1) {
+    let d = '';
+    State.history.forEach((h, i) => {
+      const [x, y] = ternToXY(h.props.R, h.props.P, h.props.S);
+      d += (i === 0 ? 'M ' : ' L ') + x.toFixed(1) + ' ' + y.toFixed(1);
+    });
+    svg.appendChild(svgEl('path', { class: 'phase-trail', d, stroke: 'rgba(155,123,255,.55)' }));
+  }
+
+  // Corner markers
+  svg.appendChild(svgEl('circle', { class: 'ternary-corner-circle r', cx: Rx, cy: Ry, r: 14 }));
+  const rLbl = svgEl('text', { class: 'ternary-corner-label', x: Rx, y: Ry });
+  rLbl.textContent = 'R'; svg.appendChild(rLbl);
+  const rDesc = svgEl('text', { class: 'phase-label', x: Rx - 18, y: Ry + 28, 'text-anchor': 'middle', 'font-size': 9 });
+  rDesc.textContent = 'All Rock'; svg.appendChild(rDesc);
+
+  svg.appendChild(svgEl('circle', { class: 'ternary-corner-circle p', cx: Px, cy: Py, r: 14 }));
+  const pLbl = svgEl('text', { class: 'ternary-corner-label', x: Px, y: Py });
+  pLbl.textContent = 'P'; svg.appendChild(pLbl);
+  const pDesc = svgEl('text', { class: 'phase-label', x: Px + 18, y: Py + 28, 'text-anchor': 'middle', 'font-size': 9 });
+  pDesc.textContent = 'All Paper'; svg.appendChild(pDesc);
+
+  svg.appendChild(svgEl('circle', { class: 'ternary-corner-circle s', cx: Sx, cy: Sy, r: 14 }));
+  const sLbl = svgEl('text', { class: 'ternary-corner-label', x: Sx, y: Sy });
+  sLbl.textContent = 'S'; svg.appendChild(sLbl);
+  const sDesc = svgEl('text', { class: 'phase-label', x: Sx, y: Sy - 22, 'text-anchor': 'middle', 'font-size': 9 });
+  sDesc.textContent = 'All Scissors'; svg.appendChild(sDesc);
+
+  // Population dot
+  const [popX, popY] = ternToXY(State.population.R, State.population.P, State.population.S);
+  svg.appendChild(svgEl('circle', { class: 'phase-pop-glow', cx: popX, cy: popY, r: 14 }));
+  svg.appendChild(svgEl('circle', { class: 'phase-pop-dot', cx: popX, cy: popY, r: 8 }));
+
+  // Bind drag for ternary
+  bindPhaseRPSDrag(svg, ternToXY, Rx, Ry, Px, Py, Sx, Sy);
+}
+
+function bindPhaseRPSDrag(svg, ternToXY, Rx, Ry, Px, Py, Sx, Sy) {
+  function screenToBary(sx, sy) {
+    // Solve for barycentric coordinates from screen position
+    // [Rx Px Sx] [pR]   [sx]
+    // [Ry Py Sy] [pP] = [sy]
+    // [1  1  1 ] [pS]   [1 ]
+    const det = Rx*(Py - Sy) - Px*(Ry - Sy) + Sx*(Ry - Py);
+    if (Math.abs(det) < 1e-9) return null;
+    const pR = (sx*(Py - Sy) - Px*(sy - Sy) + Sx*(sy - Py)) / det;
+    const pP = (Rx*(sy - Sy) - sx*(Ry - Sy) + Sx*(Ry - sy)) / det;
+    const pS = 1 - pR - pP;
+    return [pR, pP, pS];
+  }
+  let isDown = false;
+  function onDown(e) {
+    if (State.running) return;
+    isDown = true;
+    State.isDragging = true;
+    onMove(e);
+  }
+  function onMove(e) {
+    if (!isDown) return;
+    const ev = e.touches ? e.touches[0] : e;
+    const rect = svg.getBoundingClientRect();
+    const sx = (ev.clientX - rect.left) / rect.width * PHASE.W;
+    const sy = (ev.clientY - rect.top) / rect.height * PHASE.H;
+    const bary = screenToBary(sx, sy);
+    if (!bary) return;
+    let [pR, pP, pS] = bary;
+    // Clamp to inside triangle (project to nearest valid point)
+    if (pR < 0 || pP < 0 || pS < 0) {
+      pR = Math.max(0.001, pR);
+      pP = Math.max(0.001, pP);
+      pS = Math.max(0.001, pS);
+      const sum = pR + pP + pS;
+      pR /= sum; pP /= sum; pS /= sum;
+    }
+    State.population = { R: pR, P: pP, S: pS };
+    State.initial = Object.assign({}, State.population);
+    syncSliders();
+    updateLiveStats();
+    renderPhase();
+    State.simTime = 0;
+    State.history = [{ t: 0, props: Object.assign({}, State.population) }];
+    renderPopChart();
+  }
+  function onUp() {
+    isDown = false;
+    State.isDragging = false;
+  }
+  svg.addEventListener('mousedown', onDown);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+  svg.addEventListener('touchstart', onDown, { passive: false });
+  document.addEventListener('touchmove', (e) => { if (isDown) { e.preventDefault(); onMove(e); } }, { passive: false });
+  document.addEventListener('touchend', onUp);
+}
+
+/* ============================================================
+   POPULATION CHART (stacked area over time)
+   ============================================================ */
+function renderPopChart() {
+  const svg = $('#popChart');
+  svg.innerHTML = '';
+  const W = 700, H = 220, padL = 50, padR = 15, padT = 10, padB = 26;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const game = GAMES[State.gameKey];
+  const strategies = game.strategies;
+
+  // Y ticks
+  [0, 0.25, 0.5, 0.75, 1].forEach(v => {
+    const y = padT + (1 - v) * plotH;
+    svg.appendChild(svgEl('line', { x1: padL, y1: y, x2: padL + plotW, y2: y, stroke: 'rgba(255,255,255,.04)', 'stroke-width': 1 }));
+    const lbl = svgEl('text', { class: 'phase-label', x: padL - 8, y: y + 3, 'text-anchor': 'end' });
+    lbl.textContent = (v * 100).toFixed(0) + '%';
+    svg.appendChild(lbl);
+  });
+
+  // Axis lines
+  svg.appendChild(svgEl('line', { class: 'phase-axis-line', x1: padL, y1: padT, x2: padL, y2: padT + plotH }));
+  svg.appendChild(svgEl('line', { class: 'phase-axis-line', x1: padL, y1: padT + plotH, x2: padL + plotW, y2: padT + plotH }));
+
+  if (State.history.length < 2) {
+    const lbl = svgEl('text', { class: 'phase-label', x: padL + plotW / 2, y: padT + plotH / 2, 'text-anchor': 'middle' });
+    lbl.textContent = 'Run the simulation to see population dynamics';
+    svg.appendChild(lbl);
+    return;
+  }
+
+  const N = State.history.length;
+  const tMin = State.history[0].t;
+  const tMax = State.history[N - 1].t;
+  const tRange = Math.max(0.1, tMax - tMin);
+  const xScale = (t) => padL + ((t - tMin) / tRange) * plotW;
+  const yScale = (v) => padT + (1 - v) * plotH;
+
+  // Draw stacked areas
+  let cumulative = strategies.map(() => 0);
+  // Keep track of cumulative top for each strategy at each time
+  const topCurves = strategies.map(() => []);
+  State.history.forEach((h, i) => {
+    let stack = 0;
+    strategies.forEach((s, idx) => {
+      stack += h.props[s.key];
+      topCurves[idx].push([xScale(h.t), yScale(stack)]);
+    });
+  });
+
+  // Build paths bottom-to-top
+  strategies.forEach((s, idx) => {
+    const top = topCurves[idx];
+    const bottom = idx === 0 ? null : topCurves[idx - 1];
+    let d = '';
+    top.forEach((p, i) => { d += (i === 0 ? 'M ' : ' L ') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); });
+    if (bottom) {
+      for (let i = bottom.length - 1; i >= 0; i--) {
+        d += ' L ' + bottom[i][0].toFixed(1) + ' ' + bottom[i][1].toFixed(1);
+      }
+    } else {
+      // Close to baseline
+      for (let i = top.length - 1; i >= 0; i--) {
+        d += ' L ' + top[i][0].toFixed(1) + ' ' + yScale(0).toFixed(1);
+      }
+    }
+    d += ' Z';
+    const cls = State.gameKey === 'hawk-dove' ? `pop-band ${s.key.toLowerCase()}` : `pop-band ${s.key.toLowerCase()}`;
+    svg.appendChild(svgEl('path', { class: cls, d }));
+  });
+
+  // ESS lines (dashed)
+  const eqs = game.computeEquilibria(State.params);
+  const stableEq = eqs.find(e => e.kind === 'stable') || eqs.find(e => e.kind === 'cyclic');
+  if (stableEq) {
+    let cumStack = 0;
+    strategies.forEach((s, idx) => {
+      cumStack += stableEq.proportions[s.key];
+      // Draw a horizontal line for each strategy's ESS top (excluding the topmost = 1)
+      if (idx < strategies.length - 1) {
+        svg.appendChild(svgEl('line', {
+          class: 'pop-eq-line',
+          x1: padL, y1: yScale(cumStack), x2: padL + plotW, y2: yScale(cumStack)
+        }));
+      }
+    });
+  }
+
+  // X-axis labels
+  const xLbl = svgEl('text', { class: 'phase-label', x: padL + plotW / 2, y: padT + plotH + 18, 'text-anchor': 'middle' });
+  xLbl.textContent = `t = 0 → ${tMax.toFixed(1)}`;
+  svg.appendChild(xLbl);
+}
+
+/* ============================================================
+   UI RENDERING (sliders, payoff matrix, presets, etc.)
+   ============================================================ */
+function renderControls() {
+  const game = GAMES[State.gameKey];
+
+  // Initial proportion sliders
+  const sliderRoot = $('#initSliders');
+  sliderRoot.innerHTML = '';
+  game.strategies.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-3';
+    row.innerHTML = `
+      <div class="strategy-icon ${s.key.toLowerCase()}">${s.icon}</div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-baseline justify-between mb-1">
+          <span class="text-sm font-medium">${s.name}</span>
+          <span class="prob-display" id="prob_${s.key}" style="color: ${s.color};">${Math.round(State.population[s.key] * 100)}%</span>
+        </div>
+        <input type="range" class="strat-slider ${s.key.toLowerCase()}" id="slider_${s.key}" min="0" max="100" value="${Math.round(State.population[s.key] * 100)}" step="1"/>
+      </div>
+    `;
+    sliderRoot.appendChild(row);
+  });
+  // Bind slider change
+  game.strategies.forEach(s => {
+    const slider = $(`#slider_${s.key}`);
+    slider.addEventListener('input', (e) => {
+      onSliderChange(s.key, parseInt(e.target.value, 10) / 100, game);
+    });
+  });
+
+  // Presets
+  const presetRoot = $('#presetRow');
+  presetRoot.innerHTML = '';
+  game.presets.forEach(preset => {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn';
+    btn.textContent = preset.name;
+    btn.addEventListener('click', () => {
+      let init;
+      if (preset.init === 'random') {
+        // Random simplex point
+        const ws = game.strategies.map(() => Math.random());
+        const sum = ws.reduce((a, b) => a + b, 0);
+        init = {};
+        game.strategies.forEach((s, i) => init[s.key] = ws[i] / sum);
+      } else {
+        init = Object.assign({}, preset.init);
+      }
+      State.population = init;
+      State.initial = Object.assign({}, init);
+      State.simTime = 0;
+      State.history = [{ t: 0, props: Object.assign({}, init) }];
+      syncSliders();
+      updateLiveStats();
+      renderPhase();
+      renderPopChart();
+    });
+    presetRoot.appendChild(btn);
+  });
+
+  // Payoff parameters
+  const paramRoot = $('#paramSliders');
+  paramRoot.innerHTML = '';
+  Object.entries(game.params).forEach(([key, def]) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'mb-3';
+    wrap.innerHTML = `
+      <div class="flex items-baseline justify-between mb-1">
+        <span class="text-[11px] text-white/60">${def.label}</span>
+        <span class="font-mono text-violet-glow font-semibold" id="paramVal_${key}">${State.params[key]}</span>
+      </div>
+      <input type="range" class="param-slider" id="paramSlider_${key}" min="${def.min}" max="${def.max}" step="${def.step}" value="${State.params[key]}"/>
+    `;
+    paramRoot.appendChild(wrap);
+    $(`#paramSlider_${key}`).addEventListener('input', (e) => {
+      State.params[key] = parseFloat(e.target.value);
+      $(`#paramVal_${key}`).textContent = State.params[key];
+      renderPayoffMatrix();
+      renderPhase();
+      renderPopChart();
+      renderESSDetails();
+      renderStability();
+    });
+  });
+
+  renderPayoffMatrix();
+
+  // Legend
+  const legendRoot = $('#popLegend');
+  legendRoot.innerHTML = '';
+  game.strategies.forEach(s => {
+    const span = document.createElement('span');
+    span.className = 'flex items-center gap-1.5';
+    span.innerHTML = `<span class="w-2.5 h-2.5 rounded" style="background: ${s.color};"></span>${s.name}`;
+    legendRoot.appendChild(span);
+  });
+
+  renderESSDetails();
+  renderStability();
+}
+
+function renderPayoffMatrix() {
+  const game = GAMES[State.gameKey];
+  const A = game.payoffMatrix(State.params);
+  const root = $('#payoffMatrix');
+  const strats = game.strategies;
+  // Build table
+  let html = '<div class="grid gap-1" style="grid-template-columns: 36px ' + strats.map(() => '1fr').join(' ') + ';">';
+  html += '<div></div>';
+  strats.forEach(s => {
+    html += `<div class="text-center text-[10px] uppercase tracking-wider font-medium" style="color: ${s.color};">${s.name}</div>`;
+  });
+  strats.forEach(s => {
+    html += `<div class="flex items-center justify-center text-[10px] uppercase tracking-wider font-medium" style="color: ${s.color};">${s.name}</div>`;
+    strats.forEach(s2 => {
+      const val = A[s.key][s2.key];
+      html += `<div class="text-center font-mono text-[12px] py-1.5 rounded bg-white/[.025] border border-white/[.04]" style="color: ${val > 0 ? '#34D399' : val < 0 ? '#FB7185' : 'rgba(255,255,255,.55)'}">${val.toFixed(1)}</div>`;
+    });
+  });
+  html += '</div>';
+  root.innerHTML = html;
+}
+
+function onSliderChange(changedKey, newValue, game) {
+  newValue = Math.max(0, Math.min(1, newValue));
+  const others = game.strategies.filter(s => s.key !== changedKey).map(s => s.key);
+  const oldValue = State.population[changedKey];
+  const otherSum = others.reduce((sum, k) => sum + State.population[k], 0);
+  const remaining = 1 - newValue;
+  if (otherSum < 1e-6) {
+    others.forEach(k => State.population[k] = remaining / others.length);
+  } else {
+    others.forEach(k => State.population[k] = (State.population[k] / otherSum) * remaining);
+  }
+  State.population[changedKey] = newValue;
+  State.initial = Object.assign({}, State.population);
+  State.simTime = 0;
+  State.history = [{ t: 0, props: Object.assign({}, State.population) }];
+  syncSliders();
+  updateLiveStats();
+  renderPhase();
+  renderPopChart();
+}
+
+function syncSliders() {
+  const game = GAMES[State.gameKey];
+  game.strategies.forEach(s => {
+    const slider = $(`#slider_${s.key}`);
+    if (slider) slider.value = Math.round(State.population[s.key] * 100);
+    const probLbl = $(`#prob_${s.key}`);
+    if (probLbl) probLbl.textContent = Math.round(State.population[s.key] * 100) + '%';
+  });
+}
+
+/* ============================================================
+   ESS / STABILITY DETAILS
+   ============================================================ */
+function renderESSDetails() {
+  const game = GAMES[State.gameKey];
+  const eqs = game.computeEquilibria(State.params);
+  const root = $('#essDetails');
+  root.innerHTML = '';
+  eqs.forEach(eq => {
+    const div = document.createElement('div');
+    const cls = eq.kind === 'stable' ? 'border-coop-glow/40 bg-coop/5'
+              : eq.kind === 'cyclic' ? 'border-violet-glow/40 bg-violet-primary/5'
+              : 'border-defect-glow/40 bg-defect/5';
+    div.className = 'p-3 rounded-lg border ' + cls;
+    const tagCls = eq.kind === 'stable' ? 'tag-coop' : eq.kind === 'cyclic' ? 'tag-violet' : 'tag-defect';
+    const propsStr = Object.entries(eq.proportions).map(([k, v]) => `${k}=${v.toFixed(2)}`).join(', ');
+    div.innerHTML = `
+      <div class="flex items-center justify-between mb-2 flex-wrap gap-1">
+        <div class="text-sm font-medium">${eq.name}</div>
+        <span class="tag ${tagCls}">${eq.kind === 'stable' ? 'Stable ESS' : eq.kind === 'cyclic' ? 'Cyclic center' : 'Unstable'}</span>
+      </div>
+      <div class="text-[11px] font-mono text-white/55 mb-1.5">${propsStr}</div>
+      <div class="text-[11px] text-white/65 leading-relaxed">${eq.interpretation || ''}</div>
+    `;
+    root.appendChild(div);
+  });
+}
+
+function renderStability() {
+  const game = GAMES[State.gameKey];
+  const eqs = game.computeEquilibria(State.params);
+  const stable = eqs.find(e => e.kind === 'stable');
+  const cyclic = eqs.find(e => e.kind === 'cyclic');
+  const wrap = $('#stabilityWrap');
+  if (stable) {
+    wrap.innerHTML = `
+      <div class="stability-badge stability-stable">
+        <div class="stability-icon">✓</div>
+        <div>
+          <div class="font-medium text-sm">Has a stable ESS</div>
+          <div class="text-[11px] text-white/55 mt-0.5">All trajectories converge to the equilibrium</div>
+        </div>
+      </div>
+    `;
+  } else if (cyclic) {
+    wrap.innerHTML = `
+      <div class="stability-badge stability-cyclic">
+        <div class="stability-icon">↻</div>
+        <div>
+          <div class="font-medium text-sm">Cyclic dynamics</div>
+          <div class="text-[11px] text-white/55 mt-0.5">No ESS — population orbits the equilibrium forever</div>
+        </div>
+      </div>
+    `;
+  } else {
+    wrap.innerHTML = `
+      <div class="stability-badge stability-unstable">
+        <div class="stability-icon">↯</div>
+        <div>
+          <div class="font-medium text-sm">Unstable</div>
+          <div class="text-[11px] text-white/55 mt-0.5">Trajectories spiral outward — no fixed point holds</div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+/* ============================================================
+   LIVE STATS
+   ============================================================ */
+function updateLiveStats() {
+  const game = GAMES[State.gameKey];
+  $('#statSimTime').textContent = State.simTime.toFixed(1);
+  $('#statPopState').textContent = game.strategies.map(s => `${s.key}=${(State.population[s.key]*100).toFixed(0)}%`).join(' · ');
+
+  // Average fitness
+  const payoff = game.payoffMatrix(State.params);
+  const f = fitnessVector(State.population, payoff, game.strategies);
+  const fbar = avgFitness(State.population, f, game.strategies);
+  $('#statAvgFitness').textContent = (fbar >= 0 ? '+' : '') + fbar.toFixed(3);
+
+  // Distance to ESS
+  const eqs = game.computeEquilibria(State.params);
+  const target = eqs.find(e => e.kind === 'stable') || eqs.find(e => e.kind === 'cyclic');
+  if (target) {
+    const dist = Math.sqrt(game.strategies.reduce((sum, s) => sum + Math.pow(State.population[s.key] - target.proportions[s.key], 2), 0));
+    $('#statDistESS').textContent = dist.toFixed(3);
+    $('#statDistESS').style.color = dist < 0.05 ? '#34D399' : dist < 0.2 ? '#FBBF24' : '#FB7185';
+  } else {
+    $('#statDistESS').textContent = '—';
+  }
+}
+
+/* ============================================================
+   GAME SWITCH
+   ============================================================ */
+function switchGame(newKey) {
+  pauseSim();
+  State.gameKey = newKey;
+  const game = GAMES[newKey];
+  // Reset params to defaults
+  State.params = {};
+  Object.entries(game.params).forEach(([key, def]) => { State.params[key] = def.value; });
+  // Reset population to default initial
+  if (newKey === 'hawk-dove') {
+    State.initial = { H: 0.5, D: 0.5 };
+    State.population = { H: 0.5, D: 0.5 };
+  } else {
+    State.initial = { R: 1/3, P: 1/3, S: 1/3 };
+    State.population = { R: 1/3, P: 1/3, S: 1/3 };
+  }
+  State.simTime = 0;
+  State.history = [{ t: 0, props: Object.assign({}, State.population) }];
+
+  // Update toggle UI
+  $$('.toggle-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.game === newKey));
+
+  renderControls();
+  renderPhase();
+  renderPopChart();
+  updateLiveStats();
+}
+
+/* ============================================================
+   BINDINGS
+   ============================================================ */
+function bindActions() {
+  $('#playPauseBtn').addEventListener('click', () => {
+    if (State.running) pauseSim();
+    else startSim();
+  });
+  $('#stepBtn').addEventListener('click', () => stepSim());
+  $('#restartBtn').addEventListener('click', () => {
+    resetSim();
+    showToast('Simulation reset to initial conditions');
+  });
+  $$('#speedControl .speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('#speedControl .speed-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      State.speed = parseFloat(btn.dataset.speed);
+    });
+  });
+  $$('.toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.game;
+      if (target !== State.gameKey) switchGame(target);
+    });
+  });
+}
+
+function showToast(text, duration = 1400) {
+  const t = $('#toast');
+  t.textContent = text;
+  t.classList.add('visible');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('visible'), duration);
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', () => {
+  bindActions();
+  switchGame('hawk-dove');
+});
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'evolutionary',
+      getSession: function () {
+        if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
+        return { score: null, outcome: 'completed', detail: { game: State.gameKey, params: State.params, simTime: State.simTime, finalPop: State.population } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

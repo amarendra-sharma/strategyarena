@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cooperative Game · Coalition Formation — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        display: ['Instrument Serif', 'serif']
+      },
+      colors: {
+        ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+        violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+        coop: { DEFAULT: '#10B981', glow: '#34D399' },
+        defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+        equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+      }
+    } }
+  };
+</script>
+
+<style>
+  html, body { background: #070612; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: #E8E6F5; -webkit-font-smoothing: antialiased; overflow-x: hidden; min-height: 100vh; }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  .arena-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410; }
+  .arena-bg::before {
+    content: ''; position: absolute; width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: .25; top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute; width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #34D399 0%, transparent 70%);
+    filter: blur(120px); opacity: .12; bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .glass { background: rgba(18,16,42,.55); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); border: 1px solid rgba(255,255,255,.06); }
+  .glass-strong { background: rgba(11,10,26,.75); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); border: 1px solid rgba(255,255,255,.08); }
+  .glass-subtle { background: rgba(255,255,255,.025); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.05); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; font-weight: 500;
+    padding: 11px 22px; border-radius: 10px; font-size: 14px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124,92,255,.6); }
+  .btn-primary:active { transform: scale(.98); }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 20px; border-radius: 10px; font-size: 13px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-violet { background: rgba(124,92,255,.12); border-color: rgba(124,92,255,.3); color: #9B7BFF; }
+  .tag-amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FBBF24; }
+  .tag-coop { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #34D399; }
+  .tag-defect { background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.3); color: #FB7185; }
+
+  /* ============================================================
+     COALITION CANVAS
+     ============================================================ */
+  .canvas-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background:
+      radial-gradient(circle at 30% 20%, rgba(124,92,255,.05) 0%, transparent 50%),
+      radial-gradient(circle at 70% 80%, rgba(52,211,153,.04) 0%, transparent 50%),
+      rgba(11,10,26,0.4);
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.06);
+    overflow: hidden;
+  }
+
+  /* Coalition pill — visual container for one or more players */
+  .coalition {
+    position: absolute;
+    border-radius: 50px;
+    transition: width .35s cubic-bezier(.16,1,.3,1),
+                height .35s cubic-bezier(.16,1,.3,1),
+                left .35s cubic-bezier(.16,1,.3,1),
+                top .35s cubic-bezier(.16,1,.3,1),
+                background .25s ease,
+                border-color .25s ease,
+                box-shadow .25s ease;
+    display: flex; align-items: center;
+    background: rgba(255,255,255,.025);
+    border: 1.5px solid rgba(255,255,255,.08);
+    padding: 6px;
+    cursor: default;
+    z-index: 1;
+  }
+  .coalition.singleton {
+    background: transparent;
+    border-color: transparent;
+    padding: 0;
+  }
+  .coalition.multi {
+    background: linear-gradient(135deg, rgba(124,92,255,.08), rgba(124,92,255,.02));
+    border-color: rgba(124,92,255,.4);
+    box-shadow: 0 8px 24px -8px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.08);
+  }
+  .coalition.grand {
+    background: linear-gradient(135deg, rgba(245,158,11,.1), rgba(245,158,11,.02));
+    border-color: rgba(251,191,36,.5);
+    box-shadow: 0 8px 30px -6px rgba(251,191,36,.45), inset 0 1px 0 rgba(255,255,255,.1);
+  }
+  .coalition.dragging-over {
+    border-color: rgba(52,211,153,.7);
+    box-shadow: 0 0 0 3px rgba(52,211,153,.2), 0 8px 24px -6px rgba(52,211,153,.4);
+    background: rgba(52,211,153,.08);
+  }
+  .coalition .coalition-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 16px;
+    padding: 4px 10px;
+    margin-right: 6px;
+    background: rgba(0,0,0,.3);
+    border-radius: 14px;
+    color: #FBBF24;
+    letter-spacing: -.02em;
+    flex-shrink: 0;
+    transition: color .25s ease;
+  }
+  .coalition.grand .coalition-value { color: #FBBF24; }
+  .coalition .coalition-value-label {
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: rgba(255,255,255,.45);
+    display: block;
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+
+  /* Player node */
+  .player-node {
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    color: #fff;
+    cursor: grab;
+    user-select: none;
+    flex-shrink: 0;
+    margin: 0 -4px;
+    border: 2.5px solid #fff;
+    transition: transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .2s ease, opacity .2s ease;
+    box-shadow: 0 6px 16px rgba(0,0,0,.4), inset 0 2px 0 rgba(255,255,255,.2);
+    position: relative;
+    z-index: 2;
+  }
+  .player-node:hover {
+    transform: scale(1.05);
+    box-shadow: 0 12px 24px rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.25);
+  }
+  .player-node.dragging {
+    cursor: grabbing;
+    transform: scale(1.15);
+    box-shadow: 0 16px 32px rgba(0,0,0,.5), 0 0 0 4px rgba(124,92,255,.35);
+    z-index: 100;
+  }
+  .player-node.locked-out {
+    opacity: .35;
+    pointer-events: none;
+  }
+  /* Player earnings label below the avatar */
+  .player-node .earnings {
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    background: rgba(11,10,26,.85);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    color: #fff;
+    pointer-events: none;
+    transition: color .25s ease, border-color .25s ease;
+  }
+  .player-node .earnings.zero { color: rgba(255,255,255,.4); }
+
+  .player-node.p1 { background: linear-gradient(135deg, #FB7185, #BE185D); }
+  .player-node.p2 { background: linear-gradient(135deg, #9B7BFF, #5B3DCC); }
+  .player-node.p3 { background: linear-gradient(135deg, #FBBF24, #B45309); }
+  .player-node.p4 { background: linear-gradient(135deg, #34D399, #047857); }
+  .player-node.p5 { background: linear-gradient(135deg, #06B6D4, #0E7490); }
+
+  .player-node.highlight-marginal {
+    box-shadow: 0 0 0 3px rgba(52,211,153,.5), 0 0 24px rgba(52,211,153,.4);
+  }
+
+  /* ============================================================
+     SHAPLEY / FAIR-SHARE ROW
+     ============================================================ */
+  .shapley-row {
+    display: grid;
+    grid-template-columns: 36px 1fr 80px 80px 80px;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.05);
+    transition: all .25s ease;
+    margin-bottom: 6px;
+  }
+  .shapley-row.hovered { background: rgba(124,92,255,.08); border-color: rgba(124,92,255,.4); }
+  .shapley-mini {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px; color: #fff;
+    border: 2px solid #fff;
+    flex-shrink: 0;
+  }
+  .shapley-mini.p1 { background: linear-gradient(135deg, #FB7185, #BE185D); }
+  .shapley-mini.p2 { background: linear-gradient(135deg, #9B7BFF, #5B3DCC); }
+  .shapley-mini.p3 { background: linear-gradient(135deg, #FBBF24, #B45309); }
+  .shapley-mini.p4 { background: linear-gradient(135deg, #34D399, #047857); }
+  .shapley-mini.p5 { background: linear-gradient(135deg, #06B6D4, #0E7490); }
+
+  .shapley-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-size: 14px;
+    text-align: right;
+    transition: color .25s ease;
+  }
+
+  .fairness-bar {
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.05);
+    overflow: hidden;
+    position: relative;
+    margin-top: 4px;
+  }
+  .fairness-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width .35s cubic-bezier(.16,1,.3,1), background .25s ease;
+  }
+  .fairness-fill.over { background: linear-gradient(90deg, #34D399, #047857); }
+  .fairness-fill.under { background: linear-gradient(90deg, #FB7185, #BE185D); }
+  .fairness-fill.fair { background: linear-gradient(90deg, #FBBF24, #F59E0B); }
+
+  /* Stat cards */
+  .stat-card {
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+  .stat-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  /* ============================================================
+     COALITION VALUES TABLE
+     ============================================================ */
+  .v-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 4px;
+  }
+  .v-table th {
+    text-align: left;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: rgba(255,255,255,.45);
+    font-weight: 500;
+    padding: 4px 8px;
+  }
+  .v-table td {
+    padding: 4px 8px;
+    background: rgba(255,255,255,.025);
+    transition: background .15s ease;
+  }
+  .v-table tr:hover td { background: rgba(255,255,255,.04); }
+  .v-table td:first-child { border-radius: 8px 0 0 8px; }
+  .v-table td:last-child { border-radius: 0 8px 8px 0; }
+  .v-table .coalition-cell {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: rgba(255,255,255,.85);
+  }
+  .v-input {
+    background: rgba(0,0,0,.3);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 6px;
+    padding: 4px 8px;
+    color: #fff;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-size: 13px;
+    width: 70px;
+    text-align: right;
+    transition: border-color .15s ease;
+  }
+  .v-input:focus {
+    outline: none;
+    border-color: rgba(124,92,255,.6);
+    box-shadow: 0 0 0 3px rgba(124,92,255,.15);
+  }
+
+  /* ============================================================
+     PRESETS
+     ============================================================ */
+  .preset-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    font-size: 11px;
+    color: rgba(255,255,255,.7);
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .preset-btn:hover {
+    background: rgba(124,92,255,.1);
+    border-color: rgba(124,92,255,.4);
+    color: #fff;
+  }
+
+  /* ============================================================
+     IMPUTATION SIMPLEX (3-player)
+     ============================================================ */
+  .simplex-svg { width: 100%; height: auto; display: block; }
+  .simplex-edge {
+    stroke: rgba(255,255,255,.18);
+    stroke-width: 1.5;
+    fill: rgba(124,92,255,.025);
+  }
+  .simplex-grid {
+    stroke: rgba(255,255,255,.04);
+    stroke-width: 1;
+    stroke-dasharray: 2 4;
+    fill: none;
+  }
+  .simplex-corner {
+    stroke: #fff;
+    stroke-width: 1.5;
+  }
+  .simplex-corner.p1 { fill: #FB7185; }
+  .simplex-corner.p2 { fill: #9B7BFF; }
+  .simplex-corner.p3 { fill: #FBBF24; }
+  .simplex-corner-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 700;
+    fill: #fff;
+    text-anchor: middle;
+    dominant-baseline: central;
+  }
+  .simplex-core {
+    fill: rgba(52,211,153,.15);
+    stroke: rgba(52,211,153,.6);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 3;
+  }
+  .simplex-shapley-glow {
+    fill: rgba(52,211,153,.3);
+    animation: simplexPulse 2.4s ease-in-out infinite;
+  }
+  @keyframes simplexPulse {
+    0%, 100% { r: 12; opacity: .55; }
+    50% { r: 18; opacity: 0; }
+  }
+  .simplex-shapley-dot {
+    fill: #34D399;
+    stroke: #fff;
+    stroke-width: 2;
+    filter: drop-shadow(0 0 8px rgba(52,211,153,.7));
+  }
+  .simplex-actual-dot {
+    fill: #9B7BFF;
+    stroke: #fff;
+    stroke-width: 2;
+    filter: drop-shadow(0 0 8px rgba(124,92,255,.7));
+    transition: cx .3s ease, cy .3s ease;
+  }
+  .simplex-equal-dot {
+    fill: rgba(255,255,255,.4);
+    stroke: #fff;
+    stroke-width: 1.5;
+  }
+  .simplex-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    fill: rgba(255,255,255,.65);
+    text-anchor: middle;
+  }
+
+  /* ============================================================
+     MARGINAL CONTRIBUTION ANIMATION
+     ============================================================ */
+  .marginal-flash {
+    position: absolute;
+    border-radius: 999px;
+    pointer-events: none;
+    background: rgba(52,211,153,.5);
+    box-shadow: 0 0 16px rgba(52,211,153,.7);
+    z-index: 999;
+  }
+
+  /* ============================================================
+     PRESETS
+     ============================================================ */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-30px);
+    padding: 10px 18px; border-radius: 10px;
+    background: rgba(11,10,26,.95);
+    border: 1px solid rgba(124,92,255,.4);
+    font-size: 13px; color: #fff; z-index: 100;
+    opacity: 0; transition: opacity .3s ease, transform .3s ease;
+    pointer-events: none;
+    box-shadow: 0 10px 30px -8px rgba(124,92,255,.3);
+  }
+  .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Marginal contribution path */
+  .marginal-step {
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.05);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    margin-bottom: 4px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .marginal-step .step-num { color: rgba(255,255,255,.4); width: 28px; }
+  .marginal-step .step-formula { flex: 1; color: rgba(255,255,255,.85); }
+  .marginal-step .step-result {
+    font-weight: 700;
+    color: #34D399;
+    text-align: right;
+  }
+
+  .reveal-in { animation: revealIn .35s cubic-bezier(.16,1,.3,1); }
+  @keyframes revealIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+
+<!-- Top bar -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
+      <div class="font-medium tracking-tight">Cooperative Game · Coalition Formation</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <button class="btn-ghost text-sm" id="addPlayerBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+      Add player
+    </button>
+    <button class="btn-ghost text-sm" id="splitAllBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Split all
+    </button>
+  </div>
+</header>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<main class="px-6 lg:px-10 py-6 max-w-7xl mx-auto">
+
+  <!-- Hero -->
+  <div class="mb-5 max-w-3xl">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-2">Module 15 · Coalition formation</div>
+    <h1 class="font-display text-3xl lg:text-4xl tracking-tight mb-2">
+      Drag players together. Watch <span class="text-gradient">fair shares</span> emerge.
+    </h1>
+    <p class="text-sm text-white/60 leading-relaxed">
+      Each coalition has a value <code class="font-mono text-violet-glow text-[13px]">v(S)</code>. The Shapley value is the unique allocation that satisfies four fairness axioms — efficiency, symmetry, dummy, additivity — and it's recomputed live as you reshape coalitions.
+    </p>
+  </div>
+
+  <!-- Stats -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Total value distributed</div>
+      <div class="stat-num" id="statTotal" style="color: #FBBF24;">—</div>
+      <div class="text-[11px] text-white/45 mt-1">across all coalitions</div>
+    </div>
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Grand coalition v(N)</div>
+      <div class="stat-num" id="statGrand" style="color: #34D399;">—</div>
+      <div class="text-[11px] text-white/45 mt-1">if everyone cooperates</div>
+    </div>
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Surplus left on table</div>
+      <div class="stat-num" id="statSurplus" style="color: #FB7185;">—</div>
+      <div class="text-[11px] text-white/45 mt-1" id="statSurplusSub">v(N) − sum of coalitions</div>
+    </div>
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Core status</div>
+      <div class="stat-num text-base font-semibold" id="statCore" style="color: #9B7BFF;">—</div>
+      <div class="text-[11px] text-white/45 mt-1" id="statCoreSub">stable allocations</div>
+    </div>
+  </div>
+
+  <!-- Main grid -->
+  <div class="grid lg:grid-cols-[1.6fr_1fr] gap-5 mb-5">
+
+    <!-- LEFT — coalition canvas + breakdown -->
+    <div class="space-y-5">
+
+      <!-- Canvas -->
+      <div class="glass-strong rounded-3xl p-5 lg:p-6">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Coalition canvas</div>
+            <div class="text-sm text-white/55" id="canvasHint">Drag any player onto another to form a coalition. Drag a member out to split.</div>
+          </div>
+          <div class="flex gap-1.5 flex-wrap" id="presetRow"></div>
+        </div>
+
+        <div class="canvas-wrap" id="canvas"></div>
+      </div>
+
+      <!-- Marginal contribution panel (revealed on hover/click) -->
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Shapley breakdown</div>
+            <div class="text-sm text-white/55" id="breakdownHint">Hover any player below to see how their fair share is computed.</div>
+          </div>
+          <span class="tag tag-coop hidden" id="breakdownTag">live calculation</span>
+        </div>
+        <div id="breakdownBody" class="mt-2"></div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT — fair shares + simplex -->
+    <div class="space-y-5">
+
+      <!-- Shapley vs Actual -->
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-0.5">Fair share vs actual</div>
+            <div class="text-[11px] text-white/55">Shapley value = fair, equal-split = actual coalition payment</div>
+          </div>
+        </div>
+
+        <!-- Header row -->
+        <div class="grid grid-cols-[36px_1fr_80px_80px_80px] gap-3 px-3.5 mb-1.5">
+          <div></div>
+          <div></div>
+          <div class="text-[9px] uppercase tracking-wider text-coop-glow text-right font-medium">Shapley</div>
+          <div class="text-[9px] uppercase tracking-wider text-violet-glow text-right font-medium">Actual</div>
+          <div class="text-[9px] uppercase tracking-wider text-white/45 text-right font-medium">Δ</div>
+        </div>
+
+        <div id="shapleyList"></div>
+      </div>
+
+      <!-- Imputation simplex (3 players) -->
+      <div class="glass rounded-2xl p-5" id="simplexCard">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-0.5">Imputation simplex</div>
+            <div class="text-[11px] text-white/55">Efficient + IR allocations · Shapley vs actual vs equal split</div>
+          </div>
+          <span class="tag" id="coreStatusTag">core</span>
+        </div>
+        <svg class="simplex-svg" id="simplexSVG" viewBox="0 0 320 280" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="grid grid-cols-3 gap-2 mt-3 text-[10px]">
+          <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-coop"></span>Shapley value</div>
+          <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background:#9B7BFF"></span>Actual division</div>
+          <div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm" style="background:rgba(52,211,153,.25);border:1px dashed rgba(52,211,153,.6)"></span>Core (stable)</div>
+        </div>
+      </div>
+
+      <!-- Coalition values table -->
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-0.5">Coalition values v(S)</div>
+            <div class="text-[11px] text-white/55">Edit any cell to change the game</div>
+          </div>
+        </div>
+        <table class="v-table">
+          <thead>
+            <tr>
+              <th>Coalition S</th>
+              <th class="text-right">v(S)</th>
+            </tr>
+          </thead>
+          <tbody id="vTableBody"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Educational panel -->
+  <div class="grid lg:grid-cols-2 gap-5">
+    <div class="glass rounded-2xl p-5">
+      <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">The Shapley value formula</div>
+      <div class="text-[12px] text-white/70 leading-relaxed mb-3">
+        Player <span class="font-mono text-violet-glow">i</span>'s Shapley value is the average marginal contribution they bring across all possible orderings of player arrivals.
+      </div>
+      <div style="background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.06); border-radius: 10px; padding: 12px 14px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: rgba(232,230,245,.85);">
+        <span style="color: rgba(155,123,255,.6);">// Average marginal contribution across all orderings</span><br/>
+        φᵢ(v) = (1/n!) · Σ<sub>orderings</sub> [v(S∪{i}) − v(S)]<br/>
+        <br/>
+        <span style="color: rgba(155,123,255,.6);">// where S is the set of players who arrive before i</span>
+      </div>
+      <div class="text-[12px] text-white/65 leading-relaxed mt-3">
+        Equivalent closed form: φᵢ(v) = Σ<sub>S⊆N\{i}</sub> [|S|! · (n−|S|−1)! / n!] · [v(S∪{i}) − v(S)].
+      </div>
+    </div>
+
+    <div class="glass rounded-2xl p-5">
+      <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">The four fairness axioms</div>
+      <div class="space-y-2.5 text-[12px] leading-relaxed">
+        <div class="flex gap-2">
+          <span class="tag tag-coop flex-shrink-0">1</span>
+          <div>
+            <div class="font-medium text-white">Efficiency</div>
+            <div class="text-white/60 text-[11px]">Total Shapley values sum to v(N) — the grand coalition fully distributes its value.</div>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <span class="tag tag-coop flex-shrink-0">2</span>
+          <div>
+            <div class="font-medium text-white">Symmetry</div>
+            <div class="text-white/60 text-[11px]">Two players who contribute identically to every coalition receive identical shares.</div>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <span class="tag tag-coop flex-shrink-0">3</span>
+          <div>
+            <div class="font-medium text-white">Dummy player</div>
+            <div class="text-white/60 text-[11px]">A player who adds no value to any coalition gets nothing.</div>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <span class="tag tag-coop flex-shrink-0">4</span>
+          <div>
+            <div class="font-medium text-white">Additivity</div>
+            <div class="text-white/60 text-[11px]">For two combined games, the Shapley value of the sum equals the sum of Shapley values.</div>
+          </div>
+        </div>
+      </div>
+      <div class="text-[11px] text-white/45 mt-4 pt-4 border-t border-white/5 leading-relaxed">
+        Shapley (1953) proved these four axioms uniquely identify the formula above. No other allocation rule satisfies all four simultaneously.
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+/* ============================================================
+   GAME SETUP
+   ============================================================ */
+const PLAYER_TEMPLATES = [
+  { id: 'A', initials: 'A', cls: 'p1' },
+  { id: 'B', initials: 'B', cls: 'p2' },
+  { id: 'C', initials: 'C', cls: 'p3' },
+  { id: 'D', initials: 'D', cls: 'p4' },
+  { id: 'E', initials: 'E', cls: 'p5' }
+];
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const State = {
+  players: [],          // [{id, initials, cls}]
+  // Coalition partition: array of arrays of player IDs
+  // e.g. [['A','B'], ['C']] means {AB} and {C}
+  partition: [],
+  // Coalition values: keyed by sorted joined player IDs (e.g., "A", "AB", "ABC")
+  v: {},
+  // Cached Shapley values for current state
+  shapley: {},
+  // Hovered player id (for highlighting marginal contributions)
+  hoveredPlayer: null
+};
+
+/* ============================================================
+   PRESETS
+   ============================================================ */
+const PRESETS = {
+  symmetric: {
+    name: 'Symmetric',
+    players: ['A', 'B', 'C'],
+    description: 'All players identical · all coalitions of size k worth k².',
+    v: (members) => members.length * members.length
+  },
+  convex: {
+    name: 'Convex',
+    players: ['A', 'B', 'C'],
+    description: 'Strong synergies · grand coalition produces super-additive surplus.',
+    v: (members) => {
+      // Custom convex game: v(A)=2, v(B)=3, v(C)=5, v(AB)=8, v(AC)=10, v(BC)=12, v(ABC)=20
+      const map = { 'A': 2, 'B': 3, 'C': 5, 'AB': 8, 'AC': 10, 'BC': 12, 'ABC': 20 };
+      return map[members.sort().join('')] || 0;
+    }
+  },
+  glove: {
+    name: 'Glove market',
+    players: ['A', 'B', 'C'],
+    description: 'Player A has 1 left glove · B and C have 1 right glove each. Each L+R pair worth 1.',
+    v: (members) => {
+      const lefts = members.filter(p => p === 'A').length;     // A has the left glove
+      const rights = members.filter(p => p === 'B' || p === 'C').length;
+      return Math.min(lefts, rights);
+    }
+  },
+  veto: {
+    name: 'Veto player',
+    players: ['A', 'B', 'C'],
+    description: 'Player A is essential — no coalition without A produces value.',
+    v: (members) => {
+      const hasA = members.includes('A');
+      if (!hasA) return 0;
+      return members.length;   // Coalition with A worth its size
+    }
+  },
+  airport: {
+    name: 'Airport runway',
+    players: ['A', 'B', 'C'],
+    description: 'Costs to share runway: A needs $4 runway, B needs $7, C needs $10. Coalition pays max.',
+    v: (members) => {
+      // The "savings" framing: each player benefits by what they would pay alone minus their share
+      // Standalone cost: A=4, B=7, C=10. Coalition cost = max needed.
+      // v(S) = sum of standalone costs - max needed by anyone in S.
+      const costs = { A: 4, B: 7, C: 10 };
+      const standaloneSum = members.reduce((s, p) => s + costs[p], 0);
+      const coalitionCost = Math.max(...members.map(p => costs[p]));
+      return standaloneSum - coalitionCost;
+    }
+  },
+  weighted: {
+    name: 'Voting weights',
+    players: ['A', 'B', 'C'],
+    description: 'Weighted voting · weights {3, 2, 1} need 4+ to win (worth 6).',
+    v: (members) => {
+      const weights = { A: 3, B: 2, C: 1 };
+      const total = members.reduce((s, p) => s + weights[p], 0);
+      return total >= 4 ? 6 : 0;
+    }
+  }
+};
+
+/* ============================================================
+   COALITION VALUE: v(S)
+   ============================================================ */
+function vKey(members) {
+  return [...members].sort().join('');
+}
+function vOf(members) {
+  if (members.length === 0) return 0;
+  return State.v[vKey(members)] || 0;
+}
+
+/* ============================================================
+   ENUMERATION HELPERS
+   ============================================================ */
+function allSubsets(items, includeEmpty = true) {
+  // Returns all 2^n subsets as arrays of items
+  const n = items.length;
+  const result = [];
+  for (let mask = 0; mask < (1 << n); mask++) {
+    const subset = [];
+    for (let i = 0; i < n; i++) {
+      if (mask & (1 << i)) subset.push(items[i]);
+    }
+    if (subset.length > 0 || includeEmpty) result.push(subset);
+  }
+  return result;
+}
+function permutations(items) {
+  if (items.length <= 1) return [items.slice()];
+  const result = [];
+  for (let i = 0; i < items.length; i++) {
+    const rest = items.slice(0, i).concat(items.slice(i + 1));
+    for (const p of permutations(rest)) {
+      result.push([items[i]].concat(p));
+    }
+  }
+  return result;
+}
+function factorial(n) {
+  let r = 1;
+  for (let i = 2; i <= n; i++) r *= i;
+  return r;
+}
+
+/* ============================================================
+   SHAPLEY VALUE COMPUTATION
+   ============================================================
+   Closed form:
+     φ_i(v) = Σ_{S⊆N\{i}} [|S|! · (n−|S|−1)! / n!] · [v(S∪{i}) − v(S)]
+   ============================================================ */
+function computeShapley() {
+  const N = State.players.map(p => p.id);
+  const n = N.length;
+  const result = {};
+  for (const i of N) {
+    const others = N.filter(p => p !== i);
+    let phi = 0;
+    // Sum over all subsets S of the other players
+    for (const S of allSubsets(others, true)) {
+      const sSize = S.length;
+      const weight = (factorial(sSize) * factorial(n - sSize - 1)) / factorial(n);
+      const marg = vOf([...S, i]) - vOf(S);
+      phi += weight * marg;
+    }
+    result[i] = phi;
+  }
+  return result;
+}
+
+/* ============================================================
+   ACTUAL DIVISION (within current coalitions)
+   ============================================================
+   Each coalition's value is split equally among its members.
+   ============================================================ */
+function computeActualDivision() {
+  const result = {};
+  State.players.forEach(p => result[p.id] = 0);
+  for (const coalition of State.partition) {
+    const value = vOf(coalition);
+    const share = coalition.length > 0 ? value / coalition.length : 0;
+    for (const id of coalition) result[id] = share;
+  }
+  return result;
+}
+
+/* ============================================================
+   CORE COMPUTATION (3-player only — for simplex viz)
+   ============================================================
+   The core is the set of allocations x = (x_A, x_B, x_C) such that:
+     - Σ x_i = v(N)                    (efficiency)
+     - x_i ≥ v({i}) for all i         (individual rationality)
+     - x_i + x_j ≥ v({i,j}) for all pairs   (coalition rationality)
+   ============================================================ */
+function computeCoreVertices3() {
+  if (State.players.length !== 3) return null;
+  const [A, B, C] = State.players.map(p => p.id);
+  const vN = vOf([A, B, C]);
+  const vA = vOf([A]), vB = vOf([B]), vC = vOf([C]);
+  const vAB = vOf([A, B]), vAC = vOf([A, C]), vBC = vOf([B, C]);
+
+  // Vertices candidates from binding pairs of 2-player constraints intersected with x_A+x_B+x_C = vN
+  // For any 2 of the 3 pair constraints + efficiency, solve.
+  // Set x_A + x_B = vAB and x_A + x_C = vAC: then x_C = vN - vAB, x_B = vN - vAC, x_A = vAB + vAC - vN
+  // Three such vertex candidates from binding pairs:
+  const cands = [
+    // Bind AB and AC
+    { A: vAB + vAC - vN, B: vN - vAC, C: vN - vAB },
+    // Bind AB and BC
+    { A: vN - vBC, B: vAB + vBC - vN, C: vN - vAB },
+    // Bind AC and BC
+    { A: vN - vBC, B: vN - vAC, C: vAC + vBC - vN }
+  ];
+  // Also consider vertices where one singleton constraint binds plus one pair
+  // E.g., x_A = vA and x_A + x_B = vAB: x_B = vAB - vA, x_C = vN - vAB
+  cands.push({ A: vA, B: vAB - vA, C: vN - vAB });
+  cands.push({ A: vA, B: vN - vAC, C: vAC - vA });
+  cands.push({ A: vAB - vB, B: vB, C: vN - vAB });
+  cands.push({ A: vN - vBC, B: vB, C: vBC - vB });
+  cands.push({ A: vAC - vC, B: vN - vAC, C: vC });
+  cands.push({ A: vN - vBC, B: vBC - vC, C: vC });
+
+  const eps = 1e-9;
+  const verts = cands.filter(c => {
+    return c.A >= vA - eps && c.B >= vB - eps && c.C >= vC - eps &&
+           (c.A + c.B) >= vAB - eps && (c.A + c.C) >= vAC - eps && (c.B + c.C) >= vBC - eps &&
+           Math.abs(c.A + c.B + c.C - vN) < eps;
+  });
+  // Dedupe
+  const unique = [];
+  for (const v of verts) {
+    if (!unique.some(u => Math.abs(u.A - v.A) < eps && Math.abs(u.B - v.B) < eps && Math.abs(u.C - v.C) < eps)) {
+      unique.push(v);
+    }
+  }
+  return unique;
+}
+
+/* ============================================================
+   RENDER COALITION CANVAS
+   ============================================================ */
+const CANVAS = { padding: 32, coalitionH: 84 };
+
+function renderCanvas() {
+  const canvas = $('#canvas');
+  // Get current canvas pixel dimensions
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+
+  canvas.innerHTML = '';
+
+  // Compute layout: arrange coalitions in a flex-like manner across the canvas
+  // Sort coalitions: largest first
+  const sorted = State.partition.map(c => [...c]).sort((a, b) => b.length - a.length);
+  const n = sorted.length;
+  // Lay out vertically: each coalition centered horizontally, evenly spaced
+  // Compute total height needed
+  const yStep = H / (n + 1);
+  sorted.forEach((coalition, idx) => {
+    const playerCount = coalition.length;
+    const isMulti = playerCount > 1;
+    const isGrand = coalition.length === State.players.length;
+    const playerWidth = 60;
+    const playerOverlap = 8;   // overlap to look like cohesive group
+    const totalPlayerWidth = playerCount * playerWidth - (playerCount - 1) * playerOverlap;
+    const valuePillW = isMulti ? 100 : 0;
+    const totalW = totalPlayerWidth + valuePillW + (isMulti ? 18 : 0);
+    const left = (W - totalW) / 2;
+    const top = yStep * (idx + 1) - 36;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'coalition' + (isGrand ? ' grand' : (isMulti ? ' multi' : ' singleton'));
+    wrap.dataset.coalitionIdx = idx;
+    wrap.style.left = left + 'px';
+    wrap.style.top = top + 'px';
+    wrap.style.width = totalW + 'px';
+    wrap.style.height = '72px';
+
+    if (isMulti) {
+      const valBox = document.createElement('div');
+      valBox.className = 'coalition-value';
+      const value = vOf(coalition);
+      valBox.innerHTML = `<span class="coalition-value-label">value</span>${value.toFixed(0)}`;
+      wrap.appendChild(valBox);
+    }
+
+    // Player nodes
+    coalition.forEach((pid, pi) => {
+      const player = State.players.find(p => p.id === pid);
+      const node = document.createElement('div');
+      node.className = 'player-node ' + player.cls;
+      node.dataset.playerId = pid;
+      node.style.zIndex = 5 - pi;
+      node.textContent = player.initials;
+      // Earnings label
+      const earn = document.createElement('div');
+      earn.className = 'earnings';
+      const actual = computeActualDivision();
+      const value = actual[pid] || 0;
+      earn.textContent = '$' + value.toFixed(1);
+      if (value === 0) earn.classList.add('zero');
+      node.appendChild(earn);
+      wrap.appendChild(node);
+    });
+
+    canvas.appendChild(wrap);
+  });
+
+  bindDragEvents();
+  bindHoverEvents();
+}
+
+/* ============================================================
+   DRAG & DROP — coalition formation
+   ============================================================ */
+let dragState = { node: null, playerId: null, startX: 0, startY: 0, ghostEl: null };
+
+function bindDragEvents() {
+  $$('.player-node').forEach(node => {
+    node.addEventListener('mousedown', onDragStart);
+    node.addEventListener('touchstart', onDragStart, { passive: false });
+  });
+}
+
+function onDragStart(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const node = e.currentTarget;
+  const ev = e.touches ? e.touches[0] : e;
+  dragState.node = node;
+  dragState.playerId = node.dataset.playerId;
+  dragState.startX = ev.clientX;
+  dragState.startY = ev.clientY;
+
+  node.classList.add('dragging');
+  // Create a ghost representation that follows the cursor (the original stays visible at original position)
+  const rect = node.getBoundingClientRect();
+  const ghost = node.cloneNode(true);
+  ghost.classList.add('dragging');
+  ghost.style.position = 'fixed';
+  ghost.style.left = rect.left + 'px';
+  ghost.style.top = rect.top + 'px';
+  ghost.style.width = rect.width + 'px';
+  ghost.style.height = rect.height + 'px';
+  ghost.style.pointerEvents = 'none';
+  ghost.style.margin = '0';
+  ghost.style.zIndex = 9999;
+  document.body.appendChild(ghost);
+  dragState.ghostEl = ghost;
+  // Hide the original
+  node.style.opacity = '0.3';
+
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('mouseup', onDragEnd);
+  document.addEventListener('touchmove', onDragMove, { passive: false });
+  document.addEventListener('touchend', onDragEnd);
+}
+
+function onDragMove(e) {
+  if (!dragState.node) return;
+  e.preventDefault();
+  const ev = e.touches ? e.touches[0] : e;
+  const ghost = dragState.ghostEl;
+  if (!ghost) return;
+  const rect = dragState.node.getBoundingClientRect();
+  const dx = ev.clientX - dragState.startX;
+  const dy = ev.clientY - dragState.startY;
+  ghost.style.left = (parseFloat(ghost.dataset.startLeft || rect.left) + dx) + 'px';
+  ghost.style.top = (parseFloat(ghost.dataset.startTop || rect.top) + dy) + 'px';
+
+  // Highlight any coalition under the cursor
+  $$('.coalition').forEach(c => c.classList.remove('dragging-over'));
+  const target = findCoalitionAtPoint(ev.clientX, ev.clientY);
+  if (target && target.dataset.coalitionIdx !== undefined) {
+    const targetIdx = parseInt(target.dataset.coalitionIdx, 10);
+    const playerCoalitionIdx = State.partition.findIndex(c => c.includes(dragState.playerId));
+    if (targetIdx !== playerCoalitionIdx) {
+      target.classList.add('dragging-over');
+    }
+  }
+}
+
+function findCoalitionAtPoint(x, y) {
+  const elements = document.elementsFromPoint(x, y);
+  for (const el of elements) {
+    if (el.classList && el.classList.contains('coalition')) return el;
+  }
+  return null;
+}
+
+function onDragEnd(e) {
+  if (!dragState.node) return;
+  e.preventDefault && e.preventDefault();
+  const ev = e.changedTouches ? e.changedTouches[0] : e;
+  const target = findCoalitionAtPoint(ev.clientX, ev.clientY);
+
+  // Restore original
+  if (dragState.node) {
+    dragState.node.classList.remove('dragging');
+    dragState.node.style.opacity = '';
+  }
+  if (dragState.ghostEl) {
+    dragState.ghostEl.remove();
+    dragState.ghostEl = null;
+  }
+  $$('.coalition').forEach(c => c.classList.remove('dragging-over'));
+
+  // Determine drop result
+  const playerId = dragState.playerId;
+  const playerCoalitionIdx = State.partition.findIndex(c => c.includes(playerId));
+
+  if (target && target.dataset.coalitionIdx !== undefined) {
+    const targetIdx = parseInt(target.dataset.coalitionIdx, 10);
+    if (targetIdx !== playerCoalitionIdx) {
+      // Move player into target coalition
+      movePlayerToCoalition(playerId, targetIdx);
+    }
+  } else {
+    // Dropped on empty canvas → split out of current coalition
+    if (State.partition[playerCoalitionIdx].length > 1) {
+      splitPlayerOut(playerId);
+    }
+  }
+
+  dragState = { node: null, playerId: null, startX: 0, startY: 0, ghostEl: null };
+  document.removeEventListener('mousemove', onDragMove);
+  document.removeEventListener('mouseup', onDragEnd);
+  document.removeEventListener('touchmove', onDragMove);
+  document.removeEventListener('touchend', onDragEnd);
+}
+
+function movePlayerToCoalition(playerId, targetIdx) {
+  // Remove from current coalition
+  const currentIdx = State.partition.findIndex(c => c.includes(playerId));
+  if (currentIdx === -1) return;
+  State.partition[currentIdx] = State.partition[currentIdx].filter(p => p !== playerId);
+  // Drop empty coalitions
+  if (State.partition[currentIdx].length === 0) {
+    State.partition.splice(currentIdx, 1);
+    if (currentIdx < targetIdx) targetIdx--;
+  }
+  // Add to target
+  State.partition[targetIdx].push(playerId);
+  recomputeAndRender();
+}
+
+function splitPlayerOut(playerId) {
+  const idx = State.partition.findIndex(c => c.includes(playerId));
+  if (idx === -1) return;
+  if (State.partition[idx].length <= 1) return;
+  State.partition[idx] = State.partition[idx].filter(p => p !== playerId);
+  State.partition.push([playerId]);
+  recomputeAndRender();
+}
+
+/* ============================================================
+   HOVER — show marginal contribution breakdown
+   ============================================================ */
+function bindHoverEvents() {
+  $$('.player-node').forEach(node => {
+    node.addEventListener('mouseenter', () => onHoverPlayer(node.dataset.playerId));
+    node.addEventListener('mouseleave', () => onHoverPlayer(null));
+  });
+}
+
+function onHoverPlayer(playerId) {
+  State.hoveredPlayer = playerId;
+  // Highlight player nodes
+  $$('.player-node').forEach(n => {
+    n.classList.toggle('highlight-marginal', n.dataset.playerId === playerId);
+  });
+  // Highlight Shapley row
+  $$('.shapley-row').forEach(r => {
+    r.classList.toggle('hovered', r.dataset.playerId === playerId);
+  });
+  renderBreakdown();
+}
+
+function renderBreakdown() {
+  const body = $('#breakdownBody');
+  const hint = $('#breakdownHint');
+  const tag = $('#breakdownTag');
+
+  if (!State.hoveredPlayer) {
+    body.innerHTML = '';
+    hint.textContent = 'Hover any player below to see how their fair share is computed.';
+    tag.classList.add('hidden');
+    return;
+  }
+  const player = State.players.find(p => p.id === State.hoveredPlayer);
+  hint.innerHTML = `Marginal contribution of <span class="font-semibold">Player ${player.initials}</span> across all orderings:`;
+  tag.classList.remove('hidden');
+
+  const N = State.players.map(p => p.id);
+  const others = N.filter(p => p !== player.id);
+  const orderings = permutations(N);
+  let totalMargin = 0;
+  let html = `<div class="text-[11px] text-white/50 mb-2 font-mono">All ${factorial(N.length)} orderings: average marginal contribution = Shapley value</div>`;
+
+  orderings.forEach((ordering, oIdx) => {
+    // Find player's position
+    const pos = ordering.indexOf(player.id);
+    const before = ordering.slice(0, pos);
+    const margin = vOf([...before, player.id]) - vOf(before);
+    totalMargin += margin;
+    const beforeStr = before.length === 0 ? '∅' : `{${before.join(',')}}`;
+    const afterStr = `{${[...before, player.id].sort().join(',')}}`;
+    const orderStr = ordering.join(' → ');
+
+    html += `
+      <div class="marginal-step reveal-in" style="animation-delay: ${oIdx * 30}ms;">
+        <div class="step-num">${oIdx + 1}.</div>
+        <div class="step-formula">
+          <span class="text-white/45">Order:</span> <span style="color: #9B7BFF;">${orderStr}</span>
+          &nbsp;·&nbsp;
+          <span class="text-white/45">v(${afterStr}) − v(${beforeStr}) =</span>
+          ${vOf([...before, player.id]).toFixed(0)} − ${vOf(before).toFixed(0)}
+        </div>
+        <div class="step-result">${margin >= 0 ? '+' : ''}${margin.toFixed(1)}</div>
+      </div>
+    `;
+  });
+
+  const phi = totalMargin / factorial(N.length);
+  html += `
+    <div class="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+      <div class="text-sm">
+        <span class="text-white/55">Average:</span>
+        <span class="font-mono font-semibold ml-1">${totalMargin.toFixed(1)} ÷ ${factorial(N.length)}</span>
+      </div>
+      <div class="text-2xl font-mono font-bold" style="color: #34D399;">= ${phi.toFixed(2)}</div>
+    </div>
+  `;
+  body.innerHTML = html;
+}
+
+/* ============================================================
+   SHAPLEY LIST RENDER
+   ============================================================ */
+function renderShapleyList() {
+  const list = $('#shapleyList');
+  list.innerHTML = '';
+  const shapley = State.shapley;
+  const actual = computeActualDivision();
+  const total = State.players.reduce((s, p) => s + (shapley[p.id] || 0), 0);
+
+  State.players.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'shapley-row';
+    row.dataset.playerId = p.id;
+    const phi = shapley[p.id] || 0;
+    const act = actual[p.id] || 0;
+    const delta = act - phi;
+    const fairnessClass = Math.abs(delta) < 0.05 ? 'fair' : (delta > 0 ? 'over' : 'under');
+    const deltaColor = Math.abs(delta) < 0.05 ? '#FBBF24' : (delta > 0 ? '#34D399' : '#FB7185');
+    // Fairness bar — normalized by max value
+    const maxVal = Math.max(...State.players.map(p => Math.max(shapley[p.id] || 0, actual[p.id] || 0)), 1);
+    const phiPct = (phi / maxVal) * 100;
+    const actPct = (act / maxVal) * 100;
+    row.innerHTML = `
+      <div class="shapley-mini ${p.cls}">${p.initials}</div>
+      <div>
+        <div class="text-sm font-medium">Player ${p.initials}</div>
+        <div class="fairness-bar">
+          <div class="fairness-fill ${fairnessClass}" style="width: ${actPct}%"></div>
+        </div>
+      </div>
+      <div class="shapley-num" style="color: #34D399;">${phi.toFixed(2)}</div>
+      <div class="shapley-num" style="color: #9B7BFF;">${act.toFixed(2)}</div>
+      <div class="shapley-num" style="color: ${deltaColor};">${delta >= 0 ? '+' : ''}${delta.toFixed(2)}</div>
+    `;
+    row.addEventListener('mouseenter', () => onHoverPlayer(p.id));
+    row.addEventListener('mouseleave', () => onHoverPlayer(null));
+    list.appendChild(row);
+  });
+}
+
+/* ============================================================
+   IMPUTATION SIMPLEX (3-player)
+   ============================================================ */
+const SIM = { W: 320, H: 280 };
+
+function renderSimplex() {
+  if (State.players.length !== 3) {
+    $('#simplexCard').style.display = 'none';
+    return;
+  }
+  $('#simplexCard').style.display = '';
+
+  const svg = $('#simplexSVG');
+  svg.innerHTML = '';
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function ce(tag, attrs) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  // Triangle corners — each represents "all v(N) goes to player i"
+  const padX = 50, padTop = 30;
+  const sideH = SIM.W - 2 * padX;
+  const triH = sideH * Math.sqrt(3) / 2;
+  const Ax_x = padX, Ax_y = padTop + triH;
+  const Bx_x = padX + sideH, Bx_y = padTop + triH;
+  const Cx_x = padX + sideH / 2, Cx_y = padTop;
+
+  const players = State.players;
+  const vN = vOf(players.map(p => p.id));
+
+  // Function to map (xA, xB, xC) imputation to screen position
+  // Barycentric: position = (xA/vN) * cornerA + (xB/vN) * cornerB + (xC/vN) * cornerC
+  function imputeToXY(xA, xB, xC) {
+    if (vN <= 0) return [SIM.W / 2, SIM.H / 2];
+    const tA = xA / vN, tB = xB / vN, tC = xC / vN;
+    return [tA * Ax_x + tB * Bx_x + tC * Cx_x,
+            tA * Ax_y + tB * Bx_y + tC * Cx_y];
+  }
+
+  // Triangle edge
+  svg.appendChild(ce('path', {
+    class: 'simplex-edge',
+    d: `M ${Ax_x} ${Ax_y} L ${Bx_x} ${Bx_y} L ${Cx_x} ${Cx_y} Z`
+  }));
+
+  // Inner gridlines at 1/3 and 2/3
+  // (skip for cleanliness — keeps simplex less busy)
+
+  // Core region (if non-empty)
+  const coreVerts = computeCoreVertices3();
+  let coreEmpty = false;
+  if (coreVerts && coreVerts.length >= 3) {
+    // Convex hull of vertices in 2D
+    const screenVerts = coreVerts.map(v => imputeToXY(v.A, v.B, v.C));
+    // Sort vertices by angle around centroid for proper polygon
+    const cx = screenVerts.reduce((s, v) => s + v[0], 0) / screenVerts.length;
+    const cy = screenVerts.reduce((s, v) => s + v[1], 0) / screenVerts.length;
+    screenVerts.sort((a, b) => Math.atan2(a[1] - cy, a[0] - cx) - Math.atan2(b[1] - cy, b[0] - cx));
+    let d = '';
+    screenVerts.forEach((p, i) => { d += (i === 0 ? 'M ' : ' L ') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); });
+    d += ' Z';
+    svg.appendChild(ce('path', { class: 'simplex-core', d }));
+  } else {
+    coreEmpty = true;
+  }
+
+  // Update core status tag
+  const tag = $('#coreStatusTag');
+  const statCore = $('#statCore');
+  const statCoreSub = $('#statCoreSub');
+  if (coreEmpty) {
+    tag.textContent = 'core is empty';
+    tag.className = 'tag tag-defect';
+    statCore.textContent = 'Empty';
+    statCore.style.color = '#FB7185';
+    statCoreSub.textContent = 'No stable allocations';
+  } else {
+    tag.textContent = 'has core';
+    tag.className = 'tag tag-coop';
+    statCore.textContent = 'Non-empty';
+    statCore.style.color = '#34D399';
+    statCoreSub.textContent = `${coreVerts.length} vertex${coreVerts.length === 1 ? '' : 'es'}`;
+  }
+
+  // Corner markers
+  const cornerData = [
+    { id: players[0].id, cls: players[0].cls, label: players[0].initials, x: Ax_x, y: Ax_y },
+    { id: players[1].id, cls: players[1].cls, label: players[1].initials, x: Bx_x, y: Bx_y },
+    { id: players[2].id, cls: players[2].cls, label: players[2].initials, x: Cx_x, y: Cx_y }
+  ];
+  cornerData.forEach(c => {
+    svg.appendChild(ce('circle', {
+      class: 'simplex-corner ' + c.cls.replace('p', 'p'),
+      cx: c.x, cy: c.y, r: 14
+    }));
+    const lbl = ce('text', { class: 'simplex-corner-label', x: c.x, y: c.y });
+    lbl.textContent = c.label;
+    svg.appendChild(lbl);
+  });
+
+  // Shapley value point (green, glowing)
+  if (vN > 0) {
+    const phi = State.shapley;
+    const [sx, sy] = imputeToXY(phi[players[0].id], phi[players[1].id], phi[players[2].id]);
+    svg.appendChild(ce('circle', { class: 'simplex-shapley-glow', cx: sx, cy: sy, r: 12 }));
+    svg.appendChild(ce('circle', { class: 'simplex-shapley-dot', cx: sx, cy: sy, r: 7 }));
+
+    // Equal split point
+    const eqShare = vN / 3;
+    const [eqx, eqy] = imputeToXY(eqShare, eqShare, eqShare);
+    svg.appendChild(ce('circle', { class: 'simplex-equal-dot', cx: eqx, cy: eqy, r: 5 }));
+  }
+
+  // Actual division dot — only if grand coalition is formed
+  if (State.partition.length === 1 && State.partition[0].length === players.length && vN > 0) {
+    const actual = computeActualDivision();
+    const [ax, ay] = imputeToXY(actual[players[0].id], actual[players[1].id], actual[players[2].id]);
+    svg.appendChild(ce('circle', { class: 'simplex-actual-dot', cx: ax, cy: ay, r: 7 }));
+  }
+}
+
+/* ============================================================
+   COALITION VALUES TABLE
+   ============================================================ */
+function renderVTable() {
+  const body = $('#vTableBody');
+  body.innerHTML = '';
+  const N = State.players.map(p => p.id);
+  const subsets = allSubsets(N, false);  // exclude empty
+  // Sort by size, then alphabetically
+  subsets.sort((a, b) => a.length - b.length || a.join('').localeCompare(b.join('')));
+  subsets.forEach(S => {
+    const key = vKey(S);
+    const value = vOf(S);
+    const tr = document.createElement('tr');
+    const sLabel = S.length === N.length ? `{${S.join(',')}} = N` : `{${S.join(',')}}`;
+    tr.innerHTML = `
+      <td class="coalition-cell">v(${sLabel})</td>
+      <td class="text-right">
+        <input type="number" class="v-input" data-key="${key}" value="${value}" step="1"/>
+      </td>
+    `;
+    body.appendChild(tr);
+  });
+  // Bind input changes
+  body.querySelectorAll('.v-input').forEach(inp => {
+    inp.addEventListener('input', (e) => {
+      const k = inp.dataset.key;
+      const v = parseFloat(e.target.value) || 0;
+      State.v[k] = v;
+      recomputeAndRender();
+    });
+  });
+}
+
+/* ============================================================
+   STATS UPDATE
+   ============================================================ */
+function updateStats() {
+  const N = State.players.map(p => p.id);
+  const vN = vOf(N);
+  const sumOfCoalitions = State.partition.reduce((s, c) => s + vOf(c), 0);
+  const surplus = vN - sumOfCoalitions;
+  $('#statTotal').textContent = sumOfCoalitions.toFixed(1);
+  $('#statGrand').textContent = vN.toFixed(1);
+  $('#statSurplus').textContent = surplus.toFixed(1);
+  if (Math.abs(surplus) < 0.01) {
+    $('#statSurplus').style.color = '#34D399';
+    $('#statSurplusSub').textContent = 'grand coalition formed';
+  } else {
+    $('#statSurplus').style.color = '#FB7185';
+    $('#statSurplusSub').textContent = `merge to capture +${surplus.toFixed(1)}`;
+  }
+}
+
+/* ============================================================
+   RECOMPUTE & RENDER
+   ============================================================ */
+function recomputeAndRender() {
+  State.shapley = computeShapley();
+  renderCanvas();
+  renderShapleyList();
+  renderSimplex();
+  renderVTable();
+  updateStats();
+  renderBreakdown();
+}
+
+/* ============================================================
+   PRESETS
+   ============================================================ */
+function applyPreset(key) {
+  const preset = PRESETS[key];
+  // Set up players from preset
+  State.players = preset.players.map(id => PLAYER_TEMPLATES.find(t => t.id === id));
+  // Compute v for all subsets
+  State.v = {};
+  const subsets = allSubsets(State.players.map(p => p.id), false);
+  subsets.forEach(S => {
+    State.v[vKey(S)] = preset.v(S.slice());
+  });
+  // Reset partition to all singletons
+  State.partition = State.players.map(p => [p.id]);
+  recomputeAndRender();
+  showToast(preset.name + ': ' + preset.description, 3500);
+}
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+function addPlayer() {
+  if (State.players.length >= 5) {
+    showToast('Maximum 5 players supported.');
+    return;
+  }
+  const used = new Set(State.players.map(p => p.id));
+  const next = PLAYER_TEMPLATES.find(t => !used.has(t.id));
+  if (!next) return;
+  State.players.push(next);
+  // Initialize new subsets (containing the new player) with reasonable defaults
+  const newPlayer = next.id;
+  // Set v({newPlayer}) = 0 (or default), other new subsets sum of singletons (additive default)
+  const subsets = allSubsets(State.players.map(p => p.id), false);
+  subsets.forEach(S => {
+    const k = vKey(S);
+    if (S.includes(newPlayer) && !(k in State.v)) {
+      // Default: extend current v additively if possible
+      // For simplicity, set v of new subsets = sum of singletons among them
+      const sumSingletons = S.reduce((s, p) => s + (State.v[p] || 0), 0);
+      State.v[k] = sumSingletons;
+    }
+  });
+  // Add as singleton
+  State.partition.push([newPlayer]);
+  recomputeAndRender();
+}
+
+function splitAll() {
+  State.partition = State.players.map(p => [p.id]);
+  recomputeAndRender();
+}
+
+function showToast(text, duration = 1800) {
+  const t = $('#toast');
+  t.textContent = text;
+  t.classList.add('visible');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('visible'), duration);
+}
+
+/* ============================================================
+   PRESET ROW
+   ============================================================ */
+function renderPresetRow() {
+  const row = $('#presetRow');
+  row.innerHTML = '';
+  Object.entries(PRESETS).forEach(([key, preset]) => {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn';
+    btn.textContent = preset.name;
+    btn.title = preset.description;
+    btn.addEventListener('click', () => applyPreset(key));
+    row.appendChild(btn);
+  });
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', () => {
+  $('#addPlayerBtn').addEventListener('click', addPlayer);
+  $('#splitAllBtn').addEventListener('click', () => {
+    splitAll();
+    showToast('All coalitions dissolved');
+  });
+  renderPresetRow();
+  // Start with the convex preset (most pedagogically rich)
+  applyPreset('convex');
+
+  // Re-render canvas on window resize
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(renderCanvas, 200);
+  });
+});
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'cooperative',
+      getSession: function () {
+        if (typeof State === 'undefined' || !State.players || State.players.length === 0) { return null; }
+        return { score: null, outcome: 'completed', detail: { players: State.players.length, exploredCoalition: !!State.partition } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

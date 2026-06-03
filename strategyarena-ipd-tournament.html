@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IPD Tournament — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+          display: ['Instrument Serif', 'serif']
+        },
+        colors: {
+          ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+          violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+          coop: { DEFAULT: '#10B981', glow: '#34D399' },
+          defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+          equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+        }
+      }
+    }
+  };
+</script>
+
+<style>
+  /* ========== Base ========== */
+  html, body { background: #070612; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    color: #E8E6F5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  /* ========== Atmospheric background ========== */
+  .arena-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410; }
+  .arena-bg::before {
+    content: ''; position: absolute;
+    width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: 0.3;
+    top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute;
+    width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #7C5CFF 0%, transparent 70%);
+    filter: blur(120px); opacity: 0.22;
+    bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ========== Glass surfaces ========== */
+  .glass {
+    background: rgba(18, 16, 42, 0.55);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .glass-strong {
+    background: rgba(11, 10, 26, 0.75);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .glass-subtle {
+    background: rgba(255, 255, 255, 0.025);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  /* ========== Buttons ========== */
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 100%);
+    color: #fff; font-weight: 500; padding: 13px 26px; border-radius: 12px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124,92,255,.6); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 22px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s cubic-bezier(.4,0,.2,1);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+  .btn-ghost:active { transform: scale(.98); }
+  .btn-ghost:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ========== Strategy cards ========== */
+  .strat-card {
+    position: relative;
+    border-radius: 18px;
+    padding: 22px;
+    background: rgba(255,255,255,.025);
+    border: 1.5px solid rgba(255,255,255,.08);
+    transition: all .25s cubic-bezier(.16,1,.3,1);
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+  }
+  .strat-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(124,92,255,.3);
+    background: rgba(124,92,255,.04);
+    box-shadow: 0 16px 40px -12px rgba(124,92,255,.4);
+  }
+  .strat-card.selected {
+    border-color: rgba(124,92,255,.7) !important;
+    background: rgba(124,92,255,.08) !important;
+    box-shadow: 0 0 0 3px rgba(124,92,255,.15), 0 16px 40px -12px rgba(124,92,255,.5);
+  }
+  .strat-card.selected::after {
+    content: '✓'; position: absolute; top: 12px; right: 12px;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff;
+  }
+
+  .strat-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+  }
+  .icon-coop { background: linear-gradient(135deg, #10B981, #047857); }
+  .icon-defect { background: linear-gradient(135deg, #F43F5E, #9F1239); }
+  .icon-tft { background: linear-gradient(135deg, #7C5CFF, #5B3DCC); }
+  .icon-grim { background: linear-gradient(135deg, #F59E0B, #92400E); }
+
+  /* ========== Match cards (during playback) ========== */
+  .match-card {
+    border-radius: 16px;
+    padding: 18px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+    transition: all .3s ease;
+    position: relative;
+  }
+  .match-card.user-match {
+    border-color: rgba(124,92,255,.35);
+    background: rgba(124,92,255,.04);
+    box-shadow: 0 0 0 1px rgba(124,92,255,.15);
+  }
+  .match-card.ticking {
+    border-color: rgba(155,123,255,.5);
+    box-shadow: 0 0 24px -4px rgba(124,92,255,.4);
+  }
+
+  /* ========== Move pills (timeline cells) ========== */
+  .move-pill {
+    width: 14px; height: 14px;
+    border-radius: 4px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .25s ease;
+    flex-shrink: 0;
+  }
+  .move-pill.coop { background: rgba(16,185,129,.55); border-color: rgba(52,211,153,.7); }
+  .move-pill.defect { background: rgba(244,63,94,.55); border-color: rgba(251,113,133,.7); }
+  .move-pill.just-played {
+    animation: pillReveal .5s cubic-bezier(.34,1.56,.64,1);
+    box-shadow: 0 0 8px currentColor;
+  }
+  .move-pill.coop.just-played { color: #34D399; }
+  .move-pill.defect.just-played { color: #FB7185; }
+  @keyframes pillReveal {
+    0% { transform: scale(0) rotate(-180deg); opacity: 0; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+
+  /* ========== Score numbers ========== */
+  .score-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    transition: transform .35s cubic-bezier(.34,1.56,.64,1), color .35s ease;
+    display: inline-block;
+  }
+  .score-num.bump { transform: scale(1.2); color: #FBBF24; }
+
+  /* ========== Trust breakdown bars ========== */
+  .trust-bar {
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.06);
+    overflow: hidden;
+    position: relative;
+    display: flex; align-items: center;
+  }
+  .trust-fill {
+    height: 100%;
+    background: linear-gradient(90deg, rgba(16,185,129,.5), rgba(52,211,153,.7));
+    transition: width .6s cubic-bezier(.16,1,.3,1);
+    border-right: 1px solid rgba(52,211,153,.9);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.15);
+  }
+
+  /* ========== Tags ========== */
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-coop { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #34D399; }
+  .tag-defect { background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.3); color: #FB7185; }
+  .tag-violet { background: rgba(124,92,255,.12); border-color: rgba(124,92,255,.3); color: #9B7BFF; }
+
+  /* ========== Logo ========== */
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  /* ========== Stage transitions ========== */
+  .stage-enter { animation: stageEnter .55s cubic-bezier(.16,1,.3,1) forwards; }
+  @keyframes stageEnter {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .stagger > * {
+    opacity: 0;
+    animation: stageEnter .5s cubic-bezier(.16,1,.3,1) forwards;
+  }
+  .stagger > *:nth-child(1) { animation-delay: .05s; }
+  .stagger > *:nth-child(2) { animation-delay: .12s; }
+  .stagger > *:nth-child(3) { animation-delay: .19s; }
+  .stagger > *:nth-child(4) { animation-delay: .26s; }
+  .stagger > *:nth-child(5) { animation-delay: .33s; }
+  .stagger > *:nth-child(6) { animation-delay: .40s; }
+  .stagger > *:nth-child(7) { animation-delay: .47s; }
+  .stagger > *:nth-child(8) { animation-delay: .54s; }
+
+  /* ========== Round indicator ring ========== */
+  .round-ring {
+    position: relative;
+    width: 64px; height: 64px;
+  }
+  .round-ring svg { transform: rotate(-90deg); }
+  .round-ring .ring-bg { stroke: rgba(255,255,255,.08); }
+  .round-ring .ring-fill { stroke: url(#ringGrad); transition: stroke-dashoffset .5s ease; }
+  .round-ring .ring-text {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 14px;
+  }
+
+  /* ========== Speed selector ========== */
+  .speed-btn {
+    padding: 6px 12px; border-radius: 8px;
+    font-size: 12px; font-weight: 500;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    color: rgba(232,230,245,.6);
+    transition: all .15s ease;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .speed-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
+  .speed-btn.active {
+    background: rgba(124,92,255,.15);
+    border-color: rgba(124,92,255,.5);
+    color: #9B7BFF;
+  }
+
+  /* ========== Leaderboard rows ========== */
+  .lb-row {
+    display: grid;
+    grid-template-columns: 50px 1fr auto auto;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 18px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+    transition: all .3s ease;
+  }
+  .lb-row.user-row {
+    background: rgba(124,92,255,.1);
+    border-color: rgba(124,92,255,.35);
+    box-shadow: 0 0 0 1px rgba(124,92,255,.2), 0 8px 24px -8px rgba(124,92,255,.3);
+  }
+  .lb-row .rank-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; font-size: 22px;
+    color: rgba(255,255,255,.4);
+    text-align: center;
+  }
+  .lb-row.gold .rank-num { color: #FBBF24; }
+  .lb-row.silver .rank-num { color: #D1D5DB; }
+  .lb-row.bronze .rank-num { color: #B45309; }
+
+  .reveal-row { animation: revealRow .5s cubic-bezier(.16,1,.3,1) forwards; opacity: 0; }
+  @keyframes revealRow {
+    from { opacity: 0; transform: translateX(-12px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+
+<!-- ============================================================
+     TOP BAR
+     ============================================================ -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Tournament</div>
+      <div class="font-medium tracking-tight">Iterated Prisoner's Dilemma</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3 text-xs text-white/55">
+    <span class="hidden md:inline">Round-robin · 4 strategies · 20 rounds each</span>
+  </div>
+</header>
+
+<!-- ============================================================
+     STAGE 1: STRATEGY SELECTION
+     ============================================================ -->
+<section id="stageSelect" class="px-6 lg:px-10 py-12 max-w-6xl mx-auto stage-enter">
+
+  <div class="text-center mb-10">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Step 1 · Pick your champion</div>
+    <h1 class="font-display text-4xl lg:text-6xl tracking-tight mb-4">
+      Which strategy do you<br/><span class="text-gradient">trust to win?</span>
+    </h1>
+    <p class="text-white/60 max-w-xl mx-auto">Your strategy plays a 20-round match against each of the three other strategies. Total points across all matches determines the champion.</p>
+  </div>
+
+  <div class="grid lg:grid-cols-2 gap-4 stagger" id="strategyPicker">
+
+    <button class="strat-card" data-strat="always_coop">
+      <div class="strat-icon icon-coop">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+      </div>
+      <h3 class="font-semibold text-lg mb-1">Always Cooperate</h3>
+      <p class="text-sm text-white/55 leading-relaxed mb-3">Cooperate every round, no matter what. The naive idealist.</p>
+      <div class="flex flex-wrap gap-1.5">
+        <span class="tag tag-coop">High joint payoff</span>
+        <span class="tag tag-defect">Easily exploited</span>
+      </div>
+    </button>
+
+    <button class="strat-card" data-strat="always_defect">
+      <div class="strat-icon icon-defect">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+      <h3 class="font-semibold text-lg mb-1">Always Defect</h3>
+      <p class="text-sm text-white/55 leading-relaxed mb-3">Defect every round. Nash-optimal in any single game.</p>
+      <div class="flex flex-wrap gap-1.5">
+        <span class="tag tag-defect">Never sucker'd</span>
+        <span class="tag tag-defect">Kills cooperation</span>
+      </div>
+    </button>
+
+    <button class="strat-card" data-strat="tit_for_tat">
+      <div class="strat-icon icon-tft">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
+      </div>
+      <h3 class="font-semibold text-lg mb-1">Tit-for-Tat</h3>
+      <p class="text-sm text-white/55 leading-relaxed mb-3">Cooperate first, then mirror your opponent's last move.</p>
+      <div class="flex flex-wrap gap-1.5">
+        <span class="tag tag-coop">Nice</span>
+        <span class="tag tag-violet">Retaliatory</span>
+        <span class="tag tag-coop">Forgiving</span>
+      </div>
+    </button>
+
+    <button class="strat-card" data-strat="grim">
+      <div class="strat-icon icon-grim">
+        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </div>
+      <h3 class="font-semibold text-lg mb-1">Grim Trigger</h3>
+      <p class="text-sm text-white/55 leading-relaxed mb-3">Cooperate until opponent defects once. Then defect forever.</p>
+      <div class="flex flex-wrap gap-1.5">
+        <span class="tag tag-coop">Nice</span>
+        <span class="tag tag-defect">Unforgiving</span>
+      </div>
+    </button>
+
+  </div>
+
+  <div class="mt-8 text-center">
+    <button class="btn-primary text-base" id="startTournament" disabled>
+      Start tournament
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+    </button>
+    <p class="text-xs text-white/40 mt-3">Pick a strategy above to begin</p>
+  </div>
+
+</section>
+
+<!-- ============================================================
+     STAGE 2: LIVE PLAYBACK
+     ============================================================ -->
+<section id="stagePlay" class="px-6 lg:px-10 py-8 max-w-7xl mx-auto hidden">
+
+  <!-- Status header -->
+  <div class="glass rounded-3xl p-5 lg:p-6 mb-6 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-5">
+      <div class="round-ring">
+        <svg viewBox="0 0 64 64" width="64" height="64">
+          <defs>
+            <linearGradient id="ringGrad" x1="0" x2="1">
+              <stop offset="0" stop-color="#7C5CFF"/>
+              <stop offset="1" stop-color="#34D399"/>
+            </linearGradient>
+          </defs>
+          <circle class="ring-bg" cx="32" cy="32" r="27" fill="none" stroke-width="5"/>
+          <circle class="ring-fill" cx="32" cy="32" r="27" fill="none" stroke-width="5"
+                  stroke-dasharray="169.6" stroke-dashoffset="169.6" stroke-linecap="round" id="ringFill"/>
+        </svg>
+        <div class="ring-text"><span id="ringRound">0</span><span class="text-white/30">/20</span></div>
+      </div>
+      <div>
+        <div class="text-[10px] uppercase tracking-wider text-violet-glow font-medium mb-1">Tournament in progress</div>
+        <div class="text-lg font-medium" id="tourneyStatus">Round 1 starting…</div>
+        <div class="text-xs text-white/50 mt-1" id="userStratLabel"></div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="flex gap-1">
+        <button class="speed-btn" data-speed="0.5">0.5×</button>
+        <button class="speed-btn active" data-speed="1">1×</button>
+        <button class="speed-btn" data-speed="2">2×</button>
+        <button class="speed-btn" data-speed="4">4×</button>
+      </div>
+      <button class="btn-ghost text-sm" id="pauseBtn">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" id="pauseIcon"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+        <span id="pauseLabel">Pause</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Trust breakdown -->
+  <div class="glass rounded-3xl p-5 lg:p-6 mb-6">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Trust breakdown</div>
+        <div class="text-sm text-white/55">Cooperation rate across all matches played so far</div>
+      </div>
+    </div>
+    <div class="space-y-2.5" id="trustBars"></div>
+  </div>
+
+  <!-- Match grid -->
+  <div class="mb-3 flex items-center justify-between">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase">Live matches · 6 head-to-head</div>
+    <div class="text-xs text-white/40">All matches play in parallel</div>
+  </div>
+  <div class="grid lg:grid-cols-2 gap-4" id="matchGrid"></div>
+
+</section>
+
+<!-- ============================================================
+     STAGE 3: LEADERBOARD + ANALYSIS
+     ============================================================ -->
+<section id="stageResults" class="px-6 lg:px-10 py-12 max-w-5xl mx-auto hidden">
+
+  <div class="text-center mb-10">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Tournament complete</div>
+    <h1 class="font-display text-4xl lg:text-6xl tracking-tight mb-3">
+      Final <span class="text-gradient">standings</span>
+    </h1>
+    <p class="text-white/55" id="resultsHeadline">Calculating results…</p>
+  </div>
+
+  <!-- Leaderboard -->
+  <div class="glass rounded-3xl p-5 lg:p-6 mb-6">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-4">Leaderboard</div>
+    <div class="space-y-2" id="leaderboard"></div>
+  </div>
+
+  <!-- Why winner won (educational layer) -->
+  <div class="glass rounded-3xl p-6 lg:p-8 mb-6">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Why the winner won</div>
+    <h2 class="font-display text-2xl lg:text-3xl tracking-tight mb-4" id="lessonHeadline"></h2>
+    <div class="text-sm text-white/70 leading-relaxed space-y-3" id="lessonBody"></div>
+  </div>
+
+  <!-- Strategy comparison grid -->
+  <div class="glass rounded-3xl p-6 lg:p-8 mb-6">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-4">Strategy report cards</div>
+    <div class="grid md:grid-cols-2 gap-3" id="reportCards"></div>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="text-center flex flex-wrap justify-center gap-3">
+    <button class="btn-primary" id="playAgain">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Try a different strategy
+    </button>
+    <button class="btn-ghost" id="rerunSame">Re-run with same strategy</button>
+  </div>
+
+</section>
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script>
+/* =================================================================
+   STRATEGIES — pure functions of (history) -> next move
+   history is array of {self, opp} from the perspective of THIS strategy
+   ================================================================= */
+const STRATEGIES = {
+  always_coop: {
+    key: 'always_coop',
+    name: 'Always Cooperate',
+    short: 'AllC',
+    color: '#34D399',
+    bg: 'icon-coop',
+    pick: () => 'C',
+    description: 'Cooperates every single round.',
+    nature: 'Maximally nice, never retaliates. Predictable.',
+  },
+  always_defect: {
+    key: 'always_defect',
+    name: 'Always Defect',
+    short: 'AllD',
+    color: '#FB7185',
+    bg: 'icon-defect',
+    pick: () => 'D',
+    description: 'Defects every single round.',
+    nature: 'Maximally hostile. Cannot be exploited but kills mutual gains.',
+  },
+  tit_for_tat: {
+    key: 'tit_for_tat',
+    name: 'Tit-for-Tat',
+    short: 'TFT',
+    color: '#9B7BFF',
+    bg: 'icon-tft',
+    pick: (history) => history.length === 0 ? 'C' : history[history.length - 1].opp,
+    description: 'Cooperates first, then copies opponent\'s last move.',
+    nature: 'Nice, retaliatory, forgiving. Axelrod\'s tournament winner.',
+  },
+  grim: {
+    key: 'grim',
+    name: 'Grim Trigger',
+    short: 'Grim',
+    color: '#FBBF24',
+    bg: 'icon-grim',
+    pick: (history) => history.some(h => h.opp === 'D') ? 'D' : 'C',
+    description: 'Cooperates until opponent defects once, then defects forever.',
+    nature: 'Nice but unforgiving. Maximum punishment threat.',
+  }
+};
+
+const STRAT_KEYS = ['always_coop', 'always_defect', 'tit_for_tat', 'grim'];
+const TOTAL_ROUNDS = 20;
+const PAYOFFS = { CC: [3,3], CD: [0,5], DC: [5,0], DD: [1,1] };
+
+/* =================================================================
+   STATE
+   ================================================================= */
+const State = {
+  userStrat: null,      // user's chosen strategy key
+  matches: [],          // [{a, b, history:[{a:'C',b:'D'}], scoreA, scoreB, isUser}]
+  round: 0,             // current round (0..TOTAL_ROUNDS)
+  speed: 1,
+  paused: false,
+  playing: false,
+  stage: 'select'       // 'select' | 'play' | 'results'
+};
+
+/* =================================================================
+   DOM SHORTHANDS
+   ================================================================= */
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+/* =================================================================
+   STAGE 1 — STRATEGY SELECTION
+   ================================================================= */
+function bindSelectStage() {
+  $$('#strategyPicker .strat-card').forEach(card => {
+    card.addEventListener('click', () => {
+      $$('#strategyPicker .strat-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      State.userStrat = card.dataset.strat;
+      $('#startTournament').disabled = false;
+    });
+  });
+  $('#startTournament').addEventListener('click', startTournament);
+}
+
+/* =================================================================
+   TOURNAMENT GENERATION
+   ================================================================= */
+function generateMatches() {
+  const matches = [];
+  for (let i = 0; i < STRAT_KEYS.length; i++) {
+    for (let j = i + 1; j < STRAT_KEYS.length; j++) {
+      const a = STRAT_KEYS[i];
+      const b = STRAT_KEYS[j];
+      matches.push({
+        a, b,
+        history: [],   // [{a:'C',b:'D'}, ...]
+        scoreA: 0, scoreB: 0,
+        isUser: a === State.userStrat || b === State.userStrat
+      });
+    }
+  }
+  return matches;
+}
+
+function startTournament() {
+  // Initialize state
+  State.matches = generateMatches();
+  State.round = 0;
+  State.paused = false;
+  State.playing = true;
+  State.stage = 'play';
+
+  // Render stage 2
+  renderPlayStage();
+  $('#stageSelect').classList.add('hidden');
+  $('#stagePlay').classList.remove('hidden');
+  $('#stagePlay').classList.add('stage-enter');
+
+  // Begin playback after a tiny delay so the UI mounts
+  setTimeout(playLoop, 600);
+}
+
+/* =================================================================
+   STAGE 2 — RENDER
+   ================================================================= */
+function renderPlayStage() {
+  // User strategy label
+  const u = STRATEGIES[State.userStrat];
+  $('#userStratLabel').innerHTML = `Your strategy: <span class="text-violet-glow font-medium">${u.name}</span>`;
+
+  // Trust bars
+  renderTrustBars(true);
+
+  // Match grid
+  const grid = $('#matchGrid');
+  grid.innerHTML = '';
+  State.matches.forEach((m, idx) => {
+    const A = STRATEGIES[m.a], B = STRATEGIES[m.b];
+    const card = document.createElement('div');
+    card.className = 'match-card' + (m.isUser ? ' user-match' : '');
+    card.dataset.matchIdx = idx;
+    card.innerHTML = `
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 rounded-md" style="background: ${A.color}33; border: 1px solid ${A.color}66;"></div>
+          <span class="text-sm font-medium">${A.name}</span>
+          ${m.a === State.userStrat ? '<span class="tag tag-violet">You</span>' : ''}
+        </div>
+        <div class="text-[10px] text-white/40 uppercase tracking-wider">vs</div>
+        <div class="flex items-center gap-2">
+          ${m.b === State.userStrat ? '<span class="tag tag-violet">You</span>' : ''}
+          <span class="text-sm font-medium">${B.name}</span>
+          <div class="w-6 h-6 rounded-md" style="background: ${B.color}33; border: 1px solid ${B.color}66;"></div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between mb-3 px-1">
+        <div class="score-num text-2xl" data-score="a-${idx}" style="color: ${A.color};">0</div>
+        <div class="text-xs text-white/40 font-mono" data-round="${idx}">0/${TOTAL_ROUNDS}</div>
+        <div class="score-num text-2xl" data-score="b-${idx}" style="color: ${B.color};">0</div>
+      </div>
+
+      <div class="space-y-1.5">
+        <div class="flex items-center gap-1.5">
+          <div class="text-[9px] text-white/40 w-10 uppercase tracking-wider">${A.short}</div>
+          <div class="flex gap-1 flex-1" data-tl="a-${idx}"></div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <div class="text-[9px] text-white/40 w-10 uppercase tracking-wider">${B.short}</div>
+          <div class="flex gap-1 flex-1" data-tl="b-${idx}"></div>
+        </div>
+      </div>
+    `;
+    grid.appendChild(card);
+
+    // Pre-build empty timeline pills
+    const tlA = card.querySelector(`[data-tl="a-${idx}"]`);
+    const tlB = card.querySelector(`[data-tl="b-${idx}"]`);
+    for (let r = 0; r < TOTAL_ROUNDS; r++) {
+      const pa = document.createElement('div');
+      pa.className = 'move-pill';
+      tlA.appendChild(pa);
+      const pb = document.createElement('div');
+      pb.className = 'move-pill';
+      tlB.appendChild(pb);
+    }
+  });
+
+  // Speed buttons
+  $$('.speed-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('.speed-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      State.speed = parseFloat(btn.dataset.speed);
+    });
+  });
+
+  // Pause button
+  $('#pauseBtn').addEventListener('click', togglePause);
+}
+
+function renderTrustBars(initial = false) {
+  const container = $('#trustBars');
+  if (initial) container.innerHTML = '';
+
+  STRAT_KEYS.forEach(key => {
+    const s = STRATEGIES[key];
+    const stats = computeCoopRate(key);
+    const pct = Math.round(stats.rate * 100);
+
+    let row = container.querySelector(`[data-trust="${key}"]`);
+    if (!row) {
+      row = document.createElement('div');
+      row.dataset.trust = key;
+      row.innerHTML = `
+        <div class="flex items-center justify-between mb-1.5">
+          <div class="flex items-center gap-2">
+            <div class="w-3 h-3 rounded-sm" style="background: ${s.color};"></div>
+            <span class="text-sm font-medium">${s.name}</span>
+            ${key === State.userStrat ? '<span class="tag tag-violet text-[10px]">You</span>' : ''}
+          </div>
+          <span class="text-xs font-mono text-white/60">
+            <span data-trust-pct="${key}">${pct}</span>% coop ·
+            <span data-trust-played="${key}">${stats.total}</span> moves
+          </span>
+        </div>
+        <div class="trust-bar">
+          <div class="trust-fill" data-trust-fill="${key}" style="width: ${pct}%; background: linear-gradient(90deg, ${s.color}55, ${s.color}AA);"></div>
+        </div>
+      `;
+      container.appendChild(row);
+    } else {
+      row.querySelector(`[data-trust-pct="${key}"]`).textContent = pct;
+      row.querySelector(`[data-trust-played="${key}"]`).textContent = stats.total;
+      const fill = row.querySelector(`[data-trust-fill="${key}"]`);
+      fill.style.width = pct + '%';
+      fill.style.background = `linear-gradient(90deg, ${s.color}55, ${s.color}AA)`;
+    }
+  });
+}
+
+function computeCoopRate(key) {
+  let coops = 0, total = 0;
+  State.matches.forEach(m => {
+    m.history.forEach(h => {
+      if (m.a === key) { total++; if (h.a === 'C') coops++; }
+      if (m.b === key) { total++; if (h.b === 'C') coops++; }
+    });
+  });
+  return { rate: total ? coops / total : 0, total };
+}
+
+/* =================================================================
+   STAGE 2 — PLAYBACK LOOP
+   ================================================================= */
+async function playLoop() {
+  while (State.round < TOTAL_ROUNDS && State.playing) {
+    if (State.paused) { await wait(150); continue; }
+
+    State.round++;
+    $('#tourneyStatus').textContent = `Round ${State.round} of ${TOTAL_ROUNDS}`;
+    $('#ringRound').textContent = State.round;
+
+    // Update progress ring (circumference = 2π*27 ≈ 169.6)
+    const offset = 169.6 * (1 - State.round / TOTAL_ROUNDS);
+    $('#ringFill').setAttribute('stroke-dashoffset', offset);
+
+    // Highlight all match cards as "ticking"
+    $$('.match-card').forEach(c => c.classList.add('ticking'));
+
+    const tickDelay = 350 / State.speed;  // base 350ms tick
+    await wait(tickDelay);
+
+    // Compute moves for all matches in parallel (synchronously — they're pure functions)
+    const moves = State.matches.map(m => {
+      const sA = STRATEGIES[m.a];
+      const sB = STRATEGIES[m.b];
+      // Build per-side perspective histories
+      const histA = m.history.map(h => ({ self: h.a, opp: h.b }));
+      const histB = m.history.map(h => ({ self: h.b, opp: h.a }));
+      // Simplify: each strategy.pick uses {opp} accessor as we coded above
+      // We constructed strategies to use h.opp from per-side perspective
+      const moveA = sA.pick(histA);
+      const moveB = sB.pick(histB);
+      const key = moveA + moveB;
+      const [pa, pb] = PAYOFFS[key];
+      return { moveA, moveB, pa, pb };
+    });
+
+    // Apply & animate
+    State.matches.forEach((m, idx) => {
+      const { moveA, moveB, pa, pb } = moves[idx];
+      m.history.push({ a: moveA, b: moveB });
+      m.scoreA += pa; m.scoreB += pb;
+
+      // Reveal pills for this round
+      const card = document.querySelector(`[data-match-idx="${idx}"]`);
+      const pillA = card.querySelector(`[data-tl="a-${idx}"]`).children[State.round - 1];
+      const pillB = card.querySelector(`[data-tl="b-${idx}"]`).children[State.round - 1];
+      pillA.classList.add(moveA === 'C' ? 'coop' : 'defect', 'just-played');
+      pillB.classList.add(moveB === 'C' ? 'coop' : 'defect', 'just-played');
+      setTimeout(() => { pillA.classList.remove('just-played'); pillB.classList.remove('just-played'); }, 600);
+
+      // Round counter
+      card.querySelector(`[data-round="${idx}"]`).textContent = `${State.round}/${TOTAL_ROUNDS}`;
+
+      // Score bumps
+      const scoreAEl = card.querySelector(`[data-score="a-${idx}"]`);
+      const scoreBEl = card.querySelector(`[data-score="b-${idx}"]`);
+      animateScore(scoreAEl, m.scoreA - pa, m.scoreA, pa > 0);
+      animateScore(scoreBEl, m.scoreB - pb, m.scoreB, pb > 0);
+    });
+
+    // Update trust bars after each round
+    renderTrustBars();
+
+    await wait(tickDelay);
+    $$('.match-card').forEach(c => c.classList.remove('ticking'));
+    await wait(80 / State.speed);
+  }
+
+  if (State.round >= TOTAL_ROUNDS) {
+    setTimeout(showResults, 600);
+  }
+}
+
+function animateScore(el, from, to, didGain) {
+  if (didGain) {
+    el.classList.add('bump');
+    setTimeout(() => el.classList.remove('bump'), 350);
+  }
+  const duration = 400;
+  const t0 = performance.now();
+  function tick(now) {
+    const t = Math.min((now - t0) / duration, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = Math.round(from + (to - from) * eased);
+    if (t < 1) requestAnimationFrame(tick);
+    else el.textContent = to;
+  }
+  requestAnimationFrame(tick);
+}
+
+function togglePause() {
+  State.paused = !State.paused;
+  $('#pauseLabel').textContent = State.paused ? 'Resume' : 'Pause';
+  $('#pauseIcon').innerHTML = State.paused
+    ? '<path d="M8 5v14l11-7z"/>'
+    : '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, Math.max(ms, 8))); }
+
+/* =================================================================
+   STAGE 3 — RESULTS
+   ================================================================= */
+function showResults() {
+  State.stage = 'results';
+  // Compute totals
+  const totals = {};
+  STRAT_KEYS.forEach(k => totals[k] = 0);
+  State.matches.forEach(m => {
+    totals[m.a] += m.scoreA;
+    totals[m.b] += m.scoreB;
+  });
+
+  const ranked = STRAT_KEYS
+    .map(k => ({ key: k, total: totals[k], strat: STRATEGIES[k] }))
+    .sort((x, y) => y.total - x.total);
+
+  const winner = ranked[0];
+  const userRank = ranked.findIndex(r => r.key === State.userStrat) + 1;
+
+  // Headline
+  const userStrat = STRATEGIES[State.userStrat];
+  const userTotal = totals[State.userStrat];
+  let headline;
+  if (winner.key === State.userStrat) {
+    headline = `<span class="text-coop-glow">Your champion won the tournament.</span> ${userStrat.name} finished first with ${userTotal} points.`;
+  } else {
+    headline = `Your pick (${userStrat.name}) finished <span class="text-violet-glow">#${userRank}</span> with ${userTotal} points. <span class="text-coop-glow">${winner.strat.name}</span> took the championship with ${winner.total}.`;
+  }
+  $('#resultsHeadline').innerHTML = headline;
+
+  // Leaderboard
+  const lb = $('#leaderboard');
+  lb.innerHTML = '';
+  ranked.forEach((r, idx) => {
+    const row = document.createElement('div');
+    const rankClass = idx === 0 ? 'gold' : idx === 1 ? 'silver' : idx === 2 ? 'bronze' : '';
+    const userClass = r.key === State.userStrat ? 'user-row' : '';
+    row.className = `lb-row reveal-row ${rankClass} ${userClass}`;
+    row.style.animationDelay = (0.15 + idx * 0.12) + 's';
+
+    // Per-opponent breakdown for this strategy
+    const breakdownPills = State.matches
+      .filter(m => m.a === r.key || m.b === r.key)
+      .map(m => {
+        const isA = m.a === r.key;
+        const myScore = isA ? m.scoreA : m.scoreB;
+        const oppKey = isA ? m.b : m.a;
+        const oppName = STRATEGIES[oppKey].name;
+        return `<span class="text-[10px] text-white/45">vs ${STRATEGIES[oppKey].short}: <span class="font-mono text-white/80">${myScore}</span></span>`;
+      })
+      .join(' · ');
+
+    row.innerHTML = `
+      <div class="rank-num">${idx + 1}</div>
+      <div>
+        <div class="flex items-center gap-2">
+          <div class="w-3 h-3 rounded-sm" style="background: ${r.strat.color};"></div>
+          <span class="font-medium">${r.strat.name}</span>
+          ${r.key === State.userStrat ? '<span class="tag tag-violet text-[10px]">You</span>' : ''}
+          ${idx === 0 ? '<span class="tag" style="background: rgba(251,191,36,.15); border-color: rgba(251,191,36,.35); color: #FBBF24;">Champion</span>' : ''}
+        </div>
+        <div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">${breakdownPills}</div>
+      </div>
+      <div></div>
+      <div class="font-mono text-2xl font-semibold" style="color: ${r.strat.color};">${r.total}</div>
+    `;
+    lb.appendChild(row);
+  });
+
+  // Lesson
+  renderLesson(winner, ranked, totals);
+
+  // Report cards
+  renderReportCards(ranked, totals);
+
+  // Stage swap
+  $('#stagePlay').classList.add('hidden');
+  $('#stageResults').classList.remove('hidden');
+  $('#stageResults').classList.add('stage-enter');
+
+  // Bind action buttons
+  $('#playAgain').onclick = resetToSelect;
+  $('#rerunSame').onclick = () => {
+    resetToSelect();
+    // Re-select user's strategy and start
+    setTimeout(() => {
+      const card = document.querySelector(`[data-strat="${State.userStrat}"]`);
+      if (card) card.click();
+      $('#startTournament').click();
+    }, 100);
+  };
+}
+
+function renderLesson(winner, ranked, totals) {
+  let headline, body = [];
+
+  // The classic Axelrod-style lessons depend on the field
+  // Our 4-strategy field: ALLC, ALLD, TFT, GRIM
+  // TFT and GRIM should typically dominate
+
+  if (winner.key === 'tit_for_tat') {
+    headline = `Tit-for-Tat won by being <span class="text-gradient">nice, retaliatory, and forgiving.</span>`;
+    body.push(`Tit-for-Tat never defects first — it begins every match cooperating, which lets it sustain mutual cooperation (3, 3 each round) against other cooperative strategies. That's <span class="font-mono text-coop-glow">60 points</span> per match against any nice opponent.`);
+    body.push(`But TFT also retaliates immediately when defected against, so it never gets repeatedly exploited. Against <span class="text-defect-glow">Always Defect</span>, it loses one round (the sucker payoff), then mirrors defection for the rest — capping its losses at the Nash payoff.`);
+    body.push(`The key insight from <em>Axelrod's 1980 tournaments</em>: simple, transparent, conditional cooperation outperforms both naive niceness and aggressive defection. Forgiveness matters because grudges (see Grim Trigger) prevent recovery from accidental defections.`);
+  } else if (winner.key === 'grim') {
+    headline = `Grim Trigger won by <span class="text-gradient">credibly threatening eternal punishment.</span>`;
+    body.push(`Grim cooperates as long as the opponent does — so against <span class="text-coop-glow">Always Cooperate</span> and <span class="text-violet-glow">Tit-for-Tat</span>, it sustains mutual cooperation just like TFT.`);
+    body.push(`Against <span class="text-defect-glow">Always Defect</span>, it gets burned once then defects forever. The threat of permanent punishment is what enforces cooperation in repeated games — this is the intuition behind the <em>Folk Theorem</em>.`);
+    body.push(`Grim's weakness: it cannot recover from accidents. If two Grim players accidentally defect once, they spiral into mutual defection forever. In noisy environments, this is fatal.`);
+  } else if (winner.key === 'always_defect') {
+    headline = `Always Defect won by <span class="text-gradient">never being suckered.</span>`;
+    body.push(`In this field, exploiting <span class="text-coop-glow">Always Cooperate</span> for 100 points per match (5 every round) was enough to overcome the punishment received from TFT and Grim.`);
+    body.push(`This is the <em>danger of cooperative populations</em>: a single defector can dominate when there are exploitable cooperators around. This is why evolutionary game theory predicts that pure cooperation is unstable — defectors invade.`);
+    body.push(`But notice: in a tournament with no Always Cooperate, AllD typically loses badly. Its success here depends entirely on the field composition.`);
+  } else if (winner.key === 'always_coop') {
+    headline = `Always Cooperate won — but only because <span class="text-gradient">the field was kind.</span>`;
+    body.push(`AllC usually loses badly because Always Defect exploits it for 0 points every round. If it won here, it's because the cooperative strategies (TFT, Grim) sustained mutual cooperation with it for the full 60 points per match.`);
+    body.push(`The lesson: AllC's success is <em>fragile</em>. A single Always Defect strategy in a population devastates it.`);
+  }
+
+  $('#lessonHeadline').innerHTML = headline;
+  $('#lessonBody').innerHTML = body.map(p => `<p>${p}</p>`).join('');
+}
+
+function renderReportCards(ranked, totals) {
+  const cards = $('#reportCards');
+  cards.innerHTML = '';
+  STRAT_KEYS.forEach(key => {
+    const s = STRATEGIES[key];
+    const total = totals[key];
+    const stats = computeCoopRate(key);
+    const pct = Math.round(stats.rate * 100);
+    const card = document.createElement('div');
+    card.className = 'glass-subtle rounded-xl p-4';
+    card.innerHTML = `
+      <div class="flex items-start justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg ${s.bg} flex items-center justify-center">
+            <span class="text-xs font-bold text-white">${s.short}</span>
+          </div>
+          <div>
+            <div class="text-sm font-medium">${s.name}</div>
+            <div class="text-[10px] text-white/45">${s.nature}</div>
+          </div>
+        </div>
+        <div class="font-mono text-lg font-semibold" style="color: ${s.color};">${total}</div>
+      </div>
+      <div class="flex items-center justify-between text-xs">
+        <span class="text-white/50">Cooperation rate</span>
+        <span class="font-mono">${pct}%</span>
+      </div>
+      <div class="trust-bar mt-1.5" style="height: 6px;">
+        <div class="trust-fill" style="width: ${pct}%; background: linear-gradient(90deg, ${s.color}55, ${s.color}AA);"></div>
+      </div>
+    `;
+    cards.appendChild(card);
+  });
+}
+
+/* =================================================================
+   RESET
+   ================================================================= */
+function resetToSelect() {
+  State.matches = [];
+  State.round = 0;
+  State.paused = false;
+  State.playing = false;
+  State.stage = 'select';
+  $('#stageResults').classList.add('hidden');
+  $('#stagePlay').classList.add('hidden');
+  $('#stageSelect').classList.remove('hidden');
+  $('#stageSelect').classList.add('stage-enter');
+  $$('#strategyPicker .strat-card').forEach(c => c.classList.remove('selected'));
+  $('#startTournament').disabled = true;
+  $('#pauseLabel').textContent = 'Pause';
+  $('#pauseIcon').innerHTML = '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>';
+  // Reset speed to 1×
+  $$('.speed-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.speed-btn[data-speed="1"]').classList.add('active');
+  State.speed = 1;
+}
+
+/* =================================================================
+   BOOT
+   ================================================================= */
+document.addEventListener('DOMContentLoaded', bindSelectStage);
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'ipd-tournament',
+      getSession: function () {
+        if (typeof State === 'undefined' || State.stage !== 'results' || !State.matches || State.matches.length === 0) { return null; }
+        var me = null, i;
+        for (i = 0; i < State.matches.length; i++) { if (State.matches[i].isUser) { me = State.matches[i]; break; } }
+        var total = 0, best = -1, myTotal = 0;
+        // sum each strategy's total across matches to rank the user
+        var totals = {};
+        for (i = 0; i < State.matches.length; i++) {
+          var m = State.matches[i];
+          totals[m.a] = (totals[m.a] || 0) + m.scoreA;
+          totals[m.b] = (totals[m.b] || 0) + m.scoreB;
+        }
+        var keys = Object.keys(totals), mx = -1, mxKey = null;
+        for (i = 0; i < keys.length; i++) { if (totals[keys[i]] > mx) { mx = totals[keys[i]]; mxKey = keys[i]; } }
+        var userKey = State.userStrat;
+        var userScore = totals[userKey] || 0;
+        var score = mx > 0 ? (userScore / mx) : 0;          // share of the field leader's total
+        var outcome = (userKey === mxKey) ? 'win' : 'completed';
+        return { score: score, outcome: outcome, detail: { userStrategy: userKey, userTotal: userScore, leaderTotal: mx } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

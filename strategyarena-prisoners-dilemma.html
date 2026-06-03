@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Prisoner's Dilemma — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+          display: ['Instrument Serif', 'serif']
+        },
+        colors: {
+          ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+          violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+          coop: { DEFAULT: '#10B981', glow: '#34D399' },
+          defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+          equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+        }
+      }
+    }
+  };
+</script>
+
+<style>
+  /* ==========================================================
+     Base
+     ========================================================== */
+  html, body { background: #070612; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    color: #E8E6F5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  /* ==========================================================
+     Atmospheric background — darker, with barred edge shadow
+     ========================================================== */
+  .arena-bg {
+    position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410;
+  }
+  .arena-bg::before {
+    content: ''; position: absolute;
+    width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: 0.35;
+    top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute;
+    width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #7C5CFF 0%, transparent 70%);
+    filter: blur(120px); opacity: 0.25;
+    bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+
+  /* Faint vertical bar shadow on side edges (subliminal prison feel) */
+  .bar-edges {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(0,0,0,0.4) 0px, transparent 40px),
+      linear-gradient(-90deg, rgba(0,0,0,0.4) 0px, transparent 40px);
+  }
+
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ==========================================================
+     Glass surfaces
+     ========================================================== */
+  .glass {
+    background: rgba(18, 16, 42, 0.55);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .glass-strong {
+    background: rgba(11, 10, 26, 0.75);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .glass-subtle {
+    background: rgba(255, 255, 255, 0.025);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  /* ==========================================================
+     Buttons
+     ========================================================== */
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 100%);
+    color: #fff; font-weight: 500; padding: 11px 22px; border-radius: 10px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px -4px rgba(124,92,255,.55); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 22px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s cubic-bezier(.4,0,.2,1);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+  .btn-ghost:active { transform: scale(.98); }
+
+  /* ==========================================================
+     Action buttons (Cooperate / Defect) — the centerpiece
+     ========================================================== */
+  .action-btn {
+    position: relative; padding: 28px 24px;
+    border-radius: 18px;
+    border: 1.5px solid;
+    background: rgba(255,255,255,.02);
+    transition: all .2s cubic-bezier(.4,0,.2,1);
+    cursor: pointer;
+    overflow: hidden;
+    text-align: left;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .action-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .action-btn:not(:disabled):hover {
+    transform: translateY(-3px);
+  }
+  .action-btn:not(:disabled):active { transform: translateY(0) scale(.99); }
+
+  .action-coop { border-color: rgba(16,185,129,.35); }
+  .action-coop:not(:disabled):hover {
+    background: rgba(16,185,129,.08);
+    border-color: rgba(52,211,153,.6);
+    box-shadow: 0 12px 30px -8px rgba(16,185,129,.4);
+  }
+  .action-coop .label { color: #34D399; }
+
+  .action-defect { border-color: rgba(244,63,94,.35); }
+  .action-defect:not(:disabled):hover {
+    background: rgba(244,63,94,.08);
+    border-color: rgba(251,113,133,.6);
+    box-shadow: 0 12px 30px -8px rgba(244,63,94,.4);
+  }
+  .action-defect .label { color: #FB7185; }
+
+  .action-btn .label { font-size: 18px; font-weight: 600; letter-spacing: -.01em; }
+  .action-btn .desc { font-size: 12px; color: rgba(255,255,255,.5); line-height: 1.5; }
+  .action-btn .icon-circle {
+    position: absolute; top: 14px; right: 14px;
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    border: 1.5px solid;
+  }
+  .action-coop .icon-circle { border-color: rgba(52,211,153,.4); background: rgba(16,185,129,.08); }
+  .action-defect .icon-circle { border-color: rgba(251,113,133,.4); background: rgba(244,63,94,.08); }
+
+  .action-btn.locked {
+    background: rgba(124,92,255,.08);
+    border-color: rgba(124,92,255,.5);
+    box-shadow: 0 0 0 3px rgba(124,92,255,.15);
+  }
+
+  /* ==========================================================
+     Payoff matrix
+     ========================================================== */
+  .matrix-grid {
+    display: grid;
+    grid-template-columns: 70px 1fr 1fr;
+    gap: 10px;
+  }
+  .matrix-axis {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 500; letter-spacing: .08em;
+    text-transform: uppercase; color: rgba(232,230,245,.45);
+  }
+
+  .pd-cell {
+    position: relative;
+    border-radius: 16px;
+    padding: 22px 16px;
+    text-align: center;
+    transition: all .5s cubic-bezier(.16,1,.3,1);
+    border: 1.5px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.02);
+    overflow: hidden;
+  }
+  .pd-cell .quad-label { position: absolute; top: 10px; right: 12px; font-size: 9px; opacity: .35; font-weight: 600; letter-spacing: .05em; }
+  .pd-cell .lbl { font-size: 10px; opacity: .5; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 8px; font-weight: 500; }
+  .pd-cell .val { font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 600; letter-spacing: -.02em; line-height: 1; }
+  .pd-cell .val .you { display: inline-block; }
+  .pd-cell .val .opp { display: inline-block; opacity: .55; }
+
+  .pd-cell.cc-color { background: rgba(16,185,129,.05); border-color: rgba(16,185,129,.18); }
+  .pd-cell.cc-color .val { color: #34D399; }
+  .pd-cell.dd-color { background: rgba(244,63,94,.05); border-color: rgba(244,63,94,.18); }
+  .pd-cell.dd-color .val { color: #FB7185; }
+  .pd-cell.cd-color, .pd-cell.dc-color { background: rgba(245,158,11,.04); border-color: rgba(245,158,11,.15); }
+  .pd-cell.cd-color .val, .pd-cell.dc-color .val { color: #FBBF24; }
+
+  .pd-cell.dim { opacity: .25; transform: scale(.97); }
+  .pd-cell.active {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 2.5px rgba(124,92,255,.7),
+                0 25px 60px -15px rgba(124,92,255,.5);
+    z-index: 5;
+  }
+  .pd-cell.active .val { font-size: 32px; }
+  .pd-cell.active::before {
+    content: ''; position: absolute; inset: -8px;
+    border-radius: 22px; z-index: -1;
+    background: linear-gradient(135deg, rgba(124,92,255,.25), rgba(155,123,255,.05));
+    animation: ringPulse 1.6s ease-out infinite;
+  }
+  @keyframes ringPulse {
+    0%,100% { opacity: .7; transform: scale(1); }
+    50% { opacity: .25; transform: scale(1.04); }
+  }
+
+  /* Nash equilibrium marker */
+  .nash-badge {
+    position: absolute; top: -8px; right: -8px;
+    background: linear-gradient(135deg, #F59E0B, #B45309);
+    color: #2C1306;
+    font-size: 9px; font-weight: 700;
+    padding: 3px 7px;
+    border-radius: 999px;
+    letter-spacing: .04em;
+    box-shadow: 0 4px 12px -2px rgba(245,158,11,.5);
+    z-index: 6;
+  }
+
+  /* ==========================================================
+     Prison bars effect (mutual defection)
+     ========================================================== */
+  .prison-bars {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: 16px;
+  }
+  .prison-bar {
+    position: absolute; top: 0; bottom: 0;
+    width: 6px;
+    background: linear-gradient(180deg, rgba(140,140,160,.05) 0%, rgba(180,180,200,.45) 50%, rgba(140,140,160,.05) 100%);
+    border-left: 1px solid rgba(255,255,255,.18);
+    border-right: 1px solid rgba(0,0,0,.4);
+    box-shadow: inset 0 0 8px rgba(0,0,0,.4);
+    transform: translateY(-100%);
+  }
+  .prison-bars.slam .prison-bar {
+    animation: barSlam .9s cubic-bezier(.5,0,.7,1.6) forwards;
+  }
+  @keyframes barSlam {
+    0% { transform: translateY(-100%); }
+    60% { transform: translateY(0); }
+    70% { transform: translateY(-3%); }
+    100% { transform: translateY(0); }
+  }
+  .prison-bars.dissolve .prison-bar {
+    animation: barFade .8s ease-out 1.4s forwards;
+  }
+  @keyframes barFade { to { opacity: 0; transform: translateY(0) scaleY(.5); } }
+
+  /* ==========================================================
+     Player choice cards
+     ========================================================== */
+  .choice-card {
+    position: relative;
+    border-radius: 16px;
+    padding: 22px;
+    background: rgba(255,255,255,.025);
+    border: 1.5px solid rgba(255,255,255,.08);
+    transition: all .3s cubic-bezier(.16,1,.3,1);
+    overflow: hidden;
+    min-height: 168px;
+  }
+  .choice-card.you { border-color: rgba(124,92,255,.3); }
+  .choice-card.you.locked { background: rgba(124,92,255,.06); }
+
+  .choice-card .role-tag {
+    font-size: 10px; font-weight: 500; letter-spacing: .1em;
+    text-transform: uppercase; color: rgba(255,255,255,.5);
+  }
+  .choice-card .player-name { font-size: 18px; font-weight: 600; margin-top: 4px; letter-spacing: -.01em; }
+  .choice-card .player-meta { font-size: 11px; color: rgba(255,255,255,.45); margin-top: 2px; }
+
+  .choice-card .choice-display {
+    margin-top: 16px;
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.03);
+    border: 1px dashed rgba(255,255,255,.1);
+    text-align: center;
+    min-height: 64px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    color: rgba(255,255,255,.4);
+    transition: all .4s cubic-bezier(.16,1,.3,1);
+  }
+
+  .choice-display.revealed-coop {
+    background: rgba(16,185,129,.1);
+    border: 1px solid rgba(52,211,153,.4);
+    color: #34D399;
+    font-weight: 600;
+    animation: revealPop .6s cubic-bezier(.34,1.56,.64,1);
+  }
+  .choice-display.revealed-defect {
+    background: rgba(244,63,94,.1);
+    border: 1px solid rgba(251,113,133,.4);
+    color: #FB7185;
+    font-weight: 600;
+    animation: revealPop .6s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes revealPop {
+    0% { opacity: 0; transform: scale(.6) rotateY(180deg); }
+    100% { opacity: 1; transform: scale(1) rotateY(0); }
+  }
+
+  .pulse-thinking {
+    display: inline-flex; gap: 4px; align-items: center;
+  }
+  .pulse-thinking span {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(255,255,255,.5);
+    animation: thinkPulse 1.2s ease-in-out infinite;
+  }
+  .pulse-thinking span:nth-child(2) { animation-delay: .2s; }
+  .pulse-thinking span:nth-child(3) { animation-delay: .4s; }
+  @keyframes thinkPulse {
+    0%, 80%, 100% { opacity: .3; transform: scale(1); }
+    40% { opacity: 1; transform: scale(1.3); }
+  }
+
+  /* Score ticker */
+  .score-num {
+    font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    transition: transform .35s cubic-bezier(.34,1.56,.64,1), color .35s ease;
+    display: inline-block;
+    font-size: 28px;
+    letter-spacing: -.02em;
+    line-height: 1;
+  }
+  .score-num.bump-pos { transform: scale(1.3); color: #FBBF24; }
+  .score-num.bump-zero { transform: scale(1.1); color: #FB7185; }
+
+  /* ==========================================================
+     Coins
+     ========================================================== */
+  .coin {
+    position: absolute;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #FCD34D, #F59E0B 55%, #B45309);
+    box-shadow: 0 0 14px rgba(251,191,36,.7), inset 0 1px 0 rgba(255,255,255,.4);
+    z-index: 50;
+    pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+    color: #7c2d12;
+  }
+  .coin::after { content: '$'; }
+
+  /* Loss indicator (sucker payoff) */
+  .loss-flash {
+    position: absolute; pointer-events: none;
+    z-index: 50;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 32px; font-weight: 700;
+    color: #FB7185;
+    text-shadow: 0 0 20px rgba(244,63,94,.6);
+    animation: lossRise 1.2s ease-out forwards;
+  }
+  @keyframes lossRise {
+    0% { opacity: 0; transform: translate(-50%,-50%) scale(.6); }
+    20% { opacity: 1; transform: translate(-50%,-50%) scale(1.1); }
+    100% { opacity: 0; transform: translate(-50%,-90px) scale(1); }
+  }
+
+  /* ==========================================================
+     Tags
+     ========================================================== */
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-coop { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #34D399; }
+  .tag-defect { background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.3); color: #FB7185; }
+
+  /* ==========================================================
+     Round timeline (history)
+     ========================================================== */
+  .timeline-cell {
+    width: 18px; height: 18px;
+    border-radius: 5px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .3s ease;
+  }
+  .timeline-cell.coop { background: rgba(16,185,129,.5); border-color: rgba(52,211,153,.7); }
+  .timeline-cell.defect { background: rgba(244,63,94,.5); border-color: rgba(251,113,133,.7); }
+  .timeline-cell.current { box-shadow: 0 0 0 2px rgba(124,92,255,.6); }
+
+  /* ==========================================================
+     Logo
+     ========================================================== */
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  /* ==========================================================
+     Modal
+     ========================================================== */
+  .modal-bd {
+    background: rgba(7,6,18,.75);
+    backdrop-filter: blur(8px);
+  }
+
+  /* Round-end emotion banner */
+  .emotion-banner {
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    border: 1.5px solid;
+    display: flex; align-items: center; gap: 14px;
+    animation: bannerSlide .5s cubic-bezier(.16,1,.3,1);
+  }
+  @keyframes bannerSlide {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .emotion-banner.win { background: rgba(16,185,129,.08); border-color: rgba(52,211,153,.3); }
+  .emotion-banner.loss { background: rgba(244,63,94,.08); border-color: rgba(251,113,133,.3); }
+  .emotion-banner.eq { background: rgba(245,158,11,.08); border-color: rgba(251,191,36,.3); }
+  .emotion-banner.gain { background: rgba(124,92,255,.08); border-color: rgba(155,123,255,.3); }
+
+  .emotion-banner .e-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .emotion-banner.win .e-icon { background: rgba(52,211,153,.15); color: #34D399; }
+  .emotion-banner.loss .e-icon { background: rgba(251,113,133,.15); color: #FB7185; }
+  .emotion-banner.eq .e-icon { background: rgba(251,191,36,.15); color: #FBBF24; }
+  .emotion-banner.gain .e-icon { background: rgba(155,123,255,.15); color: #9B7BFF; }
+
+  .emotion-banner .e-title { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+  .emotion-banner .e-sub { font-size: 12px; color: rgba(255,255,255,.6); line-height: 1.5; }
+
+  /* Slide-in for new turn debrief */
+  .turn-fade { animation: turnFade .4s ease-out; }
+  @keyframes turnFade {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.15); }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+<div class="bar-edges"></div>
+
+<!-- ============================================================
+     TOP BAR
+     ============================================================ -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
+      <div class="font-medium tracking-tight">Prisoner's Dilemma</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="hidden md:flex items-center gap-2 text-xs text-white/55 px-3 py-2 rounded-lg glass-subtle">
+      <span>Round</span>
+      <span class="font-mono text-white" id="roundLabel">1</span>
+      <span class="text-white/30">/</span>
+      <span class="font-mono text-white/60" id="totalRoundsLabel">10</span>
+    </div>
+    <button class="btn-ghost text-sm" data-action="restart" title="Restart match">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Restart
+    </button>
+  </div>
+</header>
+
+<!-- ============================================================
+     MAIN ARENA
+     ============================================================ -->
+<main class="px-6 lg:px-10 py-8 max-w-7xl mx-auto">
+
+  <!-- Layout: matrix on the left (large), interaction column on the right -->
+  <div class="grid lg:grid-cols-[1.15fr_1fr] gap-6">
+
+    <!-- ============================================================
+         LEFT: MATRIX + ACTIONS
+         ============================================================ -->
+    <div class="space-y-6">
+
+      <!-- Score / round status bar -->
+      <div class="glass rounded-2xl p-5 flex items-center justify-between">
+        <div class="flex items-center gap-5">
+          <div>
+            <div class="text-[10px] uppercase tracking-wider text-white/45 mb-1">You</div>
+            <span class="score-num text-violet-glow" id="scoreYou">0</span>
+          </div>
+          <div class="text-white/20 text-2xl font-light">·</div>
+          <div>
+            <div class="text-[10px] uppercase tracking-wider text-white/45 mb-1" id="oppLabel">Tina (Tit-for-Tat)</div>
+            <span class="score-num text-equilibrium-glow" id="scoreOpp">0</span>
+          </div>
+        </div>
+        <div class="text-right">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 mb-1">Coop rate</div>
+          <div class="font-mono text-sm">
+            <span class="text-coop-glow" id="coopRateYou">—</span>
+            <span class="text-white/30">/</span>
+            <span class="text-equilibrium-glow" id="coopRateOpp">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- THE MATRIX -->
+      <div class="glass-strong rounded-3xl p-6 lg:p-8 relative" id="matrixBox">
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Payoff matrix</div>
+            <div class="text-sm text-white/55">Your payoff first · opponent's second</div>
+          </div>
+          <div class="text-xs text-white/40 hidden sm:block">Press <kbd class="px-2 py-0.5 rounded bg-white/10 font-mono text-[10px]">C</kbd> or <kbd class="px-2 py-0.5 rounded bg-white/10 font-mono text-[10px]">D</kbd></div>
+        </div>
+
+        <div class="matrix-grid relative" id="matrix">
+          <div></div>
+          <div class="matrix-axis">Opp: Cooperate</div>
+          <div class="matrix-axis">Opp: Defect</div>
+
+          <div class="matrix-axis">You<br/>Coop</div>
+          <div class="pd-cell cc-color" data-cell="cc">
+            <span class="quad-label">R</span>
+            <div class="lbl">Reward</div>
+            <div class="val"><span class="you">3</span>, <span class="opp">3</span></div>
+          </div>
+          <div class="pd-cell cd-color" data-cell="cd">
+            <span class="quad-label">S</span>
+            <div class="lbl">Sucker</div>
+            <div class="val"><span class="you">0</span>, <span class="opp">5</span></div>
+          </div>
+
+          <div class="matrix-axis">You<br/>Defect</div>
+          <div class="pd-cell dc-color" data-cell="dc">
+            <span class="quad-label">T</span>
+            <div class="lbl">Temptation</div>
+            <div class="val"><span class="you">5</span>, <span class="opp">0</span></div>
+          </div>
+          <div class="pd-cell dd-color relative" data-cell="dd">
+            <span class="nash-badge">NASH</span>
+            <span class="quad-label">P</span>
+            <div class="lbl">Punishment</div>
+            <div class="val"><span class="you">1</span>, <span class="opp">1</span></div>
+            <div class="prison-bars" id="prisonBars"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ACTION BUTTONS -->
+      <div>
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Your move</div>
+        <div class="grid grid-cols-2 gap-4" id="actionRow">
+          <button class="action-btn action-coop" data-move="C">
+            <div class="icon-circle">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
+            </div>
+            <div class="label">Cooperate</div>
+            <div class="desc">Build trust. Risk being exploited. Maximum joint payoff.</div>
+          </button>
+          <button class="action-btn action-defect" data-move="D">
+            <div class="icon-circle">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
+            <div class="label">Defect</div>
+            <div class="desc">Grab the bigger payoff. Punish if opponent did. Dominant strategy.</div>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ============================================================
+         RIGHT: PLAYERS, DEBRIEF, HISTORY
+         ============================================================ -->
+    <div class="space-y-6">
+
+      <!-- Players: You vs Opponent -->
+      <div class="grid grid-cols-2 gap-3">
+
+        <div class="choice-card you" id="cardYou">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="role-tag">You</div>
+              <div class="player-name" id="userName">Player</div>
+              <div class="player-meta">Live</div>
+            </div>
+            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-violet-primary to-violet-deep flex items-center justify-center font-semibold text-sm">P</div>
+          </div>
+          <div class="choice-display" id="choiceYou">Make your move</div>
+        </div>
+
+        <div class="choice-card opp" id="cardOpp">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="role-tag">Opponent</div>
+              <div class="player-name" id="oppName">Tina</div>
+              <div class="player-meta" id="oppStrategy">Tit-for-Tat</div>
+            </div>
+            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-equilibrium to-amber-700 flex items-center justify-center font-semibold text-sm">T</div>
+          </div>
+          <div class="choice-display" id="choiceOpp">Waiting…</div>
+        </div>
+
+      </div>
+
+      <!-- Opponent picker -->
+      <div class="glass rounded-2xl p-4">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Choose your opponent</div>
+        <div class="grid grid-cols-2 gap-2" id="oppPicker">
+          <button class="text-left p-3 rounded-lg border border-violet-glow/40 bg-violet-glow/5 transition" data-opp="tit_for_tat">
+            <div class="text-sm font-medium">Tina</div>
+            <div class="text-[11px] text-white/50">Tit-for-Tat</div>
+          </button>
+          <button class="text-left p-3 rounded-lg border border-white/8 hover:border-white/20 transition" data-opp="grim">
+            <div class="text-sm font-medium">Greg</div>
+            <div class="text-[11px] text-white/50">Grim Trigger</div>
+          </button>
+          <button class="text-left p-3 rounded-lg border border-white/8 hover:border-white/20 transition" data-opp="always_defect">
+            <div class="text-sm font-medium">Dax</div>
+            <div class="text-[11px] text-white/50">Always Defect</div>
+          </button>
+          <button class="text-left p-3 rounded-lg border border-white/8 hover:border-white/20 transition" data-opp="random">
+            <div class="text-sm font-medium">Reggie</div>
+            <div class="text-[11px] text-white/50">Random 50/50</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Round timeline -->
+      <div class="glass rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-xs text-white/50 uppercase tracking-wider font-medium">Round history</div>
+          <div class="flex items-center gap-3 text-[10px] text-white/40">
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-coop/70"></span>Coop</span>
+            <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-sm bg-defect/70"></span>Defect</span>
+          </div>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center gap-1.5">
+            <div class="text-[10px] text-white/40 w-12">You</div>
+            <div class="flex gap-1.5" id="timelineYou"></div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <div class="text-[10px] text-white/40 w-12">Opp</div>
+            <div class="flex gap-1.5" id="timelineOpp"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Debrief -->
+      <div class="glass rounded-2xl p-5 min-h-[200px]" id="debriefBox">
+        <div class="flex items-center justify-between mb-4">
+          <div class="text-xs text-violet-glow font-medium tracking-wider uppercase">Debrief</div>
+          <span class="text-[10px] tag" id="debriefRoundTag">Round 1</span>
+        </div>
+        <div id="debriefContent">
+          <p class="text-sm text-white/55 leading-relaxed">
+            <span class="text-white">Tip:</span> Defect strictly dominates Cooperate in any single round — the Nash equilibrium is mutual defection (1, 1). But in a repeated game, can you do better than that?
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<!-- ============================================================
+     MATCH-END MODAL
+     ============================================================ -->
+<div class="fixed inset-0 z-50 modal-bd hidden items-center justify-center p-4" id="endModal">
+  <div class="glass-strong rounded-3xl w-full max-w-xl p-8 shadow-2xl">
+    <div class="text-center mb-6">
+      <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-2">Match complete</div>
+      <h2 class="font-display text-4xl tracking-tight" id="endTitle">Final result</h2>
+    </div>
+
+    <!-- Big score -->
+    <div class="grid grid-cols-2 gap-4 mb-6">
+      <div class="glass-subtle rounded-2xl p-5 text-center">
+        <div class="text-[10px] uppercase tracking-wider text-white/45 mb-2">You</div>
+        <div class="font-mono text-4xl font-bold text-violet-glow" id="endScoreYou">0</div>
+      </div>
+      <div class="glass-subtle rounded-2xl p-5 text-center">
+        <div class="text-[10px] uppercase tracking-wider text-white/45 mb-2" id="endOppLabel">Opponent</div>
+        <div class="font-mono text-4xl font-bold text-equilibrium-glow" id="endScoreOpp">0</div>
+      </div>
+    </div>
+
+    <!-- What if section -->
+    <div class="glass-subtle rounded-2xl p-4 mb-5">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 mb-2 font-medium">Counterfactual</div>
+      <p class="text-sm text-white/70 leading-relaxed" id="endCounterfactual"></p>
+    </div>
+
+    <!-- Strategy interpretation -->
+    <div class="glass-subtle rounded-2xl p-4 mb-6">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 mb-2 font-medium">Strategist's note</div>
+      <p class="text-sm text-white/70 leading-relaxed" id="endStrategistNote"></p>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex flex-wrap gap-2">
+      <button class="btn-primary flex-1" data-action="restart-modal">
+        Play again
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      </button>
+      <button class="btn-ghost flex-1" data-action="change-opp">
+        Different opponent
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script>
+/* =================================================================
+   GAME CONFIGURATION
+   ================================================================= */
+const PAYOFFS = {
+  CC: [3, 3],   // Reward
+  CD: [0, 5],   // Sucker (you, opp)
+  DC: [5, 0],   // Temptation
+  DD: [1, 1]    // Punishment / Nash
+};
+
+const TOTAL_ROUNDS = 10;
+
+const OPPONENTS = {
+  tit_for_tat: {
+    name: 'Tina', strategy: 'Tit-for-Tat', initial: 'C',
+    pick: (history) => history.length === 0 ? 'C' : history[history.length - 1].you,
+    description: 'Cooperates first, then mirrors your last move.',
+    classification: 'Tit-for-Tat'
+  },
+  grim: {
+    name: 'Greg', strategy: 'Grim Trigger', initial: 'C',
+    pick: (history) => history.some(h => h.you === 'D') ? 'D' : 'C',
+    description: 'Cooperates until you defect once. Then defects forever.',
+    classification: 'Grim Trigger'
+  },
+  always_defect: {
+    name: 'Dax', strategy: 'Always Defect', initial: 'D',
+    pick: () => 'D',
+    description: 'Always defects. The Nash strategy in a one-shot game.',
+    classification: 'Always Defect'
+  },
+  random: {
+    name: 'Reggie', strategy: 'Random 50/50', initial: 'C',
+    pick: () => Math.random() < 0.5 ? 'C' : 'D',
+    description: 'Flips a coin every round.',
+    classification: 'Random'
+  }
+};
+
+/* =================================================================
+   STATE
+   ================================================================= */
+const State = {
+  round: 1,
+  scoreYou: 0,
+  scoreOpp: 0,
+  history: [],          // [{you:'C'|'D', opp:'C'|'D', payoff:[a,b]}]
+  opponentKey: 'tit_for_tat',
+  busy: false,
+  finished: false
+};
+
+/* =================================================================
+   DOM SHORTHANDS
+   ================================================================= */
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+/* =================================================================
+   PRISON BARS — built dynamically
+   ================================================================= */
+function buildPrisonBars() {
+  const container = $('#prisonBars');
+  container.innerHTML = '';
+  const cellWidth = container.parentElement.offsetWidth || 200;
+  const barCount = Math.max(8, Math.floor(cellWidth / 18));
+  for (let i = 0; i < barCount; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'prison-bar';
+    bar.style.left = ((i + 0.5) / barCount * 100) + '%';
+    bar.style.animationDelay = (i * 0.04) + 's';
+    container.appendChild(bar);
+  }
+}
+
+function slamBars() {
+  const c = $('#prisonBars');
+  c.classList.remove('slam', 'dissolve');
+  void c.offsetWidth;  // reflow
+  c.classList.add('slam');
+  setTimeout(() => c.classList.add('dissolve'), 100);
+  setTimeout(() => { c.classList.remove('slam','dissolve'); }, 2400);
+}
+
+/* =================================================================
+   MATRIX HIGHLIGHT
+   ================================================================= */
+function highlightCell(key) {
+  $$('.pd-cell').forEach(c => {
+    c.classList.remove('active');
+    c.classList.add('dim');
+  });
+  const target = $(`[data-cell="${key}"]`);
+  if (target) {
+    target.classList.add('active');
+    target.classList.remove('dim');
+  }
+}
+
+function clearHighlight() {
+  $$('.pd-cell').forEach(c => {
+    c.classList.remove('active', 'dim');
+  });
+}
+
+/* =================================================================
+   COIN ANIMATION
+   ================================================================= */
+function flyCoins(fromCellEl, toElEl, count, delay = 0) {
+  if (count <= 0) return;
+  const matrixBox = $('#matrixBox');
+  const matrixRect = matrixBox.getBoundingClientRect();
+  const cellRect = fromCellEl.getBoundingClientRect();
+  const targetRect = toElEl.getBoundingClientRect();
+  const startX = cellRect.left + cellRect.width / 2 - matrixRect.left;
+  const startY = cellRect.top + cellRect.height / 2 - matrixRect.top;
+  const endX = targetRect.left + targetRect.width / 2 - matrixRect.left;
+  const endY = targetRect.top + targetRect.height / 2 - matrixRect.top;
+
+  matrixBox.style.position = matrixBox.style.position || 'relative';
+
+  for (let i = 0; i < Math.min(count, 5); i++) {
+    setTimeout(() => {
+      const coin = document.createElement('div');
+      coin.className = 'coin';
+      coin.style.left = startX + 'px';
+      coin.style.top = startY + 'px';
+      matrixBox.appendChild(coin);
+      const a = coin.animate([
+        { transform: 'translate(-50%,-50%) scale(.6)', opacity: 0 },
+        { transform: 'translate(-50%,-50%) scale(1.1)', opacity: 1, offset: 0.15 },
+        { left: endX + 'px', top: endY + 'px', transform: 'translate(-50%,-50%) scale(.7)', opacity: 0 }
+      ], { duration: 800, easing: 'cubic-bezier(.5,-.2,.5,1.2)', fill: 'forwards' });
+      a.onfinish = () => coin.remove();
+    }, delay + i * 90);
+  }
+}
+
+function flashLoss(targetEl, delay = 0) {
+  setTimeout(() => {
+    const matrixBox = $('#matrixBox');
+    const matrixRect = matrixBox.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+    const x = targetRect.left + targetRect.width / 2 - matrixRect.left;
+    const y = targetRect.top + targetRect.height / 2 - matrixRect.top;
+    const flash = document.createElement('div');
+    flash.className = 'loss-flash';
+    flash.style.left = x + 'px';
+    flash.style.top = y + 'px';
+    flash.textContent = '+0';
+    matrixBox.appendChild(flash);
+    setTimeout(() => flash.remove(), 1300);
+  }, delay);
+}
+
+/* =================================================================
+   SCORE TICKER
+   ================================================================= */
+function bumpScore(el, delta, currentDisplay) {
+  const target = currentDisplay + delta;
+  if (delta > 0) {
+    el.classList.add('bump-pos');
+    const start = currentDisplay;
+    const dur = 600;
+    const t0 = performance.now();
+    function tick(now) {
+      const t = Math.min((now - t0) / dur, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = Math.round(start + (target - start) * eased);
+      if (t < 1) requestAnimationFrame(tick);
+      else el.textContent = target;
+    }
+    requestAnimationFrame(tick);
+    setTimeout(() => el.classList.remove('bump-pos'), 600);
+  } else {
+    // Zero gain — pulse red briefly
+    el.classList.add('bump-zero');
+    setTimeout(() => el.classList.remove('bump-zero'), 400);
+  }
+}
+
+/* =================================================================
+   CHOICE CARD REVEAL
+   ================================================================= */
+function setUserChoice(move) {
+  const el = $('#choiceYou');
+  el.className = 'choice-display ' + (move === 'C' ? 'revealed-coop' : 'revealed-defect');
+  el.textContent = move === 'C' ? '✓  Cooperated' : '✕  Defected';
+  $('#cardYou').classList.add('locked');
+}
+
+function setOppThinking() {
+  const el = $('#choiceOpp');
+  el.className = 'choice-display';
+  el.innerHTML = '<span class="pulse-thinking"><span></span><span></span><span></span></span>';
+}
+
+function setOppChoice(move) {
+  const el = $('#choiceOpp');
+  el.className = 'choice-display ' + (move === 'C' ? 'revealed-coop' : 'revealed-defect');
+  el.textContent = move === 'C' ? '✓  Cooperated' : '✕  Defected';
+}
+
+function resetChoiceCards() {
+  $('#choiceYou').className = 'choice-display';
+  $('#choiceYou').textContent = 'Make your move';
+  $('#choiceOpp').className = 'choice-display';
+  $('#choiceOpp').textContent = 'Waiting…';
+  $('#cardYou').classList.remove('locked');
+}
+
+/* =================================================================
+   TIMELINE (round history viz)
+   ================================================================= */
+function renderTimeline() {
+  const tlYou = $('#timelineYou');
+  const tlOpp = $('#timelineOpp');
+  tlYou.innerHTML = '';
+  tlOpp.innerHTML = '';
+  for (let i = 0; i < TOTAL_ROUNDS; i++) {
+    const round = State.history[i];
+    const cellY = document.createElement('div');
+    const cellO = document.createElement('div');
+    cellY.className = 'timeline-cell';
+    cellO.className = 'timeline-cell';
+    if (round) {
+      cellY.classList.add(round.you === 'C' ? 'coop' : 'defect');
+      cellO.classList.add(round.opp === 'C' ? 'coop' : 'defect');
+    } else if (i === State.history.length && !State.finished) {
+      cellY.classList.add('current');
+      cellO.classList.add('current');
+    }
+    tlYou.appendChild(cellY);
+    tlOpp.appendChild(cellO);
+  }
+}
+
+/* =================================================================
+   COOPERATION RATE
+   ================================================================= */
+function updateRates() {
+  if (State.history.length === 0) {
+    $('#coopRateYou').textContent = '—';
+    $('#coopRateOpp').textContent = '—';
+    return;
+  }
+  const youCoop = State.history.filter(h => h.you === 'C').length;
+  const oppCoop = State.history.filter(h => h.opp === 'C').length;
+  $('#coopRateYou').textContent = Math.round((youCoop / State.history.length) * 100) + '%';
+  $('#coopRateOpp').textContent = Math.round((oppCoop / State.history.length) * 100) + '%';
+}
+
+/* =================================================================
+   DEBRIEF (the pedagogy)
+   ================================================================= */
+function renderDebrief(round) {
+  const opp = OPPONENTS[State.opponentKey];
+  const { you, opp: oppMove, payoff } = round;
+  const [py, po] = payoff;
+
+  // Determine outcome category
+  let banner, bannerType, outcome;
+  if (you === 'C' && oppMove === 'C') {
+    bannerType = 'win';
+    outcome = 'Mutual cooperation';
+    banner = `<div class="emotion-banner win">
+      <div class="e-icon">✓</div>
+      <div><div class="e-title">Mutual cooperation · Reward (3, 3)</div>
+      <div class="e-sub">You both played the joint-payoff-maximizing strategy. Trust intact.</div></div>
+    </div>`;
+  } else if (you === 'D' && oppMove === 'D') {
+    bannerType = 'eq';
+    outcome = 'Both defected — Nash';
+    banner = `<div class="emotion-banner eq">
+      <div class="e-icon">⚖</div>
+      <div><div class="e-title">Trapped at Nash · Punishment (1, 1)</div>
+      <div class="e-sub">You're both at the equilibrium of the one-shot game. Individually rational, jointly worse.</div></div>
+    </div>`;
+  } else if (you === 'C' && oppMove === 'D') {
+    bannerType = 'loss';
+    outcome = 'You got burned';
+    banner = `<div class="emotion-banner loss">
+      <div class="e-icon">✕</div>
+      <div><div class="e-title">Sucker payoff (0, 5)</div>
+      <div class="e-sub">You cooperated; ${opp.name} defected. They took the temptation payoff at your expense.</div></div>
+    </div>`;
+  } else {
+    // D, C
+    bannerType = 'gain';
+    outcome = 'You exploited cooperation';
+    banner = `<div class="emotion-banner gain">
+      <div class="e-icon">★</div>
+      <div><div class="e-title">Temptation payoff (5, 0)</div>
+      <div class="e-sub">You took the maximum payoff at ${opp.name}'s expense. Watch for retaliation next round.</div></div>
+    </div>`;
+  }
+
+  // Best response analysis
+  const bestResponse = oppMove === 'C' ? 'Defect' : 'Defect';
+  const bestPayoff = oppMove === 'C' ? 5 : 1;
+  const yourPayoff = py;
+  const leftOnTable = bestPayoff - yourPayoff;
+  let bestResponseNote;
+  if (leftOnTable === 0) {
+    bestResponseNote = `You played the <span class="text-coop-glow">best response</span> to ${opp.name}'s ${oppMove === 'C' ? 'cooperation' : 'defection'}.`;
+  } else {
+    bestResponseNote = `Your best response was to <span class="tag tag-defect">Defect</span> — would have netted you <span class="text-equilibrium-glow font-mono">${bestPayoff}</span> instead of <span class="font-mono">${yourPayoff}</span>. Left <span class="font-mono text-equilibrium-glow">${leftOnTable}</span> on the table.`;
+  }
+
+  // Strategy interpretation (for repeated play)
+  let strategyNote = '';
+  if (State.history.length >= 3) {
+    const oppMoves = State.history.map(h => h.opp);
+    const coopRate = oppMoves.filter(m => m === 'C').length / oppMoves.length;
+    const lastTwo = oppMoves.slice(-2);
+    const myLastTwo = State.history.slice(-2).map(h => h.you);
+    let guess = '';
+    if (coopRate > 0.85) guess = 'always cooperate or very forgiving';
+    else if (coopRate < 0.15) guess = 'always defect or grim trigger';
+    else if (oppMoves.length >= 2 && oppMoves[oppMoves.length-1] === myLastTwo[myLastTwo.length-2]) guess = 'tit-for-tat-like';
+    else guess = 'mixed or adaptive';
+    strategyNote = `<div class="mt-3 text-xs text-white/55"><span class="text-white/40">Pattern read:</span> ${opp.name}'s play looks <span class="text-violet-glow">${guess}</span> (${Math.round(coopRate*100)}% cooperation across ${oppMoves.length} rounds).</div>`;
+  }
+
+  $('#debriefRoundTag').textContent = `Round ${State.round - 1}`;
+  $('#debriefContent').innerHTML = `
+    <div class="turn-fade">
+      ${banner}
+      <div class="text-sm text-white/70 leading-relaxed mb-2">
+        ${bestResponseNote}
+      </div>
+      <div class="mt-3 pt-3 border-t border-white/5 text-xs text-white/50 leading-relaxed">
+        <span class="text-white/70">Theory:</span> Defect strictly dominates — regardless of opponent's move, defecting yields a higher payoff. The unique Nash equilibrium of the one-shot game is (Defect, Defect).
+      </div>
+      ${strategyNote}
+    </div>
+  `;
+}
+
+/* =================================================================
+   MATCH-END
+   ================================================================= */
+function showMatchEnd() {
+  State.finished = true;
+  $('#endScoreYou').textContent = State.scoreYou;
+  $('#endScoreOpp').textContent = State.scoreOpp;
+
+  const opp = OPPONENTS[State.opponentKey];
+  $('#endOppLabel').textContent = opp.name;
+
+  // Title based on outcome
+  let title;
+  if (State.scoreYou > State.scoreOpp) title = 'You won the match';
+  else if (State.scoreYou < State.scoreOpp) title = `${opp.name} won`;
+  else title = 'A draw';
+  $('#endTitle').textContent = title;
+
+  // Counterfactuals
+  const allCoop = TOTAL_ROUNDS * 3;
+  const allDefect = TOTAL_ROUNDS * 1;
+  const yourActual = State.scoreYou;
+  let cf;
+  if (yourActual >= allCoop) {
+    cf = `You scored <span class="font-mono text-coop-glow">${yourActual}</span>. Mutual cooperation every round would have netted you <span class="font-mono">${allCoop}</span> — you matched or beat that.`;
+  } else if (yourActual <= allDefect) {
+    cf = `You scored <span class="font-mono text-defect-glow">${yourActual}</span>. Even mutual defection every round would have given you <span class="font-mono">${allDefect}</span> — opponent likely exploited you.`;
+  } else {
+    cf = `You scored <span class="font-mono">${yourActual}</span>. Always cooperating with this opponent would have netted <span class="font-mono">${allCoop}</span>; always defecting would have netted <span class="font-mono">${allDefect}</span>.`;
+  }
+  $('#endCounterfactual').innerHTML = cf;
+
+  // Strategist note
+  const oppCoopRate = State.history.filter(h => h.opp === 'C').length / TOTAL_ROUNDS;
+  let note;
+  if (opp.classification === 'Always Defect') {
+    note = `${opp.name} always defects. Against this opponent, the Nash strategy (always defect, scoring ${allDefect}) is optimal — cooperating just hands them free temptation payoffs.`;
+  } else if (opp.classification === 'Tit-for-Tat') {
+    note = `${opp.name} mirrors your last move. The lesson: against TFT, mutual cooperation (scoring ${allCoop}) is sustainable. One defection triggers a punishment cycle.`;
+  } else if (opp.classification === 'Grim Trigger') {
+    note = `${opp.name} cooperates until you defect once, then never again. A single defection costs you all future cooperation gains. The threat is what enforces cooperation.`;
+  } else {
+    note = `${opp.name} plays randomly. There's no exploitable pattern — your expected payoff per round is roughly the same regardless of strategy. Variance dominates.`;
+  }
+  $('#endStrategistNote').innerHTML = note;
+
+  $('#endModal').classList.remove('hidden');
+  $('#endModal').classList.add('flex');
+}
+
+/* =================================================================
+   PLAY ROUND
+   ================================================================= */
+async function playRound(userMove) {
+  if (State.busy || State.finished) return;
+  State.busy = true;
+  setActionsDisabled(true);
+
+  // 1. Lock user choice
+  setUserChoice(userMove);
+
+  // 2. Opponent "thinks"
+  setOppThinking();
+  await wait(750);
+
+  // 3. Opponent reveals
+  const opp = OPPONENTS[State.opponentKey];
+  const oppMove = State.history.length === 0 && opp.initial !== undefined
+    ? opp.initial
+    : opp.pick(State.history);
+  setOppChoice(oppMove);
+  await wait(450);
+
+  // 4. Compute payoff and highlight cell
+  const cellKey = userMove.toLowerCase() + oppMove.toLowerCase();
+  const payoff = PAYOFFS[(userMove + oppMove)];
+  const [py, po] = payoff;
+  highlightCell(cellKey);
+  await wait(350);
+
+  // 5. Special: prison bars on DD
+  const cellEl = $(`[data-cell="${cellKey}"]`);
+  if (cellKey === 'dd') {
+    slamBars();
+  }
+
+  // 6. Fly coins / show losses
+  if (py > 0) flyCoins(cellEl, $('#scoreYou'), py, 0);
+  else flashLoss($('#scoreYou'), 0);
+
+  if (po > 0) flyCoins(cellEl, $('#scoreOpp'), po, 80);
+  else flashLoss($('#scoreOpp'), 80);
+
+  await wait(900);
+  bumpScore($('#scoreYou'), py, State.scoreYou);
+  bumpScore($('#scoreOpp'), po, State.scoreOpp);
+  State.scoreYou += py;
+  State.scoreOpp += po;
+
+  // 7. Record history
+  State.history.push({ you: userMove, opp: oppMove, payoff });
+  renderTimeline();
+  updateRates();
+  State.round += 1;
+  $('#roundLabel').textContent = Math.min(State.round, TOTAL_ROUNDS);
+  renderDebrief({ you: userMove, opp: oppMove, payoff });
+
+  await wait(800);
+
+  // 8. End or next
+  if (State.history.length >= TOTAL_ROUNDS) {
+    showMatchEnd();
+  } else {
+    clearHighlight();
+    resetChoiceCards();
+    setActionsDisabled(false);
+  }
+  State.busy = false;
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+function setActionsDisabled(d) {
+  $$('.action-btn').forEach(b => b.disabled = d);
+}
+
+/* =================================================================
+   OPPONENT PICKER
+   ================================================================= */
+function selectOpponent(key) {
+  if (State.history.length > 0 && !State.finished) {
+    if (!confirm('Changing opponents will restart this match. Continue?')) return;
+  }
+  State.opponentKey = key;
+  const opp = OPPONENTS[key];
+  $('#oppName').textContent = opp.name;
+  $('#oppStrategy').textContent = opp.strategy;
+  $('#oppLabel').textContent = `${opp.name} (${opp.strategy})`;
+
+  // Update picker UI
+  $$('#oppPicker button').forEach(btn => {
+    if (btn.dataset.opp === key) {
+      btn.classList.add('border-violet-glow/40', 'bg-violet-glow/5');
+      btn.classList.remove('border-white/8');
+    } else {
+      btn.classList.remove('border-violet-glow/40', 'bg-violet-glow/5');
+      btn.classList.add('border-white/8');
+    }
+  });
+
+  restart();
+}
+
+/* =================================================================
+   RESTART
+   ================================================================= */
+function restart() {
+  State.round = 1;
+  State.scoreYou = 0;
+  State.scoreOpp = 0;
+  State.history = [];
+  State.busy = false;
+  State.finished = false;
+  $('#scoreYou').textContent = '0';
+  $('#scoreOpp').textContent = '0';
+  $('#roundLabel').textContent = '1';
+  resetChoiceCards();
+  clearHighlight();
+  renderTimeline();
+  updateRates();
+  $('#endModal').classList.add('hidden');
+  $('#endModal').classList.remove('flex');
+  setActionsDisabled(false);
+  $('#debriefRoundTag').textContent = 'Round 1';
+  $('#debriefContent').innerHTML = `
+    <p class="text-sm text-white/55 leading-relaxed">
+      <span class="text-white">Tip:</span> Defect strictly dominates Cooperate in any single round — the Nash equilibrium is mutual defection (1, 1). But in a repeated game, can you do better than that?
+    </p>
+  `;
+}
+
+/* =================================================================
+   EVENT WIRING
+   ================================================================= */
+function bindEvents() {
+  // Action buttons
+  $$('.action-btn').forEach(btn => {
+    btn.addEventListener('click', () => playRound(btn.dataset.move));
+  });
+  // Opponent picker
+  $$('#oppPicker button').forEach(btn => {
+    btn.addEventListener('click', () => selectOpponent(btn.dataset.opp));
+  });
+  // Restart
+  $$('[data-action="restart"], [data-action="restart-modal"]').forEach(btn => {
+    btn.addEventListener('click', restart);
+  });
+  // Change opponent (from end modal)
+  $('[data-action="change-opp"]').addEventListener('click', () => {
+    $('#endModal').classList.add('hidden');
+    $('#endModal').classList.remove('flex');
+    document.querySelector('#oppPicker').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (State.busy || State.finished) return;
+    if (e.key === 'c' || e.key === 'C') playRound('C');
+    if (e.key === 'd' || e.key === 'D') playRound('D');
+  });
+}
+
+/* =================================================================
+   BOOT
+   ================================================================= */
+document.addEventListener('DOMContentLoaded', () => {
+  $('#totalRoundsLabel').textContent = TOTAL_ROUNDS;
+  buildPrisonBars();
+  renderTimeline();
+  bindEvents();
+  // Rebuild bars on resize (cell width changes)
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(buildPrisonBars, 200);
+  });
+});
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'prisoners-dilemma',
+      getSession: function () {
+        if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
+        var you = State.scoreYou, opp = State.scoreOpp;
+        var total = you + opp;
+        var score = total > 0 ? (you / total) : 0.5;
+        var outcome = you > opp ? 'win' : (you < opp ? 'loss' : 'draw');
+        return { score: score, outcome: outcome, detail: { you: you, opp: opp, rounds: State.history.length, opponent: State.opponentKey } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

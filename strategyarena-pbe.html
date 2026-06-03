@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Perfect Bayesian Equilibrium — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        display: ['Instrument Serif', 'serif']
+      },
+      colors: {
+        ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+        violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+        coop: { DEFAULT: '#10B981', glow: '#34D399' },
+        defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+        equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+      }
+    } }
+  };
+</script>
+
+<style>
+  html, body { background: #070612; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: #E8E6F5; -webkit-font-smoothing: antialiased; overflow-x: hidden; min-height: 100vh; }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  .arena-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410; }
+  .arena-bg::before {
+    content: ''; position: absolute; width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: .25; top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute; width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #FBBF24 0%, transparent 70%);
+    filter: blur(120px); opacity: .12; bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .glass { background: rgba(18,16,42,.55); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); border: 1px solid rgba(255,255,255,.06); }
+  .glass-strong { background: rgba(11,10,26,.78); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); border: 1px solid rgba(255,255,255,.08); }
+  .glass-subtle { background: rgba(255,255,255,.025); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.05); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; font-weight: 500;
+    padding: 11px 22px; border-radius: 10px; font-size: 14px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124,92,255,.6); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 20px; border-radius: 10px; font-size: 13px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-violet { background: rgba(124,92,255,.12); border-color: rgba(124,92,255,.3); color: #9B7BFF; }
+  .tag-amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FBBF24; }
+  .tag-coop { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #34D399; }
+  .tag-defect { background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.3); color: #FB7185; }
+
+  /* ============================================================
+     TREE
+     ============================================================ */
+  .tree-svg { display: block; width: 100%; height: auto; }
+
+  .tree-edge {
+    stroke: rgba(255,255,255,.15);
+    stroke-width: 1.5; fill: none;
+    transition: all .5s cubic-bezier(.16,1,.3,1);
+  }
+  .tree-edge.eq-path {
+    stroke: #FBBF24;
+    stroke-width: 3.5;
+    filter: drop-shadow(0 0 12px rgba(251,191,36,.7));
+    animation: edgePulse 1.6s ease-in-out infinite;
+  }
+  .tree-edge.eq-path.solid { animation: none; }
+  @keyframes edgePulse {
+    0%, 100% { opacity: 1; filter: drop-shadow(0 0 8px rgba(251,191,36,.5)); }
+    50% { opacity: .7; filter: drop-shadow(0 0 18px rgba(251,191,36,1)); }
+  }
+  .tree-edge.violation {
+    stroke: #FB7185;
+    stroke-width: 3;
+    stroke-dasharray: 5 4;
+    filter: drop-shadow(0 0 8px rgba(251,113,133,.5));
+  }
+  .tree-edge.dimmed { stroke: rgba(255,255,255,.05); }
+
+  .tree-node-circle {
+    transition: all .3s ease;
+    cursor: default;
+  }
+  .tree-node-circle.terminal { fill: #1A1736; stroke: rgba(155,123,255,.4); stroke-width: 1.5; }
+
+  .info-set-rect {
+    fill: rgba(155,123,255,.06);
+    stroke: rgba(155,123,255,.5);
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+    transition: all .3s ease;
+    rx: 16;
+  }
+  .info-set-rect.on-path {
+    fill: rgba(155,123,255,.1);
+    stroke: rgba(155,123,255,.7);
+    stroke-dasharray: none;
+  }
+  .info-set-rect.highlighted {
+    fill: rgba(245,158,11,.1);
+    stroke: rgba(251,191,36,.8);
+    stroke-width: 2;
+    stroke-dasharray: none;
+  }
+  .info-set-rect.violation {
+    fill: rgba(244,63,94,.08);
+    stroke: rgba(251,113,133,.7);
+    stroke-width: 2;
+    stroke-dasharray: none;
+  }
+
+  .tree-label { font-family: 'Inter', sans-serif; font-size: 10px; fill: rgba(255,255,255,.6); font-weight: 500; pointer-events: none; }
+  .tree-label.muted { fill: rgba(255,255,255,.3); }
+  .tree-label-num { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  .tree-label.payoff { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600; }
+
+  .belief-pill {
+    cursor: pointer;
+    transition: all .25s ease;
+  }
+  .belief-pill.on-path .belief-bg { fill: rgba(155,123,255,.18); stroke: #9B7BFF; stroke-width: 1.5; }
+  .belief-pill.off-path .belief-bg {
+    fill: rgba(155,123,255,.08);
+    stroke: rgba(155,123,255,.45);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+  }
+  .belief-pill.violation .belief-bg { fill: rgba(244,63,94,.18); stroke: #FB7185; stroke-width: 2; }
+  .belief-pill:hover .belief-bg { stroke-width: 2.5; }
+  .belief-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    fill: #fff;
+    font-weight: 600;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+  }
+  .belief-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    fill: rgba(155,123,255,.85);
+    text-anchor: middle;
+    pointer-events: none;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+
+  /* ============================================================
+     BELIEF DROPDOWN
+     ============================================================ */
+  .belief-popover {
+    position: absolute;
+    background: rgba(11,10,26,.97);
+    border: 1px solid rgba(124,92,255,.5);
+    border-radius: 12px;
+    padding: 14px;
+    min-width: 200px;
+    z-index: 50;
+    box-shadow: 0 12px 32px -8px rgba(124,92,255,.4);
+    transition: opacity .2s ease, transform .2s ease;
+    opacity: 0; transform: translateY(-6px);
+    pointer-events: none;
+  }
+  .belief-popover.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .belief-options { display: flex; gap: 4px; margin-top: 8px; }
+  .belief-opt {
+    flex: 1;
+    padding: 6px 4px;
+    border-radius: 6px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    color: rgba(255,255,255,.8);
+    transition: all .12s ease;
+  }
+  .belief-opt:hover { background: rgba(124,92,255,.15); border-color: rgba(124,92,255,.5); }
+  .belief-opt.selected { background: linear-gradient(135deg, #7C5CFF, #5B3DCC); border-color: #9B7BFF; color: #fff; }
+
+  /* ============================================================
+     STAGE STEPPER
+     ============================================================ */
+  .stage-stepper {
+    display: flex; align-items: stretch;
+    background: rgba(255,255,255,.02);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+  }
+  .stage-step {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .2s ease;
+    display: flex; align-items: center; gap: 10px;
+    color: rgba(255,255,255,.5);
+    font-size: 13px;
+  }
+  .stage-step.completed { color: rgba(52,211,153,.85); }
+  .stage-step.active {
+    background: rgba(124,92,255,.12);
+    color: #fff;
+    box-shadow: 0 0 0 1px rgba(124,92,255,.4);
+  }
+  .stage-step.disabled { opacity: .3; cursor: not-allowed; }
+  .stage-num {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,.06);
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+    flex-shrink: 0;
+    transition: all .2s ease;
+  }
+  .stage-step.active .stage-num { background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; }
+  .stage-step.completed .stage-num { background: rgba(52,211,153,.2); color: #34D399; }
+  .stage-num-icon { font-size: 13px; }
+
+  /* ============================================================
+     STAGE BODY
+     ============================================================ */
+  .stage-content { min-height: 120px; }
+
+  .strategy-btn {
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.025);
+    transition: all .2s cubic-bezier(.4,0,.2,1);
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .strategy-btn:hover {
+    transform: translateY(-2px);
+    border-color: rgba(124,92,255,.4);
+    background: rgba(124,92,255,.04);
+  }
+  .strategy-btn.selected {
+    border-color: rgba(124,92,255,.6);
+    background: rgba(124,92,255,.08);
+    box-shadow: 0 0 0 2px rgba(124,92,255,.2);
+  }
+
+  /* Type-specific labels */
+  .type-h-color { color: #34D399; }
+  .type-l-color { color: #FB7185; }
+
+  /* ============================================================
+     PBE CHECKS
+     ============================================================ */
+  .check-card {
+    padding: 16px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.025);
+    border: 1.5px solid rgba(255,255,255,.06);
+    transition: all .35s cubic-bezier(.16,1,.3,1);
+    position: relative;
+  }
+  .check-card.pending { opacity: .6; }
+  .check-card.checking {
+    background: rgba(124,92,255,.04);
+    border-color: rgba(124,92,255,.4);
+    animation: checkingPulse 1.5s ease-in-out infinite;
+  }
+  @keyframes checkingPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(124,92,255,0); }
+    50% { box-shadow: 0 0 0 4px rgba(124,92,255,.2); }
+  }
+  .check-card.pass {
+    background: linear-gradient(135deg, rgba(16,185,129,.08), rgba(16,185,129,.02));
+    border-color: rgba(52,211,153,.45);
+    box-shadow: 0 0 0 1px rgba(52,211,153,.2);
+  }
+  .check-card.fail {
+    background: linear-gradient(135deg, rgba(244,63,94,.08), rgba(244,63,94,.02));
+    border-color: rgba(251,113,133,.45);
+    box-shadow: 0 0 0 1px rgba(251,113,133,.2);
+  }
+  .check-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-weight: 700; font-size: 16px;
+    transition: all .35s ease;
+  }
+  .check-card.pending .check-icon { background: rgba(255,255,255,.05); color: rgba(255,255,255,.4); }
+  .check-card.checking .check-icon { background: rgba(124,92,255,.2); color: #9B7BFF; }
+  .check-card.pass .check-icon { background: rgba(52,211,153,.2); color: #34D399; }
+  .check-card.fail .check-icon { background: rgba(251,113,133,.2); color: #FB7185; }
+
+  /* ============================================================
+     RESULT BANNER
+     ============================================================ */
+  .pbe-result-banner {
+    border-radius: 18px;
+    padding: 24px 28px;
+    border: 1.5px solid;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .pbe-banner-pass {
+    background: linear-gradient(135deg, rgba(52,211,153,.12), rgba(52,211,153,.02));
+    border-color: rgba(52,211,153,.5);
+    box-shadow: 0 0 0 1px rgba(52,211,153,.15), 0 20px 40px -12px rgba(52,211,153,.3);
+  }
+  .pbe-banner-fail {
+    background: linear-gradient(135deg, rgba(251,113,133,.1), rgba(251,113,133,.02));
+    border-color: rgba(251,113,133,.5);
+  }
+  .pbe-banner-pass::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(52,211,153,.18) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* Confetti */
+  .confetti-piece {
+    position: fixed;
+    width: 8px; height: 14px;
+    border-radius: 2px;
+    pointer-events: none;
+    z-index: 60;
+    will-change: transform;
+  }
+
+  /* Reveal */
+  .reveal-in { animation: revealIn .55s cubic-bezier(.16,1,.3,1); }
+  @keyframes revealIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .toast {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-30px);
+    padding: 10px 18px; border-radius: 10px;
+    background: rgba(11,10,26,.95);
+    border: 1px solid rgba(124,92,255,.4);
+    font-size: 13px; color: #fff; z-index: 100;
+    opacity: 0; transition: opacity .3s ease, transform .3s ease;
+    pointer-events: none;
+    box-shadow: 0 10px 30px -8px rgba(124,92,255,.3);
+  }
+  .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+
+<!-- Top bar -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
+      <div class="font-medium tracking-tight">Perfect Bayesian Equilibrium · Sequential signaling</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <button class="btn-ghost text-sm" id="showPBEBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      Show me the PBE
+    </button>
+    <button class="btn-ghost text-sm" id="restartBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Reset
+    </button>
+  </div>
+</header>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<main class="px-6 lg:px-10 py-6 max-w-7xl mx-auto">
+
+  <!-- Hero strip -->
+  <div class="mb-5 max-w-3xl">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-2">Module 12 · Walk through the proof</div>
+    <h1 class="font-display text-3xl lg:text-4xl tracking-tight mb-2">
+      Construct a <span class="text-gradient">Perfect Bayesian Equilibrium</span>.
+    </h1>
+    <p class="text-sm text-white/60 leading-relaxed">
+      Build a strategy profile + belief system, then verify the four PBE conditions one by one. Click any belief on the tree to edit it. The proof unfolds visually.
+    </p>
+  </div>
+
+  <!-- Stage stepper -->
+  <div class="stage-stepper mb-5" id="stageStepper">
+    <div class="stage-step active" data-stage="1">
+      <div class="stage-num">1</div>
+      <div>
+        <div class="font-medium">Sender's strategy</div>
+        <div class="text-[11px] opacity-65">What does each type send?</div>
+      </div>
+    </div>
+    <div class="stage-step disabled" data-stage="2">
+      <div class="stage-num">2</div>
+      <div>
+        <div class="font-medium">Set beliefs</div>
+        <div class="text-[11px] opacity-65">μ at each info set</div>
+      </div>
+    </div>
+    <div class="stage-step disabled" data-stage="3">
+      <div class="stage-num">3</div>
+      <div>
+        <div class="font-medium">Receiver's response</div>
+        <div class="text-[11px] opacity-65">What does she do at each set?</div>
+      </div>
+    </div>
+    <div class="stage-step disabled" data-stage="4">
+      <div class="stage-num">4</div>
+      <div>
+        <div class="font-medium">Verify PBE</div>
+        <div class="text-[11px] opacity-65">Run the four checks</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid lg:grid-cols-[1.5fr_1fr] gap-5">
+
+    <!-- LEFT — game tree + payoff legend -->
+    <div class="glass-strong rounded-3xl p-5 lg:p-6 relative">
+      <div class="flex items-start justify-between mb-3 flex-wrap gap-3">
+        <div>
+          <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Sequential game tree</div>
+          <div class="text-sm text-white/55" id="treeStatus">Click a belief μ to edit. Click an information set to highlight.</div>
+        </div>
+        <div class="flex items-center gap-3 text-[11px]">
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-coop"></span>Type H (prob 0.5)</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-defect"></span>Type L (prob 0.5)</span>
+        </div>
+      </div>
+
+      <svg class="tree-svg" id="treeSVG" viewBox="0 0 760 480" preserveAspectRatio="xMidYMid meet">
+        <!-- Built dynamically -->
+      </svg>
+
+      <!-- Belief popover -->
+      <div class="belief-popover" id="beliefPopover">
+        <div class="flex items-center justify-between mb-1">
+          <div class="text-xs font-medium text-white/85" id="popoverLabel">Set μ</div>
+          <span class="tag" id="popoverTag">on-path</span>
+        </div>
+        <div class="text-[11px] text-white/55" id="popoverHint">P(type H | this signal)</div>
+        <div class="belief-options">
+          <div class="belief-opt" data-val="0">0</div>
+          <div class="belief-opt" data-val="0.25">¼</div>
+          <div class="belief-opt" data-val="0.5">½</div>
+          <div class="belief-opt" data-val="0.75">¾</div>
+          <div class="belief-opt" data-val="1">1</div>
+        </div>
+      </div>
+
+      <!-- Tree footer: payoff legend -->
+      <div class="mt-3 pt-3 border-t border-white/5 grid grid-cols-2 md:grid-cols-3 gap-3 text-[11px] text-white/55">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-violet-primary"></div>
+          <span>Sender (worker)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-equilibrium"></div>
+          <span>Receiver (firm)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="w-3 h-2 rounded-sm border border-violet-glow border-dashed"></div>
+          <span>Information set</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT — stage content + role panel -->
+    <div class="space-y-5">
+
+      <!-- Role / parameters card -->
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-0.5">Setup</div>
+            <div class="text-[11px] text-white/55">Spence-style with reduced strategy space</div>
+          </div>
+          <span class="tag tag-amber">3-stage extensive form</span>
+        </div>
+
+        <div class="space-y-2 text-[12px] text-white/70">
+          <div class="flex items-start gap-2">
+            <span class="text-violet-glow font-mono mt-0.5">N→</span>
+            <span><span class="font-medium">Nature</span> picks type: H (prob 0.5) or L (prob 0.5).</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-violet-glow font-mono mt-0.5">S→</span>
+            <span><span class="font-medium">Sender</span> chooses signal: <span class="text-equilibrium-glow">Educate (E)</span> or <span class="text-violet-glow">Skip (∅)</span>.</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-violet-glow font-mono mt-0.5">R→</span>
+            <span><span class="font-medium">Receiver</span> observes signal, chooses wage: <span class="text-coop-glow">Hire (h)</span> or <span class="text-defect-glow">Refuse (r)</span>.</span>
+          </div>
+        </div>
+
+        <div class="mt-3 pt-3 border-t border-white/5 text-[11px] text-white/55 leading-relaxed">
+          <span class="text-white">Education cost</span>: 1 for type H, 5 for type L. <span class="text-white">Wages</span>: hired = 4, refused = 0. <span class="text-white">Firm profit</span>: H hired = +2, L hired = −2, refused = 0.
+        </div>
+      </div>
+
+      <!-- Stage content -->
+      <div class="glass rounded-2xl p-5" id="stageBody">
+        <!-- Filled per stage -->
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Verification panel (Stage 4) -->
+  <div id="verifyPanel" class="hidden mt-5"></div>
+
+  <!-- Result banner -->
+  <div id="finalBanner" class="hidden mt-5"></div>
+
+</main>
+
+<script>
+/* ============================================================
+   GAME PARAMETERS
+   ============================================================
+   Reduced extensive-form Spence model:
+   - Sender types: H (high), L (low). P(H) = P(L) = 0.5
+   - Sender signals: E (Educate) or N (No-degree / Skip)
+   - Receiver actions per signal: h (Hire) or r (Refuse)
+   - Education cost: c_H = 1, c_L = 5 (cheaper for H, single-crossing)
+     Critically c_L > wage so L cannot profit from imitating H even if hired.
+   - Wage if hired: 4 (regardless of type, before cost)
+   - Firm profit:
+       Hire H: +2
+       Hire L: −2
+       Refuse: 0
+   - Sender payoff = wage_received − education_cost
+       H hired after E: 4 − 1 = 3
+       H hired after N: 4 − 0 = 4
+       H refused after E: 0 − 1 = −1
+       H refused after N: 0 − 0 = 0
+       L hired after E: 4 − 5 = −1
+       L hired after N: 4 − 0 = 4
+       L refused after E: 0 − 5 = −5
+       L refused after N: 0 − 0 = 0
+   - Receiver payoff per type-action:
+       Hire H = +2, Hire L = −2, Refuse anyone = 0
+   ============================================================ */
+const PARAMS = {
+  prior: 0.5,
+  costs: { H: 1, L: 5 },
+  wage: 4,
+  firmProfit: { Hh: 2, Lh: -2, Hr: 0, Lr: 0 }
+};
+
+function senderPayoff(type, signal, action) {
+  // signal in {'E','N'}, action in {'h','r'}
+  const wage = action === 'h' ? PARAMS.wage : 0;
+  const cost = signal === 'E' ? PARAMS.costs[type] : 0;
+  return wage - cost;
+}
+function receiverPayoff(type, action) {
+  if (action === 'r') return 0;
+  return type === 'H' ? PARAMS.firmProfit.Hh : PARAMS.firmProfit.Lh;
+}
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const State = {
+  stage: 1,
+  // Sender's strategy: { H: 'E'|'N', L: 'E'|'N' } — single pure strategy per type
+  senderStrategy: { H: null, L: null },
+  // Beliefs at receiver's two information sets, μ = P(type H | signal observed)
+  beliefs: { E: 0.5, N: 0.5 },
+  // Receiver's action at each signal: { E: 'h'|'r', N: 'h'|'r' }
+  receiverStrategy: { E: null, N: null },
+  // Verification result
+  verification: null,
+  finished: false,
+  // Currently editing belief (for popover)
+  editingSignal: null
+};
+
+/* ============================================================
+   TREE LAYOUT
+   ============================================================
+   Geometry:
+     Nature root at (380, 30)
+     Type H at (180, 90), Type L at (580, 90)
+     From each type, edges to two terminal-ish nodes for E and N signals
+     Sender E nodes: H→ (90, 200), L→ (510, 200)   [info-set "E"]
+     Sender N nodes: H→ (270, 200), L→ (690, 200)  [info-set "N"]
+     From each signal node, branches to Receiver actions h and r
+     Receiver h leaf positions and r leaf positions at y=380
+   ============================================================ */
+const TREE = {
+  W: 760, H: 480,
+  nature: { x: 380, y: 30 },
+  types: {
+    H: { x: 180, y: 100, color: '#34D399' },
+    L: { x: 580, y: 100, color: '#FB7185' }
+  },
+  // Sender nodes (one per type x signal). These are the receiver's decision nodes.
+  // The receiver has two information sets: {H_E, L_E} (signal=E) and {H_N, L_N} (signal=N)
+  signal_nodes: {
+    H_E: { x: 90,  y: 215 },
+    H_N: { x: 270, y: 215 },
+    L_E: { x: 490, y: 215 },
+    L_N: { x: 670, y: 215 }
+  },
+  // Information sets: groupings of signal nodes that share an information set
+  info_sets: {
+    E: { name: 'After Educate (E)', nodes: ['H_E', 'L_E'] },
+    N: { name: 'After Skip (∅)', nodes: ['H_N', 'L_N'] }
+  },
+  // Terminal payoffs after Receiver decides h or r
+  // Position offsets for the terminal leaves
+  terminalDx: 28, terminalY: 380
+};
+
+/* ============================================================
+   TREE RENDER
+   ============================================================ */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svgEl(tag, attrs = {}) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+function renderTree() {
+  const svg = $('#treeSVG');
+  svg.innerHTML = '';
+
+  // Determine which paths are "live" given current strategy
+  const senderE = State.senderStrategy;  // {H, L}
+  const equilibriumPath = computeEquilibriumPath();   // returns set of edge IDs that are active
+
+  // Helper to check if an edge is on the chosen sender path
+  function isSenderEdge(type, signal) {
+    return senderE[type] === signal;
+  }
+  function isReceiverEdge(signal, action) {
+    return State.receiverStrategy[signal] === action;
+  }
+
+  // ===== Layer captions =====
+  const layerCaptions = [
+    { y: 30,  label: 'Nature' },
+    { y: 100, label: 'Sender' },
+    { y: 215, label: 'Receiver' },
+    { y: 380, label: 'Payoffs' }
+  ];
+  layerCaptions.forEach(l => {
+    const t = svgEl('text', {
+      class: 'tree-label muted',
+      x: 14, y: l.y + 4,
+      'font-family': 'JetBrains Mono', 'font-size': 10
+    });
+    t.textContent = l.label;
+    svg.appendChild(t);
+  });
+
+  // ===== Edges from Nature to types =====
+  ['H', 'L'].forEach(t => {
+    const tNode = TREE.types[t];
+    const cls = (State.stage >= 1 && (State.senderStrategy.H || State.senderStrategy.L)) ? '' : '';
+    const edge = svgEl('line', {
+      class: 'tree-edge',
+      x1: TREE.nature.x, y1: TREE.nature.y + 12,
+      x2: tNode.x, y2: tNode.y - 14,
+      'data-edge-id': `nature-${t}`
+    });
+    if (equilibriumPath.includes(`nature-${t}`)) edge.classList.add('eq-path');
+    svg.appendChild(edge);
+    // Probability label
+    const pLbl = svgEl('text', {
+      class: 'tree-label tree-label-num',
+      x: (TREE.nature.x + tNode.x) / 2 + (t === 'H' ? -14 : 14),
+      y: (TREE.nature.y + tNode.y) / 2
+    });
+    pLbl.textContent = '0.5';
+    svg.appendChild(pLbl);
+  });
+
+  // ===== Nature node =====
+  const natureG = svgEl('g');
+  natureG.appendChild(svgEl('circle', {
+    cx: TREE.nature.x, cy: TREE.nature.y, r: 12,
+    fill: '#1A1736', stroke: 'rgba(155,123,255,.7)', 'stroke-width': 2
+  }));
+  const natureLbl = svgEl('text', {
+    x: TREE.nature.x, y: TREE.nature.y + 4, 'text-anchor': 'middle',
+    'font-family': 'JetBrains Mono', 'font-size': 11, 'font-weight': 700, fill: '#9B7BFF'
+  });
+  natureLbl.textContent = 'N';
+  natureG.appendChild(natureLbl);
+  svg.appendChild(natureG);
+
+  // ===== Type nodes =====
+  ['H', 'L'].forEach(t => {
+    const tNode = TREE.types[t];
+    const g = svgEl('g');
+    g.appendChild(svgEl('circle', {
+      cx: tNode.x, cy: tNode.y, r: 14,
+      fill: tNode.color, stroke: '#fff', 'stroke-width': 2
+    }));
+    const lbl = svgEl('text', {
+      x: tNode.x, y: tNode.y + 4, 'text-anchor': 'middle',
+      'font-family': 'JetBrains Mono', 'font-size': 12, 'font-weight': 700, fill: '#fff'
+    });
+    lbl.textContent = t;
+    g.appendChild(lbl);
+    // "Sender" caption
+    const cap = svgEl('text', {
+      class: 'tree-label',
+      x: tNode.x, y: tNode.y + 30, 'text-anchor': 'middle'
+    });
+    cap.textContent = `Type ${t}`;
+    g.appendChild(cap);
+    svg.appendChild(g);
+  });
+
+  // ===== Edges from types to signal nodes (sender choices) =====
+  ['H', 'L'].forEach(t => {
+    const tNode = TREE.types[t];
+    ['E', 'N'].forEach(s => {
+      const sNode = TREE.signal_nodes[`${t}_${s}`];
+      const isPath = isSenderEdge(t, s);
+      const eClass = 'tree-edge' + (isPath && State.stage >= 1 ? ' eq-path solid' : '');
+      svg.appendChild(svgEl('line', {
+        class: eClass,
+        x1: tNode.x, y1: tNode.y + 14,
+        x2: sNode.x, y2: sNode.y - 14,
+        'data-edge-id': `${t}-${s}`
+      }));
+      // Signal label on edge
+      const lbl = svgEl('text', {
+        class: 'tree-label tree-label-num',
+        x: (tNode.x + sNode.x) / 2,
+        y: (tNode.y + sNode.y) / 2
+      });
+      lbl.setAttribute('text-anchor', tNode.x < sNode.x ? 'start' : 'end');
+      lbl.setAttribute('dx', tNode.x < sNode.x ? '4' : '-4');
+      lbl.textContent = s === 'E' ? 'E' : '∅';
+      svg.appendChild(lbl);
+    });
+  });
+
+  // ===== Information set rectangles =====
+  Object.entries(TREE.info_sets).forEach(([sigKey, iset]) => {
+    const positions = iset.nodes.map(id => TREE.signal_nodes[id]);
+    const xMin = Math.min(...positions.map(p => p.x)) - 22;
+    const xMax = Math.max(...positions.map(p => p.x)) + 22;
+    const yMid = positions[0].y;
+    const rect = svgEl('rect', {
+      class: 'info-set-rect',
+      'data-info-set': sigKey,
+      x: xMin, y: yMid - 22,
+      width: xMax - xMin, height: 44,
+      rx: 22
+    });
+    // On-path classification
+    const isOnPath = isInfoSetOnPath(sigKey);
+    if (isOnPath) rect.classList.add('on-path');
+    rect.style.cursor = 'pointer';
+    rect.addEventListener('mouseenter', () => {
+      $('#treeStatus').textContent = `Information set "${iset.name}" — receiver cannot distinguish these nodes.`;
+    });
+    rect.addEventListener('mouseleave', () => {
+      $('#treeStatus').textContent = State.finished ? 'PBE check complete.' : 'Click a belief μ to edit. Click an information set to highlight.';
+    });
+    svg.appendChild(rect);
+  });
+
+  // ===== Receiver decision nodes =====
+  Object.entries(TREE.signal_nodes).forEach(([id, n]) => {
+    const c = svgEl('circle', {
+      class: 'tree-node-circle',
+      cx: n.x, cy: n.y, r: 9,
+      fill: '#1A1736',
+      stroke: 'rgba(251,191,36,.7)',
+      'stroke-width': 1.5
+    });
+    svg.appendChild(c);
+  });
+
+  // ===== Belief pills (one per information set) =====
+  Object.entries(TREE.info_sets).forEach(([sigKey, iset]) => {
+    const positions = iset.nodes.map(id => TREE.signal_nodes[id]);
+    const xMid = (Math.min(...positions.map(p => p.x)) + Math.max(...positions.map(p => p.x))) / 2;
+    const isOnPath = isInfoSetOnPath(sigKey);
+    const isViolation = State.verification && State.verification.violations &&
+      State.verification.violations.some(v => v.target === `belief-${sigKey}`);
+
+    const pillG = svgEl('g', {
+      class: 'belief-pill ' + (isOnPath ? 'on-path' : 'off-path') + (isViolation ? ' violation' : ''),
+      transform: `translate(${xMid}, ${positions[0].y - 50})`
+    });
+    pillG.dataset.signal = sigKey;
+    // Background
+    pillG.appendChild(svgEl('rect', {
+      class: 'belief-bg',
+      x: -36, y: -16, width: 72, height: 24, rx: 12
+    }));
+    // Belief value text
+    const muText = svgEl('text', {
+      class: 'belief-text',
+      x: 0, y: -3
+    });
+    muText.textContent = `μ = ${formatBelief(State.beliefs[sigKey])}`;
+    pillG.appendChild(muText);
+    // Tag below
+    const tag = svgEl('text', {
+      class: 'belief-tag',
+      x: 0, y: 19
+    });
+    tag.textContent = isOnPath ? 'on-path' : 'off-path · free';
+    if (isViolation) tag.style.fill = '#FB7185';
+    pillG.appendChild(tag);
+
+    pillG.addEventListener('click', (e) => openBeliefPopover(sigKey, e));
+    svg.appendChild(pillG);
+  });
+
+  // ===== Edges from signal nodes to receiver actions (h/r) =====
+  Object.entries(TREE.signal_nodes).forEach(([id, n]) => {
+    const [type, sig] = id.split('_');
+    ['h', 'r'].forEach((action, idx) => {
+      const dx = (idx === 0 ? -1 : 1) * TREE.terminalDx;
+      const tx = n.x + dx;
+      const ty = TREE.terminalY - 26;
+      const isPath = State.senderStrategy[type] === sig && isReceiverEdge(sig, action);
+      const cls = 'tree-edge' + (isPath ? ' eq-path solid' : '');
+      svg.appendChild(svgEl('line', {
+        class: cls,
+        x1: n.x, y1: n.y + 9,
+        x2: tx, y2: ty
+      }));
+      // Label
+      const lbl = svgEl('text', {
+        class: 'tree-label tree-label-num',
+        x: (n.x + tx) / 2 + (idx === 0 ? -6 : 6),
+        y: (n.y + ty) / 2
+      });
+      lbl.setAttribute('text-anchor', idx === 0 ? 'end' : 'start');
+      lbl.textContent = action;
+      svg.appendChild(lbl);
+
+      // Terminal payoff: (sender, receiver)
+      const sP = senderPayoff(type, sig, action);
+      const rP = receiverPayoff(type, action);
+      const pLbl = svgEl('text', {
+        class: 'tree-label payoff',
+        x: tx, y: ty + 16, 'text-anchor': 'middle'
+      });
+      pLbl.innerHTML = '';
+      // Manually create tspans for color
+      const sSpan = svgEl('tspan', { fill: '#9B7BFF' });
+      sSpan.textContent = sP;
+      const sep = svgEl('tspan', { fill: 'rgba(255,255,255,.3)' });
+      sep.textContent = ',';
+      const rSpan = svgEl('tspan', { fill: '#FBBF24' });
+      rSpan.textContent = ' ' + rP;
+      pLbl.appendChild(sSpan);
+      pLbl.appendChild(sep);
+      pLbl.appendChild(rSpan);
+      svg.appendChild(pLbl);
+    });
+  });
+
+  // Re-attach click outside handler for popover
+  setTimeout(() => {
+    document.addEventListener('click', closeBeliefPopoverOnOutside, { once: false });
+  }, 0);
+}
+
+function formatBelief(v) {
+  if (v === 0) return '0';
+  if (v === 1) return '1';
+  if (v === 0.5) return '½';
+  if (v === 0.25) return '¼';
+  if (v === 0.75) return '¾';
+  return v.toFixed(2);
+}
+
+/* ============================================================
+   ON-PATH / OFF-PATH CLASSIFICATION
+   ============================================================
+   An information set is on-path if some sender type's strategy
+   leads to it. If no type ever sends a particular signal, that
+   info set is off-path and beliefs there are unconstrained.
+   ============================================================ */
+function isInfoSetOnPath(signal) {
+  return State.senderStrategy.H === signal || State.senderStrategy.L === signal;
+}
+
+function computeEquilibriumPath() {
+  const path = [];
+  ['H', 'L'].forEach(t => {
+    if (State.senderStrategy[t]) {
+      path.push(`nature-${t}`);
+      path.push(`${t}-${State.senderStrategy[t]}`);
+    }
+  });
+  return path;
+}
+
+/* ============================================================
+   BELIEF POPOVER
+   ============================================================ */
+function openBeliefPopover(signal, e) {
+  e.stopPropagation();
+  if (State.stage < 2) {
+    showToast('Set the sender strategy first (Stage 1).');
+    return;
+  }
+  State.editingSignal = signal;
+  const popover = $('#beliefPopover');
+  const treeWrap = $('#treeSVG').parentElement;
+  const wrapRect = treeWrap.getBoundingClientRect();
+  // Position popover near the clicked pill
+  const target = e.currentTarget.getBoundingClientRect();
+  popover.style.left = (target.left - wrapRect.left + target.width / 2 - 100) + 'px';
+  popover.style.top = (target.top - wrapRect.top + target.height + 8) + 'px';
+
+  const isOnPath = isInfoSetOnPath(signal);
+  $('#popoverLabel').textContent = `μ at ${TREE.info_sets[signal].name}`;
+  $('#popoverTag').className = 'tag ' + (isOnPath ? 'tag-violet' : 'tag-amber');
+  $('#popoverTag').textContent = isOnPath ? 'on-path · Bayes-derived' : 'off-path · free';
+  $('#popoverHint').innerHTML = isOnPath
+    ? `P(H | <span class="font-mono">${signal === 'E' ? 'E' : '∅'}</span>) — should equal Bayes posterior`
+    : `P(H | <span class="font-mono">${signal === 'E' ? 'E' : '∅'}</span>) — any value in [0, 1]`;
+
+  // Mark currently selected
+  $$('.belief-opt').forEach(opt => {
+    opt.classList.toggle('selected', parseFloat(opt.dataset.val) === State.beliefs[signal]);
+  });
+  popover.classList.add('visible');
+}
+
+function closeBeliefPopover() {
+  $('#beliefPopover').classList.remove('visible');
+  State.editingSignal = null;
+}
+
+function closeBeliefPopoverOnOutside(e) {
+  const pop = $('#beliefPopover');
+  if (!pop.classList.contains('visible')) return;
+  if (pop.contains(e.target)) return;
+  if (e.target.closest('.belief-pill')) return;
+  closeBeliefPopover();
+}
+
+function bindBeliefOptions() {
+  $$('.belief-opt').forEach(opt => {
+    opt.addEventListener('click', () => {
+      if (!State.editingSignal) return;
+      const val = parseFloat(opt.dataset.val);
+      State.beliefs[State.editingSignal] = val;
+      closeBeliefPopover();
+      renderTree();
+      renderStage();
+    });
+  });
+}
+
+/* ============================================================
+   STAGE FLOW
+   ============================================================ */
+function gotoStage(s) {
+  State.stage = s;
+  // Update stepper
+  $$('.stage-step').forEach(el => {
+    const st = parseInt(el.dataset.stage, 10);
+    el.classList.remove('active', 'completed', 'disabled');
+    if (st < s) el.classList.add('completed');
+    else if (st === s) el.classList.add('active');
+    else el.classList.add('disabled');
+  });
+  renderStage();
+  renderTree();
+}
+
+function renderStage() {
+  const body = $('#stageBody');
+  if (State.stage === 1) renderStage1(body);
+  else if (State.stage === 2) renderStage2(body);
+  else if (State.stage === 3) renderStage3(body);
+  else if (State.stage === 4) renderStage4(body);
+}
+
+/* ============================================================
+   STAGE 1 — SENDER STRATEGY
+   ============================================================ */
+function renderStage1(body) {
+  body.innerHTML = `
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Stage 1</div>
+    <div class="font-display text-xl tracking-tight mb-3">What does each type send?</div>
+
+    <div class="text-[12px] text-white/60 mb-4 leading-relaxed">
+      The sender's strategy is a function <span class="font-mono text-violet-glow">σ: {H, L} → {E, ∅}</span>. Pick what each type sends — separating, pooling, or anything in between.
+    </div>
+
+    <div class="space-y-3">
+      <div>
+        <div class="text-[11px] uppercase tracking-wider text-coop-glow font-medium mb-2">If type is H</div>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="strategy-btn" data-type="H" data-sig="E">
+            <div class="font-medium text-sm">Educate (E)</div>
+            <div class="text-[11px] text-white/55">Costs 1 util</div>
+          </div>
+          <div class="strategy-btn" data-type="H" data-sig="N">
+            <div class="font-medium text-sm">Skip (∅)</div>
+            <div class="text-[11px] text-white/55">No cost</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="text-[11px] uppercase tracking-wider text-defect-glow font-medium mb-2">If type is L</div>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="strategy-btn" data-type="L" data-sig="E">
+            <div class="font-medium text-sm">Educate (E)</div>
+            <div class="text-[11px] text-white/55">Costs 5 utils</div>
+          </div>
+          <div class="strategy-btn" data-type="L" data-sig="N">
+            <div class="font-medium text-sm">Skip (∅)</div>
+            <div class="text-[11px] text-white/55">No cost</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex gap-2 mt-4">
+      <button class="btn-primary flex-1" id="continueStage1" disabled>
+        Continue to beliefs →
+      </button>
+    </div>
+  `;
+
+  // Mark selections
+  $$('.strategy-btn').forEach(btn => {
+    const t = btn.dataset.type, sig = btn.dataset.sig;
+    if (State.senderStrategy[t] === sig) btn.classList.add('selected');
+    btn.addEventListener('click', () => {
+      State.senderStrategy[t] = sig;
+      // Reset receiver beliefs to defaults whenever sender strategy changes
+      autoSetBayesBeliefs();
+      $$('.strategy-btn').forEach(b => {
+        if (b.dataset.type === t) b.classList.remove('selected');
+      });
+      btn.classList.add('selected');
+      checkContinueStage1();
+      renderTree();
+    });
+  });
+
+  $('#continueStage1').addEventListener('click', () => {
+    if (State.senderStrategy.H && State.senderStrategy.L) {
+      autoSetBayesBeliefs();
+      gotoStage(2);
+    }
+  });
+
+  checkContinueStage1();
+}
+
+function checkContinueStage1() {
+  const ready = !!(State.senderStrategy.H && State.senderStrategy.L);
+  $('#continueStage1').disabled = !ready;
+}
+
+/* ============================================================
+   STAGE 2 — BELIEFS
+   ============================================================ */
+function autoSetBayesBeliefs() {
+  // For on-path info sets, set Bayes-implied posterior
+  // For off-path info sets, leave at 0.5 default (caller can change)
+  ['E', 'N'].forEach(sig => {
+    const onPath = isInfoSetOnPath(sig);
+    if (onPath) {
+      // Posterior P(H | sig) under sender strategy
+      const senderPlaysSigGivenH = State.senderStrategy.H === sig ? 1 : 0;
+      const senderPlaysSigGivenL = State.senderStrategy.L === sig ? 1 : 0;
+      const prior = PARAMS.prior;
+      const numerator = prior * senderPlaysSigGivenH;
+      const denom = prior * senderPlaysSigGivenH + (1 - prior) * senderPlaysSigGivenL;
+      if (denom > 0) {
+        State.beliefs[sig] = numerator / denom;
+      } else {
+        // Off-path actually (denom=0)
+        // Keep as is
+      }
+    }
+  });
+}
+
+function renderStage2(body) {
+  // Beliefs auto-derived for on-path; user can edit anything
+  body.innerHTML = `
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Stage 2</div>
+    <div class="font-display text-xl tracking-tight mb-3">Set the receiver's beliefs</div>
+
+    <div class="text-[12px] text-white/60 mb-4 leading-relaxed">
+      Beliefs <span class="font-mono text-violet-glow">μ(H | signal)</span> have been auto-derived for on-path info sets via Bayes' rule. <span class="text-equilibrium-glow">Off-path beliefs are free</span> — click any μ on the tree to override.
+    </div>
+
+    <div class="space-y-2 mb-4">
+      ${['E', 'N'].map(sig => {
+        const isOnPath = isInfoSetOnPath(sig);
+        const sigDisplay = sig === 'E' ? 'Educate (E)' : 'Skip (∅)';
+        const muVal = State.beliefs[sig];
+        return `
+          <div class="p-3 rounded-lg bg-white/[.025] border border-white/5">
+            <div class="flex items-center justify-between flex-wrap gap-2">
+              <div class="flex items-center gap-2">
+                <span class="tag ${isOnPath ? 'tag-violet' : 'tag-amber'}">${isOnPath ? 'on-path' : 'off-path · free'}</span>
+                <span class="text-sm font-medium">After ${sigDisplay}</span>
+              </div>
+              <div class="font-mono text-violet-glow font-semibold">μ = ${formatBelief(muVal)}</div>
+            </div>
+            <div class="text-[11px] text-white/55 mt-1.5">
+              ${isOnPath
+                ? `Bayes posterior given σ_H = ${State.senderStrategy.H}, σ_L = ${State.senderStrategy.L}.`
+                : 'Neither type sends this signal in your strategy — any μ is permitted.'}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    <div class="flex gap-2">
+      <button class="btn-ghost text-sm" id="backStage2">← Back</button>
+      <button class="btn-primary flex-1" id="continueStage2">
+        Continue to receiver's response →
+      </button>
+    </div>
+  `;
+  $('#backStage2').addEventListener('click', () => gotoStage(1));
+  $('#continueStage2').addEventListener('click', () => gotoStage(3));
+}
+
+/* ============================================================
+   STAGE 3 — RECEIVER STRATEGY
+   ============================================================ */
+function renderStage3(body) {
+  // Compute optimal response at each info set given current beliefs (for hint)
+  function bestResponse(sig) {
+    const mu = State.beliefs[sig];
+    const uH = mu * receiverPayoff('H', 'h') + (1 - mu) * receiverPayoff('L', 'h');
+    const uR = 0;  // refusing always yields 0
+    return uH >= uR ? 'h' : 'r';
+  }
+
+  body.innerHTML = `
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Stage 3</div>
+    <div class="font-display text-xl tracking-tight mb-3">What does the receiver do?</div>
+
+    <div class="text-[12px] text-white/60 mb-4 leading-relaxed">
+      For each information set, choose <span class="text-coop-glow">Hire</span> or <span class="text-defect-glow">Refuse</span>. <span class="text-equilibrium-glow">Sequential rationality</span> requires the receiver play a best response given her beliefs.
+    </div>
+
+    <div class="space-y-3">
+      ${['E', 'N'].map(sig => {
+        const sigDisplay = sig === 'E' ? 'Educate (E)' : 'Skip (∅)';
+        const mu = State.beliefs[sig];
+        const br = bestResponse(sig);
+        const eu_h = (mu * 2 + (1 - mu) * (-2)).toFixed(2);
+        return `
+          <div class="p-3 rounded-lg bg-white/[.025] border border-white/5">
+            <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium">After ${sigDisplay}</span>
+                <span class="tag tag-violet font-mono">μ = ${formatBelief(mu)}</span>
+              </div>
+              <span class="text-[11px] text-white/55">E[hire] = <span class="font-mono">${eu_h}</span> · E[refuse] = <span class="font-mono">0</span></span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div class="strategy-btn" data-sig="${sig}" data-act="h">
+                <div class="font-medium text-sm">Hire (h)</div>
+                <div class="text-[11px] text-white/55">Wage 4</div>
+              </div>
+              <div class="strategy-btn" data-sig="${sig}" data-act="r">
+                <div class="font-medium text-sm">Refuse (r)</div>
+                <div class="text-[11px] text-white/55">No wage</div>
+              </div>
+            </div>
+            <div class="text-[11px] text-coop-glow mt-2">Best response under μ: <span class="font-mono font-semibold">${br === 'h' ? 'Hire' : 'Refuse'}</span></div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    <div class="flex gap-2 mt-4">
+      <button class="btn-ghost text-sm" id="backStage3">← Back</button>
+      <button class="btn-primary flex-1" id="continueStage3" disabled>
+        Run PBE verification →
+      </button>
+    </div>
+  `;
+
+  // Mark selections
+  $$('.strategy-btn').forEach(btn => {
+    const sig = btn.dataset.sig, act = btn.dataset.act;
+    if (State.receiverStrategy[sig] === act) btn.classList.add('selected');
+    btn.addEventListener('click', () => {
+      State.receiverStrategy[sig] = act;
+      $$('.strategy-btn').forEach(b => {
+        if (b.dataset.sig === sig) b.classList.remove('selected');
+      });
+      btn.classList.add('selected');
+      checkContinueStage3();
+      renderTree();
+    });
+  });
+
+  $('#backStage3').addEventListener('click', () => gotoStage(2));
+  $('#continueStage3').addEventListener('click', () => {
+    if (State.receiverStrategy.E && State.receiverStrategy.N) gotoStage(4);
+  });
+  checkContinueStage3();
+}
+
+function checkContinueStage3() {
+  const ready = !!(State.receiverStrategy.E && State.receiverStrategy.N);
+  if ($('#continueStage3')) $('#continueStage3').disabled = !ready;
+}
+
+/* ============================================================
+   STAGE 4 — VERIFICATION
+   ============================================================ */
+function renderStage4(body) {
+  body.innerHTML = `
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Stage 4</div>
+    <div class="font-display text-xl tracking-tight mb-3">Verify the four PBE conditions</div>
+    <div class="text-[12px] text-white/60 leading-relaxed">
+      We'll check each condition one at a time. Watch the tree — violations highlight in red.
+    </div>
+    <div class="flex gap-2 mt-4">
+      <button class="btn-ghost text-sm" id="backStage4">← Back</button>
+      <button class="btn-primary flex-1" id="runChecks">
+        Run all four checks
+      </button>
+    </div>
+  `;
+  $('#backStage4').addEventListener('click', () => gotoStage(3));
+  $('#runChecks').addEventListener('click', runVerification);
+
+  // Render the verification panel skeleton
+  renderVerifyPanel('pending');
+}
+
+function renderVerifyPanel(stateKind, results = null) {
+  const panel = $('#verifyPanel');
+  panel.classList.remove('hidden');
+  const checks = [
+    { id: 1, title: 'Sequential rationality (sender)', desc: 'Each sender type plays a best response given the receiver strategy.' },
+    { id: 2, title: 'Sequential rationality (receiver)', desc: 'At each info set, receiver plays a best response given μ.' },
+    { id: 3, title: 'Bayes consistency on-path', desc: 'On-path beliefs equal the posterior implied by the sender strategy.' },
+    { id: 4, title: 'Off-path beliefs valid', desc: 'Off-path beliefs lie in [0,1] (no constraint required).' }
+  ];
+
+  panel.innerHTML = `
+    <div class="glass-strong rounded-3xl p-6 lg:p-8 reveal-in">
+      <div class="flex items-center justify-between mb-5">
+        <div>
+          <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">PBE verification</div>
+          <h2 class="font-display text-2xl tracking-tight">The four conditions</h2>
+        </div>
+      </div>
+      <div class="grid md:grid-cols-2 gap-3" id="checksGrid">
+        ${checks.map(c => `
+          <div class="check-card pending" id="check-${c.id}">
+            <div class="flex items-start gap-3">
+              <div class="check-icon">${c.id}</div>
+              <div class="flex-1 min-w-0">
+                <div class="font-medium text-sm mb-1">${c.title}</div>
+                <div class="text-[12px] text-white/55 leading-relaxed">${c.desc}</div>
+                <div class="text-[12px] mt-2 text-white/50" id="check-${c.id}-result">…</div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+async function runVerification() {
+  // Build full verification result
+  const verification = computeVerification();
+  State.verification = verification;
+  renderVerifyPanel('running');
+
+  // Animate each check sequentially
+  for (let i = 1; i <= 4; i++) {
+    const card = $(`#check-${i}`);
+    card.classList.remove('pending');
+    card.classList.add('checking');
+    await wait(700);
+    const passed = verification.checks[i - 1].pass;
+    card.classList.remove('checking');
+    card.classList.add(passed ? 'pass' : 'fail');
+    $(`#check-${i}-result`).innerHTML = verification.checks[i - 1].detail;
+    $(`#check-${i} .check-icon`).textContent = passed ? '✓' : '✗';
+    await wait(400);
+  }
+
+  // Final banner
+  showFinalBanner(verification);
+
+  // Re-render tree with violations
+  renderTree();
+  State.finished = true;
+}
+
+/* ============================================================
+   PBE VERIFICATION LOGIC
+   ============================================================ */
+function computeVerification() {
+  const checks = [];
+  const violations = [];
+
+  // ---- Check 1: Sender's sequential rationality ----
+  // For each type, compute the payoff of the chosen signal under the receiver strategy,
+  // and the payoff of the alternative signal. Chosen must be a (weak) best response.
+  const c1Issues = [];
+  ['H', 'L'].forEach(t => {
+    const chosen = State.senderStrategy[t];
+    const alt = chosen === 'E' ? 'N' : 'E';
+    const chosenPayoff = senderPayoff(t, chosen, State.receiverStrategy[chosen]);
+    const altPayoff = senderPayoff(t, alt, State.receiverStrategy[alt]);
+    if (chosenPayoff < altPayoff - 1e-9) {
+      c1Issues.push({ type: t, chosen, chosenPayoff, alt, altPayoff });
+    }
+  });
+  if (c1Issues.length === 0) {
+    checks.push({
+      pass: true,
+      detail: `<span class="text-coop-glow">✓ Both types play best responses.</span>`
+    });
+  } else {
+    const i = c1Issues[0];
+    checks.push({
+      pass: false,
+      detail: `<span class="text-defect-glow">✗ Type ${i.type} prefers ${i.alt === 'E' ? 'Educate' : 'Skip'} (${i.altPayoff}) to ${i.chosen === 'E' ? 'Educate' : 'Skip'} (${i.chosenPayoff}). Type ${i.type} would deviate.</span>`
+    });
+    violations.push({ target: `type-${i.type}` });
+  }
+
+  // ---- Check 2: Receiver's sequential rationality ----
+  const c2Issues = [];
+  ['E', 'N'].forEach(sig => {
+    const mu = State.beliefs[sig];
+    const u_h = mu * receiverPayoff('H', 'h') + (1 - mu) * receiverPayoff('L', 'h');
+    const u_r = 0;
+    const br = u_h > u_r + 1e-9 ? 'h' : (u_r > u_h + 1e-9 ? 'r' : 'either');
+    const chosen = State.receiverStrategy[sig];
+    if (br !== 'either' && chosen !== br) {
+      c2Issues.push({ sig, mu, chosen, br, u_h, u_r });
+    }
+  });
+  if (c2Issues.length === 0) {
+    checks.push({
+      pass: true,
+      detail: `<span class="text-coop-glow">✓ Receiver plays best response at every info set.</span>`
+    });
+  } else {
+    const i = c2Issues[0];
+    const muStr = formatBelief(i.mu);
+    checks.push({
+      pass: false,
+      detail: `<span class="text-defect-glow">✗ At "${TREE.info_sets[i.sig].name}" with μ=${muStr}, E[hire]=${i.u_h.toFixed(2)} vs E[refuse]=0. Best response is ${i.br === 'h' ? 'Hire' : 'Refuse'}, not ${i.chosen === 'h' ? 'Hire' : 'Refuse'}.</span>`
+    });
+    violations.push({ target: `belief-${i.sig}` });
+  }
+
+  // ---- Check 3: Bayes consistency on-path ----
+  const c3Issues = [];
+  ['E', 'N'].forEach(sig => {
+    if (!isInfoSetOnPath(sig)) return;
+    // Bayes posterior
+    const prior = PARAMS.prior;
+    const sH = State.senderStrategy.H === sig ? 1 : 0;
+    const sL = State.senderStrategy.L === sig ? 1 : 0;
+    const denom = prior * sH + (1 - prior) * sL;
+    if (denom < 1e-9) return;   // skip — can't compute (off-path)
+    const bayesPost = (prior * sH) / denom;
+    const userMu = State.beliefs[sig];
+    if (Math.abs(bayesPost - userMu) > 1e-6) {
+      c3Issues.push({ sig, userMu, bayesPost });
+    }
+  });
+  if (c3Issues.length === 0) {
+    checks.push({
+      pass: true,
+      detail: `<span class="text-coop-glow">✓ All on-path beliefs equal Bayes posteriors.</span>`
+    });
+  } else {
+    const i = c3Issues[0];
+    checks.push({
+      pass: false,
+      detail: `<span class="text-defect-glow">✗ At "${TREE.info_sets[i.sig].name}", you set μ=${formatBelief(i.userMu)} but Bayes' rule gives μ=${formatBelief(i.bayesPost)}.</span>`
+    });
+    violations.push({ target: `belief-${i.sig}` });
+  }
+
+  // ---- Check 4: Off-path beliefs valid (always true if μ ∈ [0,1]) ----
+  let c4Issues = [];
+  ['E', 'N'].forEach(sig => {
+    if (isInfoSetOnPath(sig)) return;
+    const mu = State.beliefs[sig];
+    if (mu < 0 || mu > 1) c4Issues.push({ sig, mu });
+  });
+  if (c4Issues.length === 0) {
+    const offPathSigs = ['E', 'N'].filter(s => !isInfoSetOnPath(s));
+    if (offPathSigs.length === 0) {
+      checks.push({
+        pass: true,
+        detail: `<span class="text-coop-glow">✓ Strategy is fully separating — no off-path info sets.</span>`
+      });
+    } else {
+      checks.push({
+        pass: true,
+        detail: `<span class="text-coop-glow">✓ Off-path beliefs at ${offPathSigs.map(s => TREE.info_sets[s].name).join(', ')} are valid (in [0,1]).</span>`
+      });
+    }
+  } else {
+    checks.push({
+      pass: false,
+      detail: `<span class="text-defect-glow">✗ Belief out of [0,1] range.</span>`
+    });
+  }
+
+  return {
+    checks,
+    violations,
+    isPBE: checks.every(c => c.pass)
+  };
+}
+
+/* ============================================================
+   FINAL BANNER
+   ============================================================ */
+function showFinalBanner(verification) {
+  const banner = $('#finalBanner');
+  banner.classList.remove('hidden');
+  const isPBE = verification.isPBE;
+  const passedCount = verification.checks.filter(c => c.pass).length;
+
+  if (isPBE) {
+    // Classify the type of equilibrium
+    const sH = State.senderStrategy.H, sL = State.senderStrategy.L;
+    let kind, desc;
+    if (sH !== sL) {
+      kind = 'Separating PBE';
+      desc = `Type H sends ${sH === 'E' ? 'Educate' : 'Skip'}, Type L sends ${sL === 'E' ? 'Educate' : 'Skip'}. Receiver's beliefs are determined by Bayes' rule on-path; she correctly identifies the type from the signal.`;
+    } else {
+      kind = 'Pooling PBE';
+      desc = `Both types send the same signal (${sH === 'E' ? 'Educate' : 'Skip'}). The receiver cannot distinguish types from the signal and must rely on the prior. Off-path beliefs at the unused signal are free.`;
+    }
+    banner.innerHTML = `
+      <div class="pbe-result-banner pbe-banner-pass reveal-in">
+        <div class="text-[11px] uppercase tracking-wider text-coop-glow font-medium mb-2">All four conditions satisfied</div>
+        <div class="font-display text-3xl tracking-tight mb-2">Perfect Bayesian Equilibrium ✓</div>
+        <div class="text-sm text-white/70 mb-3">${kind}</div>
+        <div class="text-sm text-white/65 max-w-2xl mx-auto leading-relaxed">${desc}</div>
+        <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <button class="btn-ghost text-sm" id="bannerReset">Try a different strategy</button>
+          <button class="btn-primary text-sm" id="bannerShowPBE">Walk through the canonical PBE</button>
+        </div>
+      </div>
+    `;
+    spawnConfetti();
+    // Make the equilibrium path glow on the tree
+    $('#treeStatus').textContent = 'PBE established. Equilibrium path glowing.';
+  } else {
+    const failedNames = ['Sender BR', 'Receiver BR', 'Bayes consistency', 'Off-path validity'].filter((_, i) => !verification.checks[i].pass);
+    banner.innerHTML = `
+      <div class="pbe-result-banner pbe-banner-fail reveal-in">
+        <div class="text-[11px] uppercase tracking-wider text-defect-glow font-medium mb-2">${passedCount} of 4 conditions passed</div>
+        <div class="font-display text-3xl tracking-tight mb-2">Not a PBE</div>
+        <div class="text-sm text-white/70 mb-4 max-w-xl mx-auto">Failed: <span class="text-defect-glow font-medium">${failedNames.join(', ')}</span>. Adjust the strategy or beliefs to fix the violations.</div>
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          <button class="btn-ghost text-sm" id="bannerBackStage">Go back and edit</button>
+          <button class="btn-primary text-sm" id="bannerShowPBE">Show me a real PBE</button>
+        </div>
+      </div>
+    `;
+    $('#treeStatus').textContent = 'Strategy violates a PBE condition. See verification panel for details.';
+  }
+
+  // Wire buttons
+  setTimeout(() => {
+    if ($('#bannerReset')) $('#bannerReset').addEventListener('click', resetAll);
+    if ($('#bannerShowPBE')) $('#bannerShowPBE').addEventListener('click', showCanonicalPBE);
+    if ($('#bannerBackStage')) $('#bannerBackStage').addEventListener('click', () => {
+      $('#finalBanner').classList.add('hidden');
+      $('#verifyPanel').classList.add('hidden');
+      State.finished = false;
+      gotoStage(1);
+    });
+    setTimeout(() => banner.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200);
+  }, 100);
+}
+
+/* ============================================================
+   SHOW CANONICAL PBE
+   ============================================================ */
+async function showCanonicalPBE() {
+  // Animate to the canonical separating PBE: H sends E, L sends N, receiver hires after E, refuses after N
+  showToast('Constructing the separating PBE…');
+  resetAll();
+  await wait(400);
+  // Stage 1: set sender strategy
+  State.senderStrategy = { H: 'E', L: 'N' };
+  gotoStage(1);
+  await wait(700);
+  // Auto-derive beliefs
+  autoSetBayesBeliefs();
+  // For off-path beliefs in this case, both info sets are on-path (separating), so nothing free
+  gotoStage(2);
+  await wait(700);
+  // Stage 3: receiver strategy = h after E, r after N
+  State.receiverStrategy = { E: 'h', N: 'r' };
+  gotoStage(3);
+  await wait(700);
+  gotoStage(4);
+  await wait(400);
+  await runVerification();
+}
+
+/* ============================================================
+   CONFETTI
+   ============================================================ */
+function spawnConfetti() {
+  const colors = ['#7C5CFF', '#9B7BFF', '#34D399', '#FBBF24', '#FB7185', '#10B981'];
+  const count = 60;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  for (let i = 0; i < count; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.left = (vw / 2 + (Math.random() - 0.5) * 100) + 'px';
+    piece.style.top = '40%';
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.transform = `rotate(${Math.random() * 360}deg)`;
+    document.body.appendChild(piece);
+    const dx = (Math.random() - 0.5) * 800;
+    const dy = -300 - Math.random() * 300;
+    const rot = (Math.random() - 0.5) * 720;
+    const dur = 1400 + Math.random() * 1000;
+    const a = piece.animate([
+      { transform: 'translate(-50%,-50%) scale(.6)', opacity: 0 },
+      { transform: 'translate(-50%,-50%) scale(1.1)', opacity: 1, offset: 0.15 },
+      { transform: `translate(${dx}px, ${dy}px) rotate(${rot}deg)`, opacity: 1, offset: 0.55 },
+      { transform: `translate(${dx * 1.2}px, ${vh}px) rotate(${rot * 1.5}deg)`, opacity: 0 }
+    ], { duration: dur, easing: 'cubic-bezier(.5,.1,.7,1)', fill: 'forwards' });
+    a.onfinish = () => piece.remove();
+  }
+}
+
+/* ============================================================
+   RESET / TOAST
+   ============================================================ */
+function resetAll() {
+  State.stage = 1;
+  State.senderStrategy = { H: null, L: null };
+  State.beliefs = { E: 0.5, N: 0.5 };
+  State.receiverStrategy = { E: null, N: null };
+  State.verification = null;
+  State.finished = false;
+  $('#verifyPanel').classList.add('hidden');
+  $('#finalBanner').classList.add('hidden');
+  gotoStage(1);
+  renderTree();
+}
+
+function showToast(text, duration = 1600) {
+  const t = $('#toast');
+  t.textContent = text;
+  t.classList.add('visible');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('visible'), duration);
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ============================================================
+   STEPPER NAVIGATION (allow clicks on completed stages)
+   ============================================================ */
+function bindStepper() {
+  $$('.stage-step').forEach(el => {
+    el.addEventListener('click', () => {
+      if (el.classList.contains('disabled')) return;
+      const target = parseInt(el.dataset.stage, 10);
+      if (target <= State.stage || el.classList.contains('completed')) {
+        gotoStage(target);
+      }
+    });
+  });
+}
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', () => {
+  bindStepper();
+  bindBeliefOptions();
+  $('#showPBEBtn').addEventListener('click', showCanonicalPBE);
+  $('#restartBtn').addEventListener('click', resetAll);
+  renderTree();
+  renderStage();
+});
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'pbe',
+      getSession: function () {
+        if (typeof State === 'undefined' || !State.finished) { return null; }
+        return { score: State.verification ? 1 : 0, outcome: State.verification ? 'win' : 'completed', detail: { verification: State.verification } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

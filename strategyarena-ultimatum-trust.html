@@ -1,0 +1,1696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ultimatum & Trust — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        display: ['Instrument Serif', 'serif']
+      },
+      colors: {
+        ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+        violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+        coop: { DEFAULT: '#10B981', glow: '#34D399' },
+        defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+        equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+      }
+    } }
+  };
+</script>
+
+<style>
+  html, body { background: #070612; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: #E8E6F5; -webkit-font-smoothing: antialiased; overflow-x: hidden; min-height: 100vh; }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  .arena-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410; }
+  .arena-bg::before {
+    content: ''; position: absolute; width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: .25; top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute; width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #FBBF24 0%, transparent 70%);
+    filter: blur(120px); opacity: .12; bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .glass { background: rgba(18,16,42,.55); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); border: 1px solid rgba(255,255,255,.06); }
+  .glass-strong { background: rgba(11,10,26,.75); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); border: 1px solid rgba(255,255,255,.08); }
+  .glass-subtle { background: rgba(255,255,255,.025); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.05); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; font-weight: 500;
+    padding: 13px 26px; border-radius: 10px; font-size: 14px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124,92,255,.6); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 20px; border-radius: 10px; font-size: 13px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-violet { background: rgba(124,92,255,.12); border-color: rgba(124,92,255,.3); color: #9B7BFF; }
+  .tag-amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FBBF24; }
+  .tag-coop { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #34D399; }
+  .tag-defect { background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.3); color: #FB7185; }
+
+  /* ============================================================
+     GAME TABS
+     ============================================================ */
+  .game-toggle {
+    display: inline-flex;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+  }
+  .toggle-btn {
+    padding: 9px 18px;
+    border-radius: 8px;
+    font-size: 13px; font-weight: 500;
+    color: rgba(255,255,255,.55);
+    transition: all .2s ease;
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .toggle-btn:hover { color: #fff; background: rgba(255,255,255,.04); }
+  .toggle-btn.active {
+    background: linear-gradient(135deg, rgba(124,92,255,.15), rgba(124,92,255,.05));
+    color: #fff;
+    box-shadow: 0 0 0 1px rgba(124,92,255,.4);
+  }
+
+  /* ============================================================
+     ARENA STAGE — money flow visualization
+     ============================================================ */
+  .stage {
+    position: relative;
+    min-height: 380px;
+    background:
+      radial-gradient(circle at 20% 50%, rgba(124,92,255,.05) 0%, transparent 40%),
+      radial-gradient(circle at 80% 50%, rgba(251,191,36,.04) 0%, transparent 40%),
+      rgba(11,10,26,0.4);
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.06);
+    padding: 30px;
+    overflow: hidden;
+  }
+
+  .player-card {
+    position: absolute;
+    width: 220px;
+    text-align: center;
+  }
+  .player-card.left  { left: 30px; top: 50%; transform: translateY(-50%); }
+  .player-card.right { right: 30px; top: 50%; transform: translateY(-50%); }
+
+  .player-avatar {
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    border: 3px solid rgba(255,255,255,.15);
+    box-shadow: 0 12px 28px rgba(0,0,0,.4), inset 0 2px 0 rgba(255,255,255,.15);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 50px;
+    margin: 0 auto 12px;
+    transition: transform .3s ease, box-shadow .3s ease, border-color .3s ease;
+    position: relative;
+  }
+  .player-avatar.user {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC);
+  }
+  .player-avatar.opponent {
+    background: linear-gradient(135deg, #FBBF24, #B45309);
+  }
+  .player-avatar.shake { animation: avatarShake .5s ease-in-out; }
+  @keyframes avatarShake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-8px) rotate(-2deg); }
+    50% { transform: translateX(8px) rotate(2deg); }
+    75% { transform: translateX(-4px) rotate(-1deg); }
+  }
+  .player-avatar.bounce { animation: avatarBounce .8s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes avatarBounce {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+
+  .player-name {
+    font-weight: 600;
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+  .player-sub {
+    font-size: 12px;
+    color: rgba(255,255,255,.55);
+  }
+
+  .player-money {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 20px;
+    margin-top: 12px;
+    padding: 6px 14px;
+    background: rgba(0,0,0,.3);
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.08);
+    color: #FBBF24;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: color .25s ease, transform .25s ease, border-color .25s ease;
+  }
+  .player-money.bump { animation: moneyBump .5s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes moneyBump {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.2); color: #34D399; }
+    100% { transform: scale(1); }
+  }
+  .player-money.loss { color: #FB7185; }
+
+  /* Center pot */
+  .pot {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    transition: opacity .3s ease, transform .4s ease;
+  }
+  .pot.collapsed { opacity: 0; transform: translate(-50%, -50%) scale(.5); }
+  .pot-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: rgba(255,255,255,.5);
+    margin-bottom: 6px;
+  }
+  .pot-amount {
+    font-family: 'Instrument Serif', serif;
+    font-size: 56px;
+    line-height: 1;
+    background: linear-gradient(135deg, #FBBF24, #F59E0B);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 12px rgba(251,191,36,.4));
+  }
+  .pot-coins {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 2px;
+    max-width: 200px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .coin-stack-coin {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #FCD34D, #F59E0B 60%, #B45309);
+    box-shadow: 0 0 8px rgba(251,191,36,.5), inset 0 1px 0 rgba(255,255,255,.4);
+  }
+
+  /* Flying coin (animated) */
+  .flying-coin {
+    position: fixed;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #FCD34D, #F59E0B 60%, #B45309);
+    box-shadow: 0 0 14px rgba(251,191,36,.7);
+    z-index: 100;
+    pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; font-weight: 700;
+    color: #7c2d12;
+  }
+
+  /* Rejection cross — appears when offer rejected */
+  .rejection-cross {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    font-size: 80px;
+    color: #FB7185;
+    filter: drop-shadow(0 0 20px rgba(251,113,133,.6));
+    opacity: 0;
+    pointer-events: none;
+    z-index: 50;
+  }
+  .rejection-cross.show {
+    animation: crossSlam .6s cubic-bezier(.34,1.56,.64,1) forwards;
+  }
+  @keyframes crossSlam {
+    0% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+    50% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  }
+
+  /* Acceptance check — appears when offer accepted */
+  .acceptance-check {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    font-size: 64px;
+    color: #34D399;
+    filter: drop-shadow(0 0 20px rgba(52,211,153,.6));
+    opacity: 0;
+    pointer-events: none;
+    z-index: 50;
+  }
+  .acceptance-check.show {
+    animation: checkPop .6s cubic-bezier(.34,1.56,.64,1) forwards;
+  }
+  @keyframes checkPop {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  }
+
+  /* ============================================================
+     OFFER SLIDER (proposer side)
+     ============================================================ */
+  .offer-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 12px;
+    border-radius: 999px; outline: none;
+    background: linear-gradient(90deg, #FB7185 0%, #FBBF24 50%, #34D399 100%);
+    cursor: pointer;
+  }
+  .offer-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 28px; height: 28px;
+    background: #fff;
+    border-radius: 50%;
+    border: 3px solid #7C5CFF;
+    box-shadow: 0 0 0 3px rgba(124,92,255,.2), 0 6px 12px rgba(0,0,0,.4);
+    cursor: grab;
+    transition: transform .15s ease;
+  }
+  .offer-slider::-webkit-slider-thumb:active {
+    transform: scale(1.15);
+    cursor: grabbing;
+  }
+  .offer-slider::-moz-range-thumb {
+    width: 28px; height: 28px;
+    background: #fff;
+    border-radius: 50%;
+    border: 3px solid #7C5CFF;
+    cursor: grab;
+  }
+
+  /* Offer split visualization (split bar) */
+  .split-bar {
+    height: 36px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.06);
+    overflow: hidden;
+    display: flex;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.3);
+  }
+  .split-segment {
+    height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px;
+    color: #fff;
+    transition: flex-basis .3s cubic-bezier(.16,1,.3,1);
+    text-shadow: 0 1px 2px rgba(0,0,0,.4);
+  }
+  .split-segment.you {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC);
+  }
+  .split-segment.opp {
+    background: linear-gradient(135deg, #FBBF24, #B45309);
+  }
+
+  /* ============================================================
+     EMOTIONAL REACTION
+     ============================================================ */
+  .reaction-card {
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.025);
+    border: 1.5px solid rgba(255,255,255,.08);
+    transition: all .3s ease;
+  }
+  .reaction-card.happy { background: linear-gradient(135deg, rgba(52,211,153,.08), rgba(52,211,153,.01)); border-color: rgba(52,211,153,.4); }
+  .reaction-card.neutral { background: rgba(255,255,255,.025); border-color: rgba(255,255,255,.08); }
+  .reaction-card.annoyed { background: linear-gradient(135deg, rgba(251,191,36,.08), rgba(251,191,36,.01)); border-color: rgba(251,191,36,.4); }
+  .reaction-card.angry { background: linear-gradient(135deg, rgba(244,63,94,.08), rgba(244,63,94,.01)); border-color: rgba(251,113,133,.4); }
+  .reaction-emoji {
+    font-size: 32px;
+    line-height: 1;
+    transition: transform .3s ease;
+  }
+  .reaction-card.angry .reaction-emoji { animation: emojiShake .8s ease-in-out infinite; }
+  @keyframes emojiShake {
+    0%, 100% { transform: rotate(-3deg); }
+    50% { transform: rotate(3deg); }
+  }
+
+  /* ============================================================
+     OPPONENT PICKER
+     ============================================================ */
+  .opp-pick {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.02);
+    transition: all .15s ease;
+    cursor: pointer;
+    text-align: left;
+  }
+  .opp-pick:hover { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.18); }
+  .opp-pick.active {
+    background: rgba(124,92,255,.08);
+    border-color: rgba(124,92,255,.4);
+    box-shadow: 0 0 0 1px rgba(124,92,255,.2);
+  }
+
+  /* ============================================================
+     STAT CARDS
+     ============================================================ */
+  .stat-card {
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+  .stat-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  /* ============================================================
+     COMPARISON: BEHAVIORAL VS RATIONAL
+     ============================================================ */
+  .compare-card {
+    padding: 16px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.06);
+    transition: all .25s ease;
+  }
+  .compare-card.spe { background: linear-gradient(135deg, rgba(245,158,11,.06), rgba(245,158,11,.01)); border-color: rgba(251,191,36,.3); }
+  .compare-card.actual { background: linear-gradient(135deg, rgba(124,92,255,.06), rgba(124,92,255,.01)); border-color: rgba(155,123,255,.3); }
+
+  /* ============================================================
+     RESULT BANNER
+     ============================================================ */
+  .result-banner {
+    border-radius: 18px;
+    padding: 22px 28px;
+    border: 1.5px solid;
+    display: flex; gap: 18px; align-items: center;
+    transition: all .35s ease;
+  }
+  .banner-accept { background: rgba(16,185,129,.08); border-color: rgba(52,211,153,.4); }
+  .banner-reject { background: rgba(244,63,94,.08); border-color: rgba(251,113,133,.4); }
+  .banner-icon {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px;
+    flex-shrink: 0;
+  }
+  .banner-accept .banner-icon { background: rgba(52,211,153,.18); }
+  .banner-reject .banner-icon { background: rgba(251,113,133,.18); }
+
+  /* ============================================================
+     STAGE STATUS (current phase)
+     ============================================================ */
+  .stage-status {
+    position: absolute;
+    top: 16px; left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 14px;
+    background: rgba(11,10,26,.6);
+    border: 1px solid rgba(124,92,255,.3);
+    border-radius: 999px;
+    font-size: 11px;
+    color: rgba(155,123,255,.9);
+    backdrop-filter: blur(8px);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    font-weight: 500;
+    transition: opacity .25s ease;
+  }
+
+  /* ============================================================
+     HISTORY
+     ============================================================ */
+  .hist-row {
+    display: grid;
+    grid-template-columns: 32px 1fr auto auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.02);
+    border: 1px solid rgba(255,255,255,.04);
+    font-size: 12px;
+  }
+  .hist-row .h-num {
+    font-family: 'JetBrains Mono', monospace;
+    color: rgba(255,255,255,.4);
+    font-size: 11px;
+    text-align: center;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .toast {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-30px);
+    padding: 10px 18px; border-radius: 10px;
+    background: rgba(11,10,26,.95);
+    border: 1px solid rgba(124,92,255,.4);
+    font-size: 13px; color: #fff; z-index: 100;
+    opacity: 0; transition: opacity .3s ease, transform .3s ease;
+    pointer-events: none;
+    box-shadow: 0 10px 30px -8px rgba(124,92,255,.3);
+  }
+  .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .reveal-in { animation: revealIn .55s cubic-bezier(.16,1,.3,1); }
+  @keyframes revealIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Info pill near opponent for showing reaction probability */
+  .reject-prob-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(244,63,94,.1);
+    border: 1px solid rgba(251,113,133,.25);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #FB7185;
+    margin-top: 6px;
+  }
+  .reject-prob-pill.low {
+    background: rgba(52,211,153,.08);
+    border-color: rgba(52,211,153,.25);
+    color: #34D399;
+  }
+
+  /* Trust game return slider styling */
+  .return-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 10px;
+    border-radius: 999px; outline: none;
+    background: linear-gradient(90deg, #FB7185 0%, #FBBF24 50%, #34D399 100%);
+    cursor: pointer;
+  }
+  .return-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 24px; height: 24px;
+    background: #fff;
+    border-radius: 50%;
+    border: 3px solid #FBBF24;
+    cursor: grab;
+  }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+
+<!-- Top bar -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
+      <div class="font-medium tracking-tight" id="topTitle">Ultimatum Game</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="game-toggle">
+      <button class="toggle-btn active" data-game="ultimatum">
+        <span>⚖️</span><span>Ultimatum</span>
+      </button>
+      <button class="toggle-btn" data-game="trust">
+        <span>🤝</span><span>Trust</span>
+      </button>
+    </div>
+    <button class="btn-ghost text-sm" id="restartBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Reset session
+    </button>
+  </div>
+</header>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<main class="px-6 lg:px-10 py-6 max-w-7xl mx-auto">
+
+  <!-- Hero -->
+  <div class="mb-5 max-w-3xl">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-2">Module 16 · Where theory meets behavior</div>
+    <h1 class="font-display text-3xl lg:text-4xl tracking-tight mb-2" id="heroHeadline">
+      The cost of <span class="text-gradient">unfair offers</span>.
+    </h1>
+    <p class="text-sm text-white/60 leading-relaxed" id="heroSubtitle">
+      Theory says: accept any positive offer. Reality says: humans reject offers below ~30% of the pie. Feel the gap.
+    </p>
+  </div>
+
+  <!-- Stats row -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Round</div>
+      <div class="stat-num" id="statRound">1</div>
+      <div class="text-[11px] text-white/45 mt-1" id="statRoundSub">offer to be made</div>
+    </div>
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Your earnings</div>
+      <div class="stat-num" id="statYou" style="color: #9B7BFF;">$0</div>
+      <div class="text-[11px] text-white/45 mt-1" id="statYouSub">across rounds</div>
+    </div>
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">If you played SPE</div>
+      <div class="stat-num" id="statSPE" style="color: #FBBF24;">$0</div>
+      <div class="text-[11px] text-white/45 mt-1">subgame perfect benchmark</div>
+    </div>
+    <div class="stat-card">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Behavioral edge</div>
+      <div class="stat-num" id="statEdge" style="color: #34D399;">+$0</div>
+      <div class="text-[11px] text-white/45 mt-1" id="statEdgeSub">actual − theoretical</div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       MAIN STAGE
+       ========================================================= -->
+  <div class="grid lg:grid-cols-[1.6fr_1fr] gap-5 mb-5">
+
+    <!-- LEFT — stage + offer interface -->
+    <div class="space-y-5">
+
+      <!-- The stage with two players -->
+      <div class="stage" id="stage">
+        <div class="stage-status" id="stageStatus">Phase 1 · Make your offer</div>
+
+        <!-- Left player (you / proposer or investor) -->
+        <div class="player-card left">
+          <div class="player-avatar user" id="userAvatar">😎</div>
+          <div class="player-name" id="userName">You</div>
+          <div class="player-sub" id="userRole">Proposer</div>
+          <div class="player-money" id="userMoney">$0</div>
+        </div>
+
+        <!-- Right player (opponent / responder or trustee) -->
+        <div class="player-card right">
+          <div class="player-avatar opponent" id="oppAvatar">🙂</div>
+          <div class="player-name" id="oppName">Average Human</div>
+          <div class="player-sub" id="oppRole">Responder</div>
+          <div class="player-money" id="oppMoney">$0</div>
+          <div id="rejectProbContainer"></div>
+        </div>
+
+        <!-- Center pot -->
+        <div class="pot" id="pot">
+          <div class="pot-label">The pie</div>
+          <div class="pot-amount" id="potAmount">$10</div>
+          <div class="pot-coins" id="potCoins"></div>
+        </div>
+
+        <!-- Reject / accept overlay -->
+        <div class="rejection-cross" id="rejectCross">✕</div>
+        <div class="acceptance-check" id="acceptCheck">✓</div>
+      </div>
+
+      <!-- Offer interface -->
+      <div class="glass-strong rounded-3xl p-5 lg:p-6" id="offerPanel">
+        <!-- Filled per game -->
+      </div>
+
+    </div>
+
+    <!-- RIGHT — opponent picker + reaction + theory comparison -->
+    <div class="space-y-5">
+
+      <!-- Live reaction card -->
+      <div class="reaction-card neutral" id="reactionCard">
+        <div class="flex items-center gap-3">
+          <div class="reaction-emoji" id="reactionEmoji">🙂</div>
+          <div class="flex-1">
+            <div class="font-medium text-sm" id="reactionLabel">Considering…</div>
+            <div class="text-[11px] text-white/55" id="reactionDetail">Set an offer to see the responder's reaction.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Behavioral vs SPE comparison -->
+      <div class="space-y-3">
+        <div class="compare-card spe">
+          <div class="text-[10px] uppercase tracking-wider text-equilibrium-glow font-medium mb-1">Subgame perfect prediction</div>
+          <div class="text-sm font-medium" id="speText">Offer $1, accept anything ≥ $0.</div>
+          <div class="text-[11px] text-white/55 mt-1.5" id="speExplain">A rational responder accepts any positive offer — so the proposer keeps almost everything.</div>
+        </div>
+        <div class="compare-card actual">
+          <div class="text-[10px] uppercase tracking-wider text-violet-glow font-medium mb-1">Behavioral evidence</div>
+          <div class="text-sm font-medium" id="actualText">Mean offer ~40% · rejection rate skyrockets below 25%.</div>
+          <div class="text-[11px] text-white/55 mt-1.5" id="actualExplain">Camerer (2003) meta-analysis: humans reject "unfair" offers at high rates, even costing themselves.</div>
+        </div>
+      </div>
+
+      <!-- Opponent picker -->
+      <div class="glass rounded-2xl p-5">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium" id="oppPickerTitle">Responder</div>
+        <div class="space-y-2" id="oppPicker"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- =========================================================
+       RESULT BANNER (shown after round resolution)
+       ========================================================= -->
+  <div id="resultBanner" class="hidden mb-5"></div>
+
+  <!-- =========================================================
+       HISTORY
+       ========================================================= -->
+  <div class="glass rounded-2xl p-5">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <div>
+        <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Round history</div>
+        <div class="text-[11px] text-white/55" id="historyHelp">Compare your earnings vs SPE benchmark</div>
+      </div>
+      <span class="text-[11px] text-white/45 font-mono" id="historyCount">0 rounds</span>
+    </div>
+    <div id="historyList" class="space-y-1.5 max-h-72 overflow-y-auto">
+      <div class="text-[12px] text-white/40 px-3 py-2">No rounds played yet.</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+/* ============================================================
+   GAMES
+   ============================================================ */
+const GAMES = {
+  ultimatum: {
+    name: 'Ultimatum',
+    icon: '⚖️',
+    pot: 10,
+    heroHeadline: 'The cost of <span class="text-gradient">unfair offers</span>.',
+    heroSubtitle: 'Theory says: accept any positive offer. Reality says: humans reject offers below ~30% of the pie. Feel the gap.',
+    userRole: 'Proposer',
+    oppRole: 'Responder',
+    pickerTitle: 'Responder',
+    speText: 'Offer $1, accept any ≥ $0.',
+    speExplain: 'A rational responder accepts any positive offer — so the SPE outcome is the proposer keeps $9, responder keeps $1.',
+    actualText: 'Mean offer ≈ $4 · rejection rate jumps below $3.',
+    actualExplain: 'Camerer (2003) meta-analysis: ~50% rejection rate at $2 offers, ~78% at $1 offers — humans pay to punish unfairness.'
+  },
+  trust: {
+    name: 'Trust Game',
+    icon: '🤝',
+    pot: 10,
+    multiplier: 3,
+    heroHeadline: 'How much can you <span class="text-gradient">risk on trust</span>?',
+    heroSubtitle: 'Send any amount; it triples on arrival. The trustee chooses what to return. SPE says: send nothing.',
+    userRole: 'Investor',
+    oppRole: 'Trustee',
+    pickerTitle: 'Trustee',
+    speText: 'Send $0. Return $0.',
+    speExplain: 'Backward induction: rational trustee returns $0, so rational investor sends $0. SPE outcome: both get $10.',
+    actualText: 'Investors send ≈ 50%. Trustees return ≈ 35% of received.',
+    actualExplain: 'Berg, Dickhaut & McCabe (1995): trust + reciprocity expand the pie. Average outcome dominates SPE in welfare.'
+  }
+};
+
+/* ============================================================
+   OPPONENTS
+   ============================================================ */
+const OPPONENTS = {
+  rational: {
+    label: 'Homo Economicus',
+    emoji: '🤖',
+    desc: 'Pure SPE behavior · accepts $0.01+',
+    // Ultimatum: accept iff offer > 0
+    rejectProb: (offer, pot) => offer <= 0 ? 1 : 0,
+    // Trust: returns 0 always
+    trustReturn: (received) => 0
+  },
+  human: {
+    label: 'Average Human',
+    emoji: '🙂',
+    desc: 'Calibrated to Camerer 2003 meta-analysis',
+    // Logistic rejection: P(reject) ≈ 1/(1 + exp(k*(s - 0.25)))
+    // where s = offer/pot. Calibrated so:
+    //   s = 0.50 → ~0% reject
+    //   s = 0.30 → ~30% reject
+    //   s = 0.20 → ~55% reject
+    //   s = 0.10 → ~78% reject
+    rejectProb: (offer, pot) => {
+      const s = offer / pot;
+      const k = 12;  // steepness
+      const t = 0.22;  // inflection point
+      return 1 / (1 + Math.exp(k * (s - t)));
+    },
+    // Trust: returns ~35% of received, with reciprocity proportional to investment
+    trustReturn: (received, sent, pot) => {
+      // Higher sent → higher return ratio (reciprocity)
+      const sentFrac = sent / pot;
+      const baseRatio = 0.30 + 0.15 * sentFrac;  // 30-45%
+      const noise = (Math.random() - 0.5) * 0.1;
+      return Math.max(0, Math.min(received, received * (baseRatio + noise)));
+    }
+  },
+  vengeful: {
+    label: 'Highly Vengeful',
+    emoji: '😠',
+    desc: 'Extreme fairness preferences · rejects most below 50%',
+    rejectProb: (offer, pot) => {
+      const s = offer / pot;
+      const k = 14;
+      const t = 0.40;  // inflection at 40%
+      return 1 / (1 + Math.exp(k * (s - t)));
+    },
+    trustReturn: (received, sent, pot) => {
+      const sentFrac = sent / pot;
+      // Vengeful trustees: reciprocate generosity, punish miserly
+      if (sentFrac > 0.5) {
+        return received * (0.45 + Math.random() * 0.10);   // ~45-55%
+      } else if (sentFrac > 0.2) {
+        return received * (0.20 + Math.random() * 0.15);   // ~20-35%
+      } else {
+        return received * (0.05 * Math.random());          // 0-5%
+      }
+    }
+  }
+};
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const State = {
+  game: 'ultimatum',
+  oppKey: 'human',
+  round: 1,
+  // Cumulative
+  scoreYou: 0,
+  scoreSPE: 0,
+  history: [],
+  // Round in-progress state
+  busy: false,
+  // Current proposed offer (Ultimatum)
+  proposedOffer: 5,
+  // Trust game in-progress state
+  trustSent: 5,
+  trustReceived: 0,        // = sent × multiplier
+  trustReturn: 0,          // amount trustee returns (decided after sent)
+  trustPhase: 'invest'     // 'invest' | 'return' | 'done'
+};
+
+/* ============================================================
+   RENDER UI for current game
+   ============================================================ */
+function renderGameUI() {
+  const game = GAMES[State.game];
+  $('#topTitle').textContent = game.name;
+  $('#heroHeadline').innerHTML = game.heroHeadline;
+  $('#heroSubtitle').textContent = game.heroSubtitle;
+  $('#userName').textContent = 'You';
+  $('#userRole').textContent = game.userRole;
+  $('#oppRole').textContent = game.oppRole;
+  $('#oppPickerTitle').textContent = game.pickerTitle;
+  $('#speText').textContent = game.speText;
+  $('#speExplain').textContent = game.speExplain;
+  $('#actualText').textContent = game.actualText;
+  $('#actualExplain').textContent = game.actualExplain;
+
+  // Update toggle buttons
+  $$('.toggle-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.game === State.game));
+
+  // Reset stage status
+  if (State.game === 'ultimatum') {
+    $('#stageStatus').textContent = 'Phase 1 · Make your offer';
+    $('#statRoundSub').textContent = 'offer to be made';
+  } else {
+    $('#stageStatus').textContent = 'Phase 1 · How much do you trust?';
+    $('#statRoundSub').textContent = 'investment to be made';
+  }
+
+  renderOpponentPicker();
+  renderOfferPanel();
+  renderPotCoins();
+  resetStageVisuals();
+  updateStats();
+  updateOpponentDisplay();
+  updateReactionForOffer();
+  renderHistory();
+}
+
+function renderOpponentPicker() {
+  const root = $('#oppPicker');
+  root.innerHTML = '';
+  Object.entries(OPPONENTS).forEach(([key, opp]) => {
+    const btn = document.createElement('button');
+    btn.className = 'opp-pick' + (key === State.oppKey ? ' active' : '');
+    btn.dataset.opp = key;
+    btn.innerHTML = `
+      <div class="flex items-center gap-3">
+        <div class="text-2xl flex-shrink-0">${opp.emoji}</div>
+        <div class="flex-1 min-w-0">
+          <div class="font-medium text-sm">${opp.label}</div>
+          <div class="text-[11px] text-white/55">${opp.desc}</div>
+        </div>
+      </div>
+    `;
+    btn.addEventListener('click', () => {
+      if (State.busy) return;
+      State.oppKey = key;
+      $$('#oppPicker .opp-pick').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      updateOpponentDisplay();
+      updateReactionForOffer();
+    });
+    root.appendChild(btn);
+  });
+}
+
+function renderOfferPanel() {
+  const root = $('#offerPanel');
+  if (State.game === 'ultimatum') {
+    renderUltimatumPanel(root);
+  } else {
+    renderTrustPanel(root);
+  }
+}
+
+/* ============================================================
+   ULTIMATUM PANEL
+   ============================================================ */
+function renderUltimatumPanel(root) {
+  const game = GAMES.ultimatum;
+  root.innerHTML = `
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div>
+        <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Your offer</div>
+        <div class="text-sm text-white/55">Drag to set how much you offer · responder accepts or rejects</div>
+      </div>
+      <div class="flex gap-1.5">
+        <button class="btn-ghost text-[11px] py-1.5 px-3" data-quick="1">$1</button>
+        <button class="btn-ghost text-[11px] py-1.5 px-3" data-quick="3">$3</button>
+        <button class="btn-ghost text-[11px] py-1.5 px-3" data-quick="5">$5 (fair)</button>
+        <button class="btn-ghost text-[11px] py-1.5 px-3" data-quick="9">$9</button>
+      </div>
+    </div>
+
+    <!-- Split visualization -->
+    <div class="mb-4">
+      <div class="flex justify-between text-[11px] mb-2">
+        <span class="text-violet-glow">You keep <span class="font-mono font-semibold" id="youKeepLbl">$5</span></span>
+        <span class="text-equilibrium-glow">They get <span class="font-mono font-semibold" id="theyGetLbl">$5</span></span>
+      </div>
+      <div class="split-bar">
+        <div class="split-segment you" id="splitYou" style="flex-basis: 50%">$5</div>
+        <div class="split-segment opp" id="splitOpp" style="flex-basis: 50%">$5</div>
+      </div>
+    </div>
+
+    <!-- Slider -->
+    <div class="mb-1">
+      <input type="range" class="offer-slider" id="offerSlider" min="0" max="10" value="5" step="1"/>
+    </div>
+    <div class="flex justify-between text-[10px] text-white/40 font-mono">
+      <span>$0</span>
+      <span>$2</span>
+      <span>$4</span>
+      <span>$6</span>
+      <span>$8</span>
+      <span>$10</span>
+    </div>
+
+    <!-- Submit -->
+    <div class="mt-5">
+      <button class="btn-primary w-full" id="submitOffer">
+        <span>Submit offer of <span class="font-mono" id="submitLabel">$5</span></span>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+      </button>
+    </div>
+  `;
+
+  const slider = $('#offerSlider');
+  slider.addEventListener('input', (e) => {
+    State.proposedOffer = parseInt(e.target.value, 10);
+    updateOfferDisplay();
+    updateReactionForOffer();
+  });
+  $$('[data-quick]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      State.proposedOffer = parseInt(btn.dataset.quick, 10);
+      slider.value = State.proposedOffer;
+      updateOfferDisplay();
+      updateReactionForOffer();
+    });
+  });
+  $('#submitOffer').addEventListener('click', submitUltimatumOffer);
+  updateOfferDisplay();
+}
+
+function updateOfferDisplay() {
+  if (State.game !== 'ultimatum') return;
+  const game = GAMES.ultimatum;
+  const offer = State.proposedOffer;
+  const youKeep = game.pot - offer;
+  // Update split bar
+  const youPct = (youKeep / game.pot) * 100;
+  const oppPct = (offer / game.pot) * 100;
+  $('#splitYou').style.flexBasis = youPct + '%';
+  $('#splitOpp').style.flexBasis = oppPct + '%';
+  $('#splitYou').textContent = '$' + youKeep;
+  $('#splitOpp').textContent = '$' + offer;
+  $('#youKeepLbl').textContent = '$' + youKeep;
+  $('#theyGetLbl').textContent = '$' + offer;
+  $('#submitLabel').textContent = '$' + offer;
+}
+
+/* ============================================================
+   TRUST PANEL
+   ============================================================ */
+function renderTrustPanel(root) {
+  const game = GAMES.trust;
+  if (State.trustPhase === 'invest') {
+    renderTrustInvestPanel(root);
+  } else if (State.trustPhase === 'return') {
+    // The user has invested; now the AI trustee decides return
+    renderTrustWaitingPanel(root);
+  } else {
+    // 'done' state — show next round button
+    renderTrustDonePanel(root);
+  }
+}
+
+function renderTrustInvestPanel(root) {
+  const game = GAMES.trust;
+  root.innerHTML = `
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div>
+        <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Your investment</div>
+        <div class="text-sm text-white/55">How much of $${game.pot} do you trust them with? It will <span class="text-coop-glow">triple</span> on arrival.</div>
+      </div>
+      <div class="flex gap-1.5">
+        <button class="btn-ghost text-[11px] py-1.5 px-3" data-trust-quick="0">$0</button>
+        <button class="btn-ghost text-[11px] py-1.5 px-3" data-trust-quick="3">$3</button>
+        <button class="btn-ghost text-[11px] py-1.5 px-3" data-trust-quick="5">$5</button>
+        <button class="btn-ghost text-[11px] py-1.5 px-3" data-trust-quick="10">$10 (all)</button>
+      </div>
+    </div>
+
+    <!-- Split visualization for investment -->
+    <div class="mb-4">
+      <div class="flex justify-between text-[11px] mb-2">
+        <span class="text-violet-glow">You keep <span class="font-mono font-semibold" id="youKeepLbl">$5</span></span>
+        <span class="text-equilibrium-glow">They receive <span class="font-mono font-semibold" id="theyGetLbl">$15 ($5 × 3)</span></span>
+      </div>
+      <div class="split-bar">
+        <div class="split-segment you" id="splitYou" style="flex-basis: 50%">$5 keep</div>
+        <div class="split-segment opp" id="splitOpp" style="flex-basis: 50%">$5 → $15</div>
+      </div>
+    </div>
+
+    <!-- Slider -->
+    <div class="mb-1">
+      <input type="range" class="offer-slider" id="trustSlider" min="0" max="10" value="5" step="1"/>
+    </div>
+    <div class="flex justify-between text-[10px] text-white/40 font-mono">
+      <span>$0</span>
+      <span>$2</span>
+      <span>$4</span>
+      <span>$6</span>
+      <span>$8</span>
+      <span>$10</span>
+    </div>
+
+    <div class="mt-5">
+      <button class="btn-primary w-full" id="submitInvest">
+        <span>Send <span class="font-mono" id="submitLabel">$5</span> to trustee</span>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+      </button>
+    </div>
+  `;
+
+  const slider = $('#trustSlider');
+  slider.addEventListener('input', (e) => {
+    State.trustSent = parseInt(e.target.value, 10);
+    updateTrustInvestDisplay();
+    updateReactionForOffer();
+  });
+  $$('[data-trust-quick]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      State.trustSent = parseInt(btn.dataset.trustQuick, 10);
+      slider.value = State.trustSent;
+      updateTrustInvestDisplay();
+      updateReactionForOffer();
+    });
+  });
+  $('#submitInvest').addEventListener('click', submitTrustInvestment);
+  updateTrustInvestDisplay();
+}
+
+function updateTrustInvestDisplay() {
+  if (State.game !== 'trust' || State.trustPhase !== 'invest') return;
+  const game = GAMES.trust;
+  const sent = State.trustSent;
+  const kept = game.pot - sent;
+  const tripled = sent * game.multiplier;
+  const youPct = (kept / game.pot) * 100;
+  const oppPct = (sent / game.pot) * 100;
+  $('#splitYou').style.flexBasis = youPct + '%';
+  $('#splitOpp').style.flexBasis = oppPct + '%';
+  $('#splitYou').textContent = `$${kept} keep`;
+  $('#splitOpp').textContent = `$${sent} → $${tripled}`;
+  $('#youKeepLbl').textContent = '$' + kept;
+  $('#theyGetLbl').textContent = `$${tripled} ($${sent} × 3)`;
+  $('#submitLabel').textContent = '$' + sent;
+}
+
+function renderTrustWaitingPanel(root) {
+  const game = GAMES.trust;
+  root.innerHTML = `
+    <div class="text-center py-8">
+      <div class="inline-flex items-center gap-3 px-6 py-3 rounded-full bg-violet-primary/10 border border-violet-glow/30 mb-4">
+        <span class="w-3 h-3 rounded-full bg-violet-glow animate-pulse"></span>
+        <span class="font-mono text-sm">Trustee is deciding…</span>
+      </div>
+      <div class="text-sm text-white/60">
+        You sent <span class="font-mono text-violet-glow">$${State.trustSent}</span>, which became <span class="font-mono text-equilibrium-glow">$${State.trustReceived}</span> on arrival.<br>
+        The trustee now decides how much (if any) to return.
+      </div>
+    </div>
+  `;
+}
+
+function renderTrustDonePanel(root) {
+  root.innerHTML = `
+    <div class="text-center py-6">
+      <button class="btn-primary" id="newRoundBtn">
+        <span>Next round</span>
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+      </button>
+    </div>
+  `;
+  $('#newRoundBtn').addEventListener('click', startNewRound);
+}
+
+/* ============================================================
+   POT VISUALIZATION
+   ============================================================ */
+function renderPotCoins() {
+  const game = GAMES[State.game];
+  const root = $('#potCoins');
+  root.innerHTML = '';
+  for (let i = 0; i < game.pot; i++) {
+    const coin = document.createElement('div');
+    coin.className = 'coin-stack-coin';
+    coin.style.transitionDelay = (i * 30) + 'ms';
+    root.appendChild(coin);
+  }
+  $('#potAmount').textContent = '$' + game.pot;
+}
+
+function resetStageVisuals() {
+  $('#userMoney').textContent = '$0';
+  $('#oppMoney').textContent = '$0';
+  $('#pot').classList.remove('collapsed');
+  $('#rejectCross').classList.remove('show');
+  $('#acceptCheck').classList.remove('show');
+  $('#userAvatar').classList.remove('shake', 'bounce');
+  $('#oppAvatar').classList.remove('shake', 'bounce');
+}
+
+/* ============================================================
+   OPPONENT DISPLAY (avatar emoji + label)
+   ============================================================ */
+function updateOpponentDisplay() {
+  const opp = OPPONENTS[State.oppKey];
+  $('#oppName').textContent = opp.label;
+}
+
+/* ============================================================
+   REACTION (live-updating as offer changes)
+   ============================================================ */
+function updateReactionForOffer() {
+  const opp = OPPONENTS[State.oppKey];
+  let offer, fraction, pot;
+
+  if (State.game === 'ultimatum') {
+    offer = State.proposedOffer;
+    pot = GAMES.ultimatum.pot;
+    fraction = offer / pot;
+  } else if (State.game === 'trust' && State.trustPhase === 'invest') {
+    offer = State.trustSent;
+    pot = GAMES.trust.pot;
+    fraction = offer / pot;
+  } else {
+    return;
+  }
+
+  // Compute reaction class & emoji & message
+  let cls, emoji, label, detail, rejectProb = null;
+
+  if (State.game === 'ultimatum') {
+    rejectProb = opp.rejectProb(offer, pot);
+    if (fraction >= 0.5) {
+      cls = 'happy'; emoji = '😊'; label = 'Pleased.'; detail = 'A fair split — a confident accept.';
+    } else if (fraction >= 0.35) {
+      cls = 'neutral'; emoji = '🙂'; label = 'Acceptable.'; detail = 'Reasonable enough — likely to accept.';
+    } else if (fraction >= 0.20) {
+      cls = 'annoyed'; emoji = '😐'; label = 'Marginal.'; detail = 'Will probably accept, but resentfully.';
+    } else if (fraction > 0) {
+      cls = 'angry'; emoji = '😠'; label = 'Insulted.'; detail = 'High chance of rejection — they\'d rather walk away with nothing.';
+    } else {
+      cls = 'angry'; emoji = '😡'; label = 'Furious.'; detail = 'Zero offer = certain rejection.';
+    }
+
+    // Show rejection probability pill
+    const pill = $('#rejectProbContainer');
+    if (pill) {
+      const pct = Math.round(rejectProb * 100);
+      pill.innerHTML = `<div class="reject-prob-pill ${pct < 20 ? 'low' : ''}">P(reject) = ${pct}%</div>`;
+    }
+  } else if (State.game === 'trust' && State.trustPhase === 'invest') {
+    if (fraction >= 0.7) {
+      cls = 'happy'; emoji = '😊'; label = 'Trusting investment.'; detail = 'High trust signaled — likely high reciprocity.';
+    } else if (fraction >= 0.4) {
+      cls = 'neutral'; emoji = '🙂'; label = 'Moderate trust.'; detail = 'Balanced — modest reciprocity expected.';
+    } else if (fraction > 0) {
+      cls = 'annoyed'; emoji = '😐'; label = 'Cautious.'; detail = 'Low signal of trust — return likely modest.';
+    } else {
+      cls = 'angry'; emoji = '😠'; label = 'No trust shown.'; detail = 'Sending nothing means nothing to return.';
+    }
+    // Hide reject pill in trust game (no rejection mechanic on phase 1)
+    const pill = $('#rejectProbContainer');
+    if (pill) pill.innerHTML = '';
+  }
+
+  const card = $('#reactionCard');
+  card.classList.remove('happy', 'neutral', 'annoyed', 'angry');
+  card.classList.add(cls);
+  $('#reactionEmoji').textContent = emoji;
+  $('#oppAvatar').textContent = emoji;
+  $('#userAvatar').textContent = '😎';
+  $('#reactionLabel').textContent = label;
+  $('#reactionDetail').textContent = detail;
+}
+
+/* ============================================================
+   ULTIMATUM SUBMIT
+   ============================================================ */
+async function submitUltimatumOffer() {
+  if (State.busy) return;
+  State.busy = true;
+  const game = GAMES.ultimatum;
+  const offer = State.proposedOffer;
+  const youKeep = game.pot - offer;
+  const opp = OPPONENTS[State.oppKey];
+
+  // Lock UI
+  $('#submitOffer').disabled = true;
+
+  // Phase 1: animate coin transfer from pot to opponent (the offer amount)
+  $('#stageStatus').textContent = 'Phase 2 · Sending offer to responder…';
+
+  // Hide some pot coins, fly them to opponent's side
+  await animateCoinTransfer('pot', 'oppMoney', offer);
+
+  // Phase 2: opponent decides
+  $('#stageStatus').textContent = 'Phase 3 · Responder is deciding…';
+  await wait(900);
+
+  const rejectP = opp.rejectProb(offer, game.pot);
+  const rejected = Math.random() < rejectP;
+
+  // Phase 3: outcome
+  if (rejected) {
+    $('#stageStatus').textContent = 'Phase 4 · Rejected — both get $0';
+    $('#oppAvatar').classList.add('shake');
+    $('#userAvatar').classList.add('shake');
+    $('#rejectCross').classList.add('show');
+    // Pot collapses
+    setTimeout(() => $('#pot').classList.add('collapsed'), 200);
+    // Opponent money returns to 0
+    $('#oppMoney').textContent = '$0';
+    $('#oppMoney').classList.add('loss');
+    await wait(1100);
+
+    // Result banner
+    showResultBanner({
+      kind: 'reject',
+      title: 'Offer rejected',
+      message: `Your offer of $${offer} (${Math.round((offer/game.pot)*100)}%) was rejected. Both walk away with $0. The responder paid $${offer} just to punish what they perceived as unfairness.`,
+      yours: 0, oppEarned: 0
+    });
+
+    State.history.push({
+      round: State.round, offer, accepted: false,
+      yours: 0, opp: 0,
+      speYours: game.pot - 1, speOpp: 1
+    });
+    State.scoreYou += 0;
+    State.scoreSPE += (game.pot - 1);
+  } else {
+    $('#stageStatus').textContent = 'Phase 4 · Accepted — split confirmed';
+    $('#oppAvatar').classList.add('bounce');
+    $('#userAvatar').classList.add('bounce');
+    $('#acceptCheck').classList.add('show');
+    // Pot collapses too (everything distributed)
+    setTimeout(() => $('#pot').classList.add('collapsed'), 200);
+    // User money goes up
+    await animateCoinTransfer('pot', 'userMoney', youKeep);
+    $('#userMoney').textContent = '$' + youKeep;
+    bumpEl('#userMoney');
+    await wait(700);
+
+    showResultBanner({
+      kind: 'accept',
+      title: 'Offer accepted',
+      message: `Your $${offer} offer was accepted. You keep $${youKeep}, responder gets $${offer}.`,
+      yours: youKeep, oppEarned: offer
+    });
+
+    State.history.push({
+      round: State.round, offer, accepted: true,
+      yours: youKeep, opp: offer,
+      speYours: game.pot - 1, speOpp: 1
+    });
+    State.scoreYou += youKeep;
+    State.scoreSPE += (game.pot - 1);
+  }
+
+  updateStats();
+  renderHistory();
+  State.busy = false;
+
+  // Show "Next round" button
+  $('#submitOffer').disabled = false;
+  $('#submitOffer').innerHTML = '<span>Next round</span>';
+  $('#submitOffer').onclick = startNewRound;
+}
+
+/* ============================================================
+   TRUST GAME — INVEST
+   ============================================================ */
+async function submitTrustInvestment() {
+  if (State.busy) return;
+  State.busy = true;
+  const game = GAMES.trust;
+  const sent = State.trustSent;
+  State.trustReceived = sent * game.multiplier;
+  State.trustPhase = 'return';
+
+  $('#submitInvest').disabled = true;
+
+  // Animate the investment fly
+  $('#stageStatus').textContent = 'Phase 2 · Sending money (will triple on arrival)…';
+  await animateCoinTransfer('userMoney', 'oppMoney', sent, { multiplyTo: State.trustReceived, growMid: true });
+
+  $('#userMoney').textContent = '$' + (game.pot - sent);
+  $('#oppMoney').textContent = '$' + State.trustReceived;
+  bumpEl('#oppMoney');
+
+  await wait(700);
+
+  // Now show the waiting panel
+  renderOfferPanel();
+  $('#stageStatus').textContent = 'Phase 3 · Trustee is deciding what to return…';
+  await wait(1400);
+
+  // Trustee decision
+  const opp = OPPONENTS[State.oppKey];
+  let returnAmount = opp.trustReturn(State.trustReceived, sent, game.pot);
+  // Round to nearest 0.5
+  returnAmount = Math.round(returnAmount * 2) / 2;
+  returnAmount = Math.max(0, Math.min(State.trustReceived, returnAmount));
+  State.trustReturn = returnAmount;
+
+  // Animate return flow
+  $('#stageStatus').textContent = `Phase 4 · Trustee returns $${returnAmount.toFixed(1)}`;
+  await animateCoinTransfer('oppMoney', 'userMoney', returnAmount);
+
+  const youFinal = (game.pot - sent) + returnAmount;
+  const oppFinal = State.trustReceived - returnAmount;
+  $('#userMoney').textContent = '$' + youFinal.toFixed(1);
+  $('#oppMoney').textContent = '$' + oppFinal.toFixed(1);
+  bumpEl('#userMoney');
+
+  await wait(700);
+
+  // Result analysis
+  const fairShare = State.trustReceived / 2;   // even split would be each gets pot/2 of triple
+  const trusteeKept = oppFinal;
+  const reciprocityRatio = State.trustReceived > 0 ? returnAmount / State.trustReceived : 0;
+  let kind, message;
+  if (reciprocityRatio >= 0.5) {
+    kind = 'accept';
+    message = `Excellent reciprocity — trustee returned ${Math.round(reciprocityRatio*100)}% of what they received. Both of you ended up with more than the SPE outcome of $${game.pot} each.`;
+  } else if (reciprocityRatio >= 0.30) {
+    kind = 'accept';
+    message = `Decent reciprocity — trustee returned ${Math.round(reciprocityRatio*100)}%. You earned $${youFinal.toFixed(1)} this round.`;
+  } else if (reciprocityRatio > 0) {
+    kind = 'reject';
+    message = `Low reciprocity — trustee kept most of the surplus, returning only ${Math.round(reciprocityRatio*100)}%. You earned $${youFinal.toFixed(1)}, less than SPE benchmark of $${game.pot}.`;
+  } else {
+    kind = 'reject';
+    message = sent === 0
+      ? `You sent nothing. Both ended up with $${game.pot} — exactly the SPE outcome.`
+      : `Trustee returned $0 — the SPE-rational move. You're left with just $${game.pot - sent}.`;
+  }
+
+  showResultBanner({
+    kind,
+    title: kind === 'accept' ? 'Trust paid off' : (sent === 0 ? 'No risk taken' : 'Trust violated'),
+    message,
+    yours: youFinal, oppEarned: oppFinal
+  });
+
+  State.history.push({
+    round: State.round,
+    sent, returned: returnAmount,
+    yours: youFinal, opp: oppFinal,
+    speYours: game.pot, speOpp: game.pot   // SPE: send 0, return 0
+  });
+  State.scoreYou += youFinal;
+  State.scoreSPE += game.pot;
+
+  State.trustPhase = 'done';
+  renderOfferPanel();
+  updateStats();
+  renderHistory();
+  State.busy = false;
+}
+
+/* ============================================================
+   COIN TRANSFER ANIMATION
+   ============================================================ */
+function animateCoinTransfer(fromKey, toKey, amount, options = {}) {
+  return new Promise(resolve => {
+    if (amount <= 0) { resolve(); return; }
+    const stage = $('#stage');
+    const stageRect = stage.getBoundingClientRect();
+    let fromEl, toEl;
+    if (fromKey === 'pot') fromEl = $('#pot');
+    else if (fromKey === 'userMoney') fromEl = $('#userMoney');
+    else if (fromKey === 'oppMoney') fromEl = $('#oppMoney');
+    if (toKey === 'pot') toEl = $('#pot');
+    else if (toKey === 'userMoney') toEl = $('#userMoney');
+    else if (toKey === 'oppMoney') toEl = $('#oppMoney');
+
+    if (!fromEl || !toEl) { resolve(); return; }
+
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+    const startX = fromRect.left + fromRect.width / 2;
+    const startY = fromRect.top + fromRect.height / 2;
+    const endX = toRect.left + toRect.width / 2;
+    const endY = toRect.top + toRect.height / 2;
+
+    const numCoins = Math.min(Math.ceil(amount), 8);
+    let completed = 0;
+
+    for (let i = 0; i < numCoins; i++) {
+      setTimeout(() => {
+        const coin = document.createElement('div');
+        coin.className = 'flying-coin';
+        coin.textContent = '$';
+        coin.style.left = (startX - 11) + 'px';
+        coin.style.top = (startY - 11) + 'px';
+        document.body.appendChild(coin);
+        // Slight scatter at start
+        const sx = (Math.random() - 0.5) * 30;
+        const sy = (Math.random() - 0.5) * 20;
+        // Curved path via control point
+        const midX = (startX + endX) / 2 + (Math.random() - 0.5) * 60;
+        const midY = Math.min(startY, endY) - 60 - Math.random() * 30;
+
+        // If multiplyTo (Trust game investment), make coins grow during transit
+        const finalScale = options.growMid ? 1.6 : 1;
+
+        const a = coin.animate([
+          { left: (startX + sx - 11) + 'px', top: (startY + sy - 11) + 'px', transform: 'scale(.8) rotate(0deg)', opacity: 0 },
+          { left: (startX + sx - 11) + 'px', top: (startY + sy - 11) + 'px', transform: 'scale(1.1) rotate(60deg)', opacity: 1, offset: 0.1 },
+          { left: (midX - 11) + 'px', top: (midY - 11) + 'px', transform: `scale(${finalScale}) rotate(180deg)`, opacity: 1, offset: 0.55 },
+          { left: (endX - 11) + 'px', top: (endY - 11) + 'px', transform: `scale(${finalScale * 0.6}) rotate(360deg)`, opacity: 0 }
+        ], { duration: 750, easing: 'cubic-bezier(.5,-.1,.5,1.1)', fill: 'forwards' });
+        a.onfinish = () => {
+          coin.remove();
+          completed++;
+          if (completed === numCoins) resolve();
+        };
+      }, i * 80);
+    }
+  });
+}
+
+function bumpEl(sel) {
+  const el = $(sel);
+  if (!el) return;
+  el.classList.add('bump');
+  setTimeout(() => el.classList.remove('bump'), 500);
+}
+
+/* ============================================================
+   RESULT BANNER
+   ============================================================ */
+function showResultBanner({ kind, title, message, yours, oppEarned }) {
+  const root = $('#resultBanner');
+  root.classList.remove('hidden');
+  const cls = kind === 'accept' ? 'banner-accept' : 'banner-reject';
+  const icon = kind === 'accept' ? '✓' : '✕';
+  root.innerHTML = `
+    <div class="result-banner ${cls} reveal-in">
+      <div class="banner-icon">${icon}</div>
+      <div class="flex-1">
+        <div class="font-display text-2xl tracking-tight mb-1">${title}</div>
+        <div class="text-sm text-white/70 leading-relaxed">${message}</div>
+      </div>
+      <div class="text-right">
+        <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium">You earned</div>
+        <div class="font-mono font-bold text-2xl mt-1" style="color: ${yours > 0 ? '#34D399' : '#FB7185'};">$${yours.toFixed ? yours.toFixed(1) : yours}</div>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   STATS
+   ============================================================ */
+function updateStats() {
+  $('#statRound').textContent = State.round;
+  $('#statYou').textContent = '$' + State.scoreYou.toFixed(1);
+  $('#statSPE').textContent = '$' + State.scoreSPE.toFixed(1);
+  const edge = State.scoreYou - State.scoreSPE;
+  $('#statEdge').textContent = (edge >= 0 ? '+' : '') + '$' + edge.toFixed(1);
+  $('#statEdge').style.color = edge > 0.5 ? '#34D399' : edge < -0.5 ? '#FB7185' : '#FBBF24';
+}
+
+/* ============================================================
+   HISTORY
+   ============================================================ */
+function renderHistory() {
+  const list = $('#historyList');
+  if (State.history.length === 0) {
+    list.innerHTML = '<div class="text-[12px] text-white/40 px-3 py-2">No rounds played yet.</div>';
+    $('#historyCount').textContent = '0 rounds';
+    return;
+  }
+  list.innerHTML = '';
+  [...State.history].reverse().forEach(h => {
+    const row = document.createElement('div');
+    row.className = 'hist-row';
+    if (State.game === 'ultimatum') {
+      const acceptedTag = h.accepted ? '<span class="tag tag-coop">accept</span>' : '<span class="tag tag-defect">reject</span>';
+      row.innerHTML = `
+        <span class="h-num">${h.round}</span>
+        <span>Offer <span class="font-mono text-equilibrium-glow">$${h.offer}</span></span>
+        ${acceptedTag}
+        <span class="font-mono ${h.yours > 0 ? 'text-coop-glow' : 'text-defect-glow'}">$${h.yours.toFixed(1)}</span>
+        <span class="font-mono text-white/45">SPE: $${h.speYours.toFixed(1)}</span>
+      `;
+    } else {
+      row.innerHTML = `
+        <span class="h-num">${h.round}</span>
+        <span>Sent <span class="font-mono text-violet-glow">$${h.sent}</span> · returned <span class="font-mono text-equilibrium-glow">$${h.returned.toFixed(1)}</span></span>
+        <span class="tag tag-violet">trust</span>
+        <span class="font-mono ${h.yours >= GAMES.trust.pot ? 'text-coop-glow' : 'text-defect-glow'}">$${h.yours.toFixed(1)}</span>
+        <span class="font-mono text-white/45">SPE: $${h.speYours.toFixed(1)}</span>
+      `;
+    }
+    list.appendChild(row);
+  });
+  $('#historyCount').textContent = `${State.history.length} round${State.history.length === 1 ? '' : 's'}`;
+}
+
+/* ============================================================
+   ROUND LIFECYCLE
+   ============================================================ */
+function startNewRound() {
+  State.round++;
+  State.busy = false;
+  State.proposedOffer = 5;
+  State.trustSent = 5;
+  State.trustReceived = 0;
+  State.trustReturn = 0;
+  State.trustPhase = 'invest';
+  $('#resultBanner').classList.add('hidden');
+  resetStageVisuals();
+  renderOfferPanel();
+  updateStats();
+  renderPotCoins();
+  $('#userMoney').classList.remove('loss');
+  $('#oppMoney').classList.remove('loss');
+  $('#userAvatar').textContent = '😎';
+  $('#oppAvatar').textContent = OPPONENTS[State.oppKey].emoji;
+  if (State.game === 'ultimatum') {
+    $('#stageStatus').textContent = 'Phase 1 · Make your offer';
+  } else {
+    $('#stageStatus').textContent = 'Phase 1 · How much do you trust?';
+  }
+  updateReactionForOffer();
+}
+
+function resetSession() {
+  State.round = 1;
+  State.scoreYou = 0;
+  State.scoreSPE = 0;
+  State.history = [];
+  startNewRound();
+  renderHistory();
+  showToast('Session reset.');
+}
+
+/* ============================================================
+   GAME SWITCH
+   ============================================================ */
+function switchGame(newGame) {
+  State.game = newGame;
+  State.round = 1;
+  State.scoreYou = 0;
+  State.scoreSPE = 0;
+  State.history = [];
+  State.busy = false;
+  State.proposedOffer = 5;
+  State.trustSent = 5;
+  State.trustReceived = 0;
+  State.trustPhase = 'invest';
+  $('#resultBanner').classList.add('hidden');
+  renderGameUI();
+}
+
+function showToast(text, duration = 1600) {
+  const t = $('#toast');
+  t.textContent = text;
+  t.classList.add('visible');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('visible'), duration);
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', () => {
+  $$('.toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (State.busy) return;
+      const target = btn.dataset.game;
+      if (target !== State.game) switchGame(target);
+    });
+  });
+  $('#restartBtn').addEventListener('click', resetSession);
+  renderGameUI();
+});
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'behavioral',
+      getSession: function () {
+        if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
+        var you = State.scoreYou, spe = State.scoreSPE;
+        return { score: null, outcome: 'completed', detail: { you: you, spe: spe, game: State.game, rounds: State.history.length } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

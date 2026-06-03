@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mixed Strategy Equilibrium — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        display: ['Instrument Serif', 'serif']
+      },
+      colors: {
+        ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+        violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+        coop: { DEFAULT: '#10B981', glow: '#34D399' },
+        defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+        equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+      }
+    } }
+  };
+</script>
+
+<style>
+  html, body { background: #070612; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: #E8E6F5; -webkit-font-smoothing: antialiased; overflow-x: hidden; min-height: 100vh; }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  .arena-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410; }
+  .arena-bg::before {
+    content: ''; position: absolute; width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: .25; top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute; width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #F43F5E 0%, transparent 70%);
+    filter: blur(120px); opacity: .1; bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .glass { background: rgba(18,16,42,.55); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); border: 1px solid rgba(255,255,255,.06); }
+  .glass-strong { background: rgba(11,10,26,.75); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); border: 1px solid rgba(255,255,255,.08); }
+  .glass-subtle { background: rgba(255,255,255,.025); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.05); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; font-weight: 500;
+    padding: 11px 22px; border-radius: 10px; font-size: 14px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124,92,255,.6); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 20px; border-radius: 10px; font-size: 13px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-violet { background: rgba(124,92,255,.12); border-color: rgba(124,92,255,.3); color: #9B7BFF; }
+  .tag-amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FBBF24; }
+  .tag-coop { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #34D399; }
+  .tag-defect { background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.3); color: #FB7185; }
+
+  /* ============================================================
+     STRATEGY SLIDERS
+     ============================================================ */
+  .strat-slider {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 8px;
+    border-radius: 999px; outline: none;
+    background: rgba(255,255,255,.06);
+    transition: background .25s ease;
+  }
+  .strat-slider.r { background: linear-gradient(90deg, rgba(244,63,94,.15), rgba(244,63,94,.5)); }
+  .strat-slider.p { background: linear-gradient(90deg, rgba(124,92,255,.15), rgba(124,92,255,.5)); }
+  .strat-slider.s { background: linear-gradient(90deg, rgba(245,158,11,.15), rgba(245,158,11,.5)); }
+  .strat-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 22px; height: 22px;
+    background: #fff;
+    border-radius: 50%;
+    border: 2px solid;
+    box-shadow: 0 0 0 3px rgba(255,255,255,.08), 0 4px 10px rgba(0,0,0,.3);
+    cursor: grab;
+    transition: transform .12s ease;
+  }
+  .strat-slider::-webkit-slider-thumb:active { transform: scale(1.15); cursor: grabbing; }
+  .strat-slider.r::-webkit-slider-thumb { border-color: #FB7185; }
+  .strat-slider.p::-webkit-slider-thumb { border-color: #9B7BFF; }
+  .strat-slider.s::-webkit-slider-thumb { border-color: #FBBF24; }
+  .strat-slider::-moz-range-thumb {
+    width: 22px; height: 22px;
+    background: #fff;
+    border-radius: 50%;
+    border: 2px solid;
+    cursor: grab;
+  }
+
+  .move-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .move-icon.r { background: linear-gradient(135deg, #FB7185, #BE185D); }
+  .move-icon.p { background: linear-gradient(135deg, #9B7BFF, #5B3DCC); }
+  .move-icon.s { background: linear-gradient(135deg, #FBBF24, #B45309); }
+  .move-icon.lg { width: 60px; height: 60px; font-size: 30px; border-radius: 14px; }
+
+  .prob-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-size: 22px;
+    transition: color .15s ease, transform .15s ease;
+  }
+  .prob-display.flash {
+    animation: probFlash .35s ease-out;
+  }
+  @keyframes probFlash {
+    0% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+  }
+
+  .prob-bar-track {
+    height: 22px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.06);
+    overflow: hidden;
+    display: flex;
+    margin-top: 6px;
+  }
+  .prob-bar-segment {
+    height: 100%;
+    transition: flex-basis .35s cubic-bezier(.16,1,.3,1);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+    color: rgba(255,255,255,.95);
+    border-right: 1px solid rgba(11,10,26,.6);
+  }
+  .prob-bar-segment:last-child { border-right: none; }
+  .prob-bar-segment.r { background: linear-gradient(90deg, rgba(244,63,94,.7), #FB7185); }
+  .prob-bar-segment.p { background: linear-gradient(90deg, rgba(124,92,255,.7), #9B7BFF); }
+  .prob-bar-segment.s { background: linear-gradient(90deg, rgba(251,191,36,.7), #FBBF24); }
+
+  /* ============================================================
+     TERNARY PLOT (probability triangle)
+     ============================================================ */
+  .ternary-svg {
+    width: 100%; height: auto;
+    display: block;
+  }
+  .ternary-edge {
+    stroke: rgba(255,255,255,.2);
+    stroke-width: 1.5;
+    fill: none;
+  }
+  .ternary-inner-grid {
+    stroke: rgba(255,255,255,.05);
+    stroke-width: 1;
+    stroke-dasharray: 2 4;
+    fill: none;
+  }
+  .ternary-corner-circle { stroke: #fff; stroke-width: 1.5; }
+  .ternary-corner-circle.r { fill: #FB7185; }
+  .ternary-corner-circle.p { fill: #9B7BFF; }
+  .ternary-corner-circle.s { fill: #FBBF24; }
+  .ternary-corner-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    fill: #fff;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+  }
+  .ternary-equilibrium {
+    fill: rgba(52,211,153,.15);
+    stroke: #34D399;
+    stroke-width: 2;
+    filter: drop-shadow(0 0 8px #34D399);
+  }
+  .ternary-eq-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    fill: #34D399;
+    text-anchor: middle;
+    font-weight: 600;
+  }
+  .ternary-pin-glow {
+    fill: rgba(155,123,255,.35);
+    animation: pinPulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pinPulse {
+    0%, 100% { r: 12; opacity: .55; }
+    50% { r: 18; opacity: 0; }
+  }
+  .ternary-pin {
+    fill: #fff;
+    stroke: #7C5CFF;
+    stroke-width: 2.5;
+    filter: drop-shadow(0 2px 8px rgba(124,92,255,.6));
+    transition: cx .35s cubic-bezier(.16,1,.3,1), cy .35s cubic-bezier(.16,1,.3,1);
+  }
+  .ternary-pin.locked {
+    stroke: #FB7185;
+  }
+  .ternary-trail-pt {
+    fill: rgba(155,123,255,.55);
+  }
+
+  /* ============================================================
+     CHART (frequency stack + payoff line)
+     ============================================================ */
+  .chart-svg {
+    width: 100%; height: 220px;
+    display: block;
+  }
+  .chart-axis-line { stroke: rgba(255,255,255,.1); stroke-width: 1; }
+  .chart-axis-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    fill: rgba(255,255,255,.45);
+  }
+  .chart-band {
+    transition: d .25s ease, opacity .25s ease;
+  }
+  .chart-band.r { fill: rgba(244,63,94,.5); }
+  .chart-band.p { fill: rgba(124,92,255,.5); }
+  .chart-band.s { fill: rgba(245,158,11,.5); }
+  .chart-eq-line {
+    stroke: rgba(52,211,153,.6);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 4;
+    fill: none;
+  }
+  .chart-payoff-line {
+    stroke: #FBBF24;
+    stroke-width: 2.5;
+    fill: none;
+    filter: drop-shadow(0 0 6px rgba(251,191,36,.4));
+  }
+  .chart-payoff-zero {
+    stroke: rgba(255,255,255,.2);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+    fill: none;
+  }
+
+  /* ============================================================
+     PREDICTABILITY GAUGE
+     ============================================================ */
+  .gauge-svg {
+    width: 100%; height: auto;
+    display: block;
+    max-width: 320px;
+    margin: 0 auto;
+  }
+  .gauge-bg-arc {
+    fill: none;
+    stroke-width: 14;
+    stroke-linecap: round;
+  }
+  .gauge-needle {
+    stroke: #fff;
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: transform .6s cubic-bezier(.34,1.56,.64,1);
+    transform-origin: 150px 150px;
+  }
+  .gauge-pivot {
+    fill: #fff;
+    stroke: rgba(124,92,255,.6);
+    stroke-width: 2;
+  }
+  .gauge-value-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    fill: #fff;
+    text-anchor: middle;
+  }
+  .gauge-tick {
+    stroke: rgba(255,255,255,.3);
+    stroke-width: 1;
+  }
+  .gauge-tick-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    fill: rgba(255,255,255,.5);
+    text-anchor: middle;
+  }
+
+  /* ============================================================
+     ROUND RESULT CARD
+     ============================================================ */
+  .round-result-card {
+    padding: 18px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(124,92,255,.08), rgba(124,92,255,.01));
+    border: 1px solid rgba(124,92,255,.25);
+    text-align: center;
+  }
+  .round-result-card.win { background: linear-gradient(135deg, rgba(16,185,129,.1), rgba(16,185,129,.02)); border-color: rgba(52,211,153,.4); }
+  .round-result-card.loss { background: linear-gradient(135deg, rgba(244,63,94,.1), rgba(244,63,94,.02)); border-color: rgba(251,113,133,.4); }
+  .round-result-card.tie { background: rgba(255,255,255,.025); border-color: rgba(255,255,255,.1); }
+
+  .vs-grid {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 16px;
+    align-items: center;
+  }
+  .vs-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; font-weight: 700;
+    color: rgba(255,255,255,.55);
+    letter-spacing: .04em;
+  }
+
+  /* Coin animation for payoffs */
+  .coin {
+    position: fixed;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #FCD34D, #F59E0B 60%, #B45309);
+    box-shadow: 0 0 14px rgba(251,191,36,.7);
+    z-index: 50;
+    pointer-events: none;
+  }
+
+  /* ============================================================
+     OPPONENT PICKER
+     ============================================================ */
+  .opp-pick {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.02);
+    transition: all .15s ease;
+    cursor: pointer;
+    text-align: left;
+  }
+  .opp-pick:hover { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.18); }
+  .opp-pick.active {
+    background: rgba(124,92,255,.08);
+    border-color: rgba(124,92,255,.4);
+    box-shadow: 0 0 0 1px rgba(124,92,255,.2);
+  }
+
+  /* ============================================================
+     PRESETS
+     ============================================================ */
+  .preset-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    font-size: 11px;
+    color: rgba(255,255,255,.7);
+    cursor: pointer;
+    transition: all .15s ease;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .preset-btn:hover {
+    background: rgba(124,92,255,.1);
+    border-color: rgba(124,92,255,.4);
+    color: #fff;
+  }
+  .preset-btn.eq {
+    background: linear-gradient(135deg, rgba(52,211,153,.12), rgba(52,211,153,.04));
+    border-color: rgba(52,211,153,.35);
+    color: #34D399;
+  }
+
+  /* Score */
+  .score-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; font-variant-numeric: tabular-nums;
+    transition: transform .35s cubic-bezier(.34,1.56,.64,1), color .35s ease;
+    display: inline-block; font-size: 26px; letter-spacing: -.02em; line-height: 1;
+  }
+  .score-num.bump { transform: scale(1.2); color: #FBBF24; }
+
+  /* History */
+  .hist-cell {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    color: #fff;
+    font-weight: 600;
+  }
+  .hist-cell.r { background: rgba(244,63,94,.55); }
+  .hist-cell.p { background: rgba(124,92,255,.55); }
+  .hist-cell.s { background: rgba(245,158,11,.55); }
+
+  /* ============================================================
+     WARNING BOX (for pure strategies)
+     ============================================================ */
+  .warning-box {
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(244,63,94,.1), rgba(244,63,94,.02));
+    border: 1.5px solid rgba(251,113,133,.4);
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .toast {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-30px);
+    padding: 10px 18px; border-radius: 10px;
+    background: rgba(11,10,26,.95);
+    border: 1px solid rgba(124,92,255,.4);
+    font-size: 13px; color: #fff; z-index: 100;
+    opacity: 0; transition: opacity .3s ease, transform .3s ease;
+    pointer-events: none;
+    box-shadow: 0 10px 30px -8px rgba(124,92,255,.3);
+  }
+  .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .reveal-in { animation: revealIn .55s cubic-bezier(.16,1,.3,1); }
+  @keyframes revealIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+
+<!-- Top bar -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
+      <div class="font-medium tracking-tight">Mixed Strategy Equilibrium · Rock Paper Scissors</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="hidden md:flex items-center gap-2 text-xs text-white/55 px-3 py-2 rounded-lg glass-subtle">
+      <span>Round</span>
+      <span class="font-mono text-white" id="roundCounter">0</span>
+    </div>
+    <button class="btn-ghost text-sm" id="restartBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Reset
+    </button>
+  </div>
+</header>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<main class="px-6 lg:px-10 py-6 max-w-7xl mx-auto">
+
+  <!-- Hero -->
+  <div class="mb-5 max-w-3xl">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-2">Module 13 · Why mixing matters</div>
+    <h1 class="font-display text-3xl lg:text-4xl tracking-tight mb-2">
+      The cost of being <span class="text-gradient">predictable</span>.
+    </h1>
+    <p class="text-sm text-white/60 leading-relaxed">
+      Pick a probability distribution over Rock, Paper, Scissors — then let the rounds play out. The Nash mixed equilibrium is the unique distribution where no opponent can profitably exploit you.
+    </p>
+  </div>
+
+  <!-- =========================================================
+       SCORE ROW
+       ========================================================= -->
+  <div class="grid grid-cols-3 gap-3 mb-5">
+    <div class="ep-card" style="padding: 16px; border-radius: 14px; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06);">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1.5">Your score</div>
+      <div class="score-num" id="scoreYou" style="color: #9B7BFF;">0</div>
+      <div class="text-[11px] text-white/45 mt-1">net: <span class="font-mono" id="winsYou">0W / 0L / 0T</span></div>
+    </div>
+    <div class="ep-card" style="padding: 16px; border-radius: 14px; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06);">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1.5">Avg payoff/round</div>
+      <div class="score-num" id="avgPayoff" style="color: #FBBF24;">+0.00</div>
+      <div class="text-[11px] text-white/45 mt-1" id="avgPayoffNote">Equilibrium expected: 0.00</div>
+    </div>
+    <div class="ep-card" style="padding: 16px; border-radius: 14px; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06);">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1.5">Opponent score</div>
+      <div class="score-num" id="scoreOpp" style="color: #FB7185;">0</div>
+      <div class="text-[11px] text-white/45 mt-1" id="oppLabel">Pattern-hunter Pat</div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       MAIN GRID
+       ========================================================= -->
+  <div class="grid lg:grid-cols-[1fr_1fr] gap-5 mb-5">
+
+    <!-- LEFT — strategy sliders + ternary -->
+    <div class="space-y-5">
+
+      <!-- Strategy panel -->
+      <div class="glass-strong rounded-3xl p-5 lg:p-6">
+        <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Your mixed strategy</div>
+            <div class="text-sm text-white/55">Three sliders that always sum to 1</div>
+          </div>
+          <div class="flex gap-1.5 flex-wrap">
+            <button class="preset-btn eq" data-preset="equilibrium">Nash (⅓ ⅓ ⅓)</button>
+            <button class="preset-btn" data-preset="rock">All Rock</button>
+            <button class="preset-btn" data-preset="paper">All Paper</button>
+            <button class="preset-btn" data-preset="scissors">All Scissors</button>
+          </div>
+        </div>
+
+        <!-- Three slider rows -->
+        <div class="space-y-3" id="sliderRows">
+          <div class="flex items-center gap-3">
+            <div class="move-icon r">🪨</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-baseline justify-between mb-1">
+                <span class="text-sm font-medium">Rock</span>
+                <span class="prob-display" id="probR" style="color: #FB7185;">33%</span>
+              </div>
+              <input type="range" class="strat-slider r" id="sliderR" min="0" max="100" value="33" step="1"/>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <div class="move-icon p">📄</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-baseline justify-between mb-1">
+                <span class="text-sm font-medium">Paper</span>
+                <span class="prob-display" id="probP" style="color: #9B7BFF;">33%</span>
+              </div>
+              <input type="range" class="strat-slider p" id="sliderP" min="0" max="100" value="33" step="1"/>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <div class="move-icon s">✂️</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-baseline justify-between mb-1">
+                <span class="text-sm font-medium">Scissors</span>
+                <span class="prob-display" id="probS" style="color: #FBBF24;">34%</span>
+              </div>
+              <input type="range" class="strat-slider s" id="sliderS" min="0" max="100" value="34" step="1"/>
+            </div>
+          </div>
+        </div>
+
+        <!-- Combined probability bar -->
+        <div class="mt-5">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1">Distribution</div>
+          <div class="prob-bar-track">
+            <div class="prob-bar-segment r" id="probSegR" style="flex-basis: 33%"><span id="probSegRText">33%</span></div>
+            <div class="prob-bar-segment p" id="probSegP" style="flex-basis: 33%"><span id="probSegPText">33%</span></div>
+            <div class="prob-bar-segment s" id="probSegS" style="flex-basis: 34%"><span id="probSegSText">34%</span></div>
+          </div>
+        </div>
+
+        <!-- Pure strategy warning -->
+        <div id="pureWarning" class="warning-box mt-4 hidden">
+          <div class="text-defect-glow">⚠</div>
+          <div class="text-xs text-white/80 leading-relaxed" id="pureWarningText">
+            Pure Rock — your opponent will counter with Paper every round.
+          </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="flex gap-2 mt-5">
+          <button class="btn-primary flex-1" id="playOneBtn">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+            Play 1 round
+          </button>
+          <button class="btn-ghost" id="play10Btn">Run 10 ×</button>
+          <button class="btn-ghost" id="play200Btn">Run 200 ×</button>
+        </div>
+      </div>
+
+      <!-- Latest round result -->
+      <div class="round-result-card" id="latestRound">
+        <div class="text-[10px] uppercase tracking-wider text-white/55 font-medium mb-2">Last round</div>
+        <div class="vs-grid">
+          <div>
+            <div class="text-[11px] text-violet-glow mb-2">You played</div>
+            <div class="move-icon lg p mx-auto" id="lastYouIcon">?</div>
+            <div class="text-[11px] text-white/55 mt-2" id="lastYouLabel">—</div>
+          </div>
+          <div class="vs-label">vs</div>
+          <div>
+            <div class="text-[11px] text-equilibrium-glow mb-2">Opp played</div>
+            <div class="move-icon lg s mx-auto" id="lastOppIcon">?</div>
+            <div class="text-[11px] text-white/55 mt-2" id="lastOppLabel">—</div>
+          </div>
+        </div>
+        <div class="mt-3 text-sm font-semibold" id="lastVerdict">Run a round to begin.</div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT — ternary + opponent picker + gauge -->
+    <div class="space-y-5">
+
+      <!-- Ternary plot -->
+      <div class="glass-strong rounded-3xl p-5 lg:p-6">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Strategy space</div>
+            <div class="text-sm text-white/55">Ternary plot · centroid = Nash equilibrium</div>
+          </div>
+          <span class="tag tag-coop hidden" id="ternaryEqTag">at Nash equilibrium</span>
+        </div>
+        <svg class="ternary-svg" id="ternarySVG" viewBox="0 0 360 320" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="text-[11px] text-white/55 text-center mt-1 leading-relaxed" id="ternaryHint">
+          Drag the corners visually: more weight pulls the dot toward that corner.
+        </div>
+      </div>
+
+      <!-- Opponent picker -->
+      <div class="glass rounded-2xl p-5">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Opponent</div>
+        <div class="flex flex-col gap-2" id="oppPicker">
+          <button class="opp-pick active" data-opp="hunter">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Pattern-hunter Pat</div>
+                <div class="text-[11px] text-white/55">Fictitious play · 20-round memory · exploits patterns</div>
+              </div>
+              <span class="tag tag-defect">Adaptive</span>
+            </div>
+          </button>
+          <button class="opp-pick" data-opp="random">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Random Rita</div>
+                <div class="text-[11px] text-white/55">Uniform random · ignores history</div>
+              </div>
+              <span class="tag tag-violet">Naive</span>
+            </div>
+          </button>
+          <button class="opp-pick" data-opp="equilibrium">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Equilibrium Erin</div>
+                <div class="text-[11px] text-white/55">Plays Nash mix (⅓ ⅓ ⅓) · stable equilibrium</div>
+              </div>
+              <span class="tag tag-coop">Nash</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Predictability gauge -->
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-2">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-0.5">Predictability score</div>
+            <div class="text-[11px] text-white/55">KL divergence from uniform</div>
+          </div>
+          <span class="tag" id="predTag">—</span>
+        </div>
+        <svg class="gauge-svg" id="gaugeSVG" viewBox="0 0 300 175" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- =========================================================
+       CHARTS ROW
+       ========================================================= -->
+  <div class="grid lg:grid-cols-2 gap-5 mb-5">
+
+    <div class="glass rounded-2xl p-5">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Your action frequencies</div>
+          <div class="text-[11px] text-white/55">Rolling 30-round window · dashed line = uniform (⅓)</div>
+        </div>
+        <div class="flex items-center gap-3 text-[11px]">
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-defect"></span>Rock</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-violet-primary"></span>Paper</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded bg-equilibrium"></span>Scissors</span>
+        </div>
+      </div>
+      <svg class="chart-svg" id="freqChart" viewBox="0 0 600 220" preserveAspectRatio="none"></svg>
+    </div>
+
+    <div class="glass rounded-2xl p-5">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Average payoff over time</div>
+          <div class="text-[11px] text-white/55">Cumulative average · zero line = Nash equilibrium</div>
+        </div>
+        <span class="text-[11px] text-equilibrium-glow font-mono" id="payoffSummary">avg = 0.00</span>
+      </div>
+      <svg class="chart-svg" id="payoffChart" viewBox="0 0 600 220" preserveAspectRatio="none"></svg>
+    </div>
+
+  </div>
+
+  <!-- =========================================================
+       HISTORY + EDUCATION
+       ========================================================= -->
+  <div class="grid lg:grid-cols-[2fr_1fr] gap-5">
+
+    <!-- History strip -->
+    <div class="glass rounded-2xl p-5">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Round history</div>
+          <div class="text-[11px] text-white/55">Most recent on the right · click any round for details</div>
+        </div>
+        <span class="text-[11px] text-white/45 font-mono" id="historyCount">0 rounds</span>
+      </div>
+
+      <div class="space-y-2.5">
+        <div class="flex items-center gap-2">
+          <div class="text-[10px] uppercase tracking-wider text-violet-glow w-12 font-medium">You</div>
+          <div class="flex-1 flex items-center gap-1 overflow-x-auto py-1" id="histYou"></div>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="text-[10px] uppercase tracking-wider text-equilibrium-glow w-12 font-medium">Opp</div>
+          <div class="flex-1 flex items-center gap-1 overflow-x-auto py-1" id="histOpp"></div>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 w-12 font-medium">Result</div>
+          <div class="flex-1 flex items-center gap-1 overflow-x-auto py-1" id="histResult"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Educational panel -->
+    <div class="glass rounded-2xl p-5">
+      <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Why mixing matters</div>
+      <div class="text-[12px] text-white/70 leading-relaxed space-y-3">
+        <p>In Rock-Paper-Scissors, no <span class="text-white">pure strategy</span> is optimal. Whatever you commit to, your opponent can deterministically beat it.</p>
+        <p>The unique <span class="text-coop-glow font-medium">mixed Nash equilibrium</span> is <code class="font-mono text-coop-glow">(⅓, ⅓, ⅓)</code>. At this point, every action gives the opponent <span class="font-mono">E[U] = 0</span>, so they cannot exploit you.</p>
+        <p class="text-white/55 text-[11px]">Key property: at equilibrium, both players are <span class="text-equilibrium-glow">indifferent</span> across all their actions. That's exactly what makes the equilibrium stable.</p>
+      </div>
+      <div class="mt-4 pt-4 border-t border-white/5">
+        <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2">Diagnostics</div>
+        <div class="space-y-1.5 text-[11px]" id="diagnostics">
+          <div class="flex justify-between">
+            <span class="text-white/60">Your declared σ</span>
+            <span class="font-mono" id="diagDeclared">⅓ ⅓ ⅓</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-white/60">Empirical σ̂</span>
+            <span class="font-mono text-violet-glow" id="diagEmpirical">—</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-white/60">Opp empirical</span>
+            <span class="font-mono text-equilibrium-glow" id="diagOppEmp">—</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-white/60">Best response to opp</span>
+            <span class="font-mono text-coop-glow" id="diagBR">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<script>
+/* ============================================================
+   GAME PARAMETERS
+   ============================================================ */
+const ACTIONS = ['R', 'P', 'S'];
+const LABELS = { R: 'Rock', P: 'Paper', S: 'Scissors' };
+const ICONS  = { R: '🪨',   P: '📄',    S: '✂️' };
+const COLORS = { R: '#FB7185', P: '#9B7BFF', S: '#FBBF24' };
+
+// Payoff matrix: payoff[ya][oa] = your payoff when you play ya, opp plays oa
+// Standard RPS: R beats S, P beats R, S beats P
+const PAYOFF = {
+  R: { R: 0,  P: -1, S: 1  },
+  P: { R: 1,  P: 0,  S: -1 },
+  S: { R: -1, P: 1,  S: 0  }
+};
+
+// Action that beats each action (for opponent reasoning)
+const BEATS = { R: 'P', P: 'S', S: 'R' };  // BEATS[X] beats X
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const State = {
+  // User strategy: probabilities sum to 1 (stored as 0-1 floats)
+  strategy: { R: 1/3, P: 1/3, S: 1/3 },
+  // Last slider modified — used for redistribution
+  lastSlider: null,
+  // History of rounds
+  history: [],   // [{you, opp, payoff}]
+  oppKey: 'hunter',
+  scoreYou: 0,
+  scoreOpp: 0,
+  rounds: 0,
+  busy: false,
+  // For autoplay
+  autoplayActive: false,
+  autoplayCancel: false
+};
+
+/* ============================================================
+   OPPONENTS
+   ============================================================ */
+const OPPONENTS = {
+  hunter: {
+    label: 'Pattern-hunter Pat',
+    pickAction: (history) => {
+      // Use last 20 rounds to estimate user's empirical distribution
+      const window = history.slice(-20);
+      if (window.length < 3) {
+        // Not enough data — play randomly
+        return ACTIONS[Math.floor(Math.random() * 3)];
+      }
+      const counts = { R: 0, P: 0, S: 0 };
+      window.forEach(h => counts[h.you]++);
+      // Find most-likely user action and play the one that beats it
+      let mode = 'R', maxN = 0;
+      ACTIONS.forEach(a => { if (counts[a] > maxN) { maxN = counts[a]; mode = a; } });
+      // Add a bit of stochasticity: 80% best response, 20% second-best
+      if (Math.random() < 0.8) return BEATS[mode];
+      // Sample from inverse counts (anti-best-response)
+      const total = window.length;
+      const probs = ACTIONS.map(a => (total - counts[a]) / (2 * total));
+      return sampleFromDist(ACTIONS, probs);
+    }
+  },
+  random: {
+    label: 'Random Rita',
+    pickAction: () => ACTIONS[Math.floor(Math.random() * 3)]
+  },
+  equilibrium: {
+    label: 'Equilibrium Erin',
+    pickAction: () => sampleFromDist(ACTIONS, [1/3, 1/3, 1/3])
+  }
+};
+
+function sampleFromDist(items, probs) {
+  const r = Math.random();
+  let cum = 0;
+  for (let i = 0; i < items.length; i++) {
+    cum += probs[i];
+    if (r < cum) return items[i];
+  }
+  return items[items.length - 1];
+}
+
+function sampleUserAction() {
+  return sampleFromDist(ACTIONS, [State.strategy.R, State.strategy.P, State.strategy.S]);
+}
+
+/* ============================================================
+   SLIDER LOGIC — sliders sum to 1
+   ============================================================
+   When user moves slider X, redistribute the difference proportionally
+   among the other two sliders. This preserves their relative weights.
+   ============================================================ */
+function bindSliders() {
+  ['R', 'P', 'S'].forEach(action => {
+    const sliderId = '#slider' + action;
+    const slider = $(sliderId);
+    slider.addEventListener('input', (e) => {
+      onSliderChange(action, parseInt(e.target.value, 10) / 100);
+    });
+  });
+}
+
+function onSliderChange(changedAction, newValue) {
+  newValue = Math.max(0, Math.min(1, newValue));
+  const others = ACTIONS.filter(a => a !== changedAction);
+  const oldValue = State.strategy[changedAction];
+  const otherSum = State.strategy[others[0]] + State.strategy[others[1]];
+
+  if (Math.abs(newValue - oldValue) < 1e-9) return;
+
+  // The other two share the remaining (1 - newValue)
+  const remaining = 1 - newValue;
+  if (otherSum < 1e-6) {
+    // Both others were 0; split evenly
+    State.strategy[others[0]] = remaining / 2;
+    State.strategy[others[1]] = remaining / 2;
+  } else {
+    // Preserve ratio
+    State.strategy[others[0]] = (State.strategy[others[0]] / otherSum) * remaining;
+    State.strategy[others[1]] = (State.strategy[others[1]] / otherSum) * remaining;
+  }
+  State.strategy[changedAction] = newValue;
+
+  // Round to clean increments to avoid float drift accumulation
+  // (we don't actually round storage, just display)
+  syncStrategyUI();
+  renderTernary();
+  updatePureWarning();
+  updateDiagnostics();
+}
+
+function syncStrategyUI() {
+  // Update sliders
+  $('#sliderR').value = Math.round(State.strategy.R * 100);
+  $('#sliderP').value = Math.round(State.strategy.P * 100);
+  $('#sliderS').value = Math.round(State.strategy.S * 100);
+  // Update prob displays
+  flashUpdate('#probR', formatPct(State.strategy.R));
+  flashUpdate('#probP', formatPct(State.strategy.P));
+  flashUpdate('#probS', formatPct(State.strategy.S));
+  // Update prob bar
+  $('#probSegR').style.flexBasis = (State.strategy.R * 100) + '%';
+  $('#probSegP').style.flexBasis = (State.strategy.P * 100) + '%';
+  $('#probSegS').style.flexBasis = (State.strategy.S * 100) + '%';
+  $('#probSegRText').textContent = formatPct(State.strategy.R);
+  $('#probSegPText').textContent = formatPct(State.strategy.P);
+  $('#probSegSText').textContent = formatPct(State.strategy.S);
+}
+
+function formatPct(v) {
+  return Math.round(v * 100) + '%';
+}
+
+function flashUpdate(sel, newText) {
+  const el = $(sel);
+  if (el.textContent !== newText) {
+    el.textContent = newText;
+    el.classList.remove('flash');
+    void el.offsetWidth;
+    el.classList.add('flash');
+  }
+}
+
+/* ============================================================
+   PRESETS
+   ============================================================ */
+function bindPresets() {
+  $$('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const preset = btn.dataset.preset;
+      if (preset === 'equilibrium') {
+        State.strategy = { R: 1/3, P: 1/3, S: 1/3 };
+      } else if (preset === 'rock') {
+        State.strategy = { R: 1, P: 0, S: 0 };
+      } else if (preset === 'paper') {
+        State.strategy = { R: 0, P: 1, S: 0 };
+      } else if (preset === 'scissors') {
+        State.strategy = { R: 0, P: 0, S: 1 };
+      }
+      syncStrategyUI();
+      renderTernary();
+      updatePureWarning();
+      updateDiagnostics();
+    });
+  });
+}
+
+/* ============================================================
+   PURE STRATEGY WARNING
+   ============================================================ */
+function updatePureWarning() {
+  const max = Math.max(State.strategy.R, State.strategy.P, State.strategy.S);
+  const isPure = max > 0.95;
+  if (isPure) {
+    let pureAction;
+    ACTIONS.forEach(a => { if (State.strategy[a] === max) pureAction = a; });
+    const counter = BEATS[pureAction];
+    const counterLabel = LABELS[counter];
+    const pureLabel = LABELS[pureAction];
+    $('#pureWarningText').innerHTML = `<span class="font-medium text-defect-glow">Pure ${pureLabel} is exploitable.</span> Pattern-hunter Pat will counter with ${counterLabel} every round once she detects the pattern. You'll lose almost every round.`;
+    $('#pureWarning').classList.remove('hidden');
+  } else if (max > 0.7) {
+    let dominant;
+    ACTIONS.forEach(a => { if (State.strategy[a] === max) dominant = a; });
+    const counter = BEATS[dominant];
+    $('#pureWarningText').innerHTML = `<span class="font-medium text-equilibrium-glow">Heavily skewed toward ${LABELS[dominant]}.</span> A learning opponent will tilt toward ${LABELS[counter]} and exploit you.`;
+    $('#pureWarning').classList.remove('hidden');
+  } else {
+    $('#pureWarning').classList.add('hidden');
+  }
+}
+
+/* ============================================================
+   TERNARY PLOT
+   ============================================================ */
+const TER = { W: 360, H: 320, padX: 60, padY: 50, side: 240 };
+
+// Map (pR, pP, pS) -> (x, y) on the equilateral triangle
+// Standard ternary mapping with R at left, P at right, S at top
+function ternaryToXY(pR, pP, pS) {
+  // Triangle corners: R at (padX, padY + side*sqrt(3)/2), P at (padX + side, ...), S at (padX + side/2, padY)
+  const Rx = TER.padX, Ry = TER.padY + TER.side * Math.sqrt(3) / 2;
+  const Px = TER.padX + TER.side, Py = TER.padY + TER.side * Math.sqrt(3) / 2;
+  const Sx = TER.padX + TER.side / 2, Sy = TER.padY;
+  return [
+    pR * Rx + pP * Px + pS * Sx,
+    pR * Ry + pP * Py + pS * Sy
+  ];
+}
+
+function renderTernary() {
+  const svg = $('#ternarySVG');
+  svg.innerHTML = '';
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function ce(tag, attrs) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  // Triangle corners
+  const Rx = TER.padX, Ry = TER.padY + TER.side * Math.sqrt(3) / 2;
+  const Px = TER.padX + TER.side, Py = Ry;
+  const Sx = TER.padX + TER.side / 2, Sy = TER.padY;
+
+  // Inner gridlines: lines parallel to each edge at 1/3 and 2/3
+  for (let frac = 1/3; frac <= 2/3 + 1e-6; frac += 1/3) {
+    // Lines parallel to R-P edge (constant pS)
+    let [x1, y1] = ternaryToXY(0, 1 - frac, frac);
+    let [x2, y2] = ternaryToXY(1 - frac, 0, frac);
+    svg.appendChild(ce('line', { class: 'ternary-inner-grid', x1, y1, x2, y2 }));
+    // Constant pR
+    [x1, y1] = ternaryToXY(frac, 1 - frac, 0);
+    [x2, y2] = ternaryToXY(frac, 0, 1 - frac);
+    svg.appendChild(ce('line', { class: 'ternary-inner-grid', x1, y1, x2, y2 }));
+    // Constant pP
+    [x1, y1] = ternaryToXY(1 - frac, frac, 0);
+    [x2, y2] = ternaryToXY(0, frac, 1 - frac);
+    svg.appendChild(ce('line', { class: 'ternary-inner-grid', x1, y1, x2, y2 }));
+  }
+
+  // Triangle edges
+  const tri = ce('path', {
+    class: 'ternary-edge',
+    d: `M ${Rx} ${Ry} L ${Px} ${Py} L ${Sx} ${Sy} Z`
+  });
+  svg.appendChild(tri);
+
+  // Equilibrium marker (centroid)
+  const [eqX, eqY] = ternaryToXY(1/3, 1/3, 1/3);
+  svg.appendChild(ce('circle', {
+    class: 'ternary-equilibrium',
+    cx: eqX, cy: eqY, r: 7
+  }));
+  const eqLbl = ce('text', { class: 'ternary-eq-label', x: eqX, y: eqY + 22 });
+  eqLbl.textContent = 'Nash (⅓ ⅓ ⅓)';
+  svg.appendChild(eqLbl);
+
+  // Trail of recent positions (light)
+  // Use the trailing 30 strategy snapshots if we tracked them — for now skip
+  // (the user's strategy is set by sliders, not per-round; we'd need history of slider changes)
+
+  // Corner markers
+  // R corner (left)
+  svg.appendChild(ce('circle', { class: 'ternary-corner-circle r', cx: Rx, cy: Ry, r: 14 }));
+  const rLbl = ce('text', { class: 'ternary-corner-label', x: Rx, y: Ry });
+  rLbl.textContent = 'R';
+  svg.appendChild(rLbl);
+  const rDescLbl = ce('text', { class: 'ternary-corner-label', x: Rx - 18, y: Ry + 25, 'font-size': 9, fill: 'rgba(255,255,255,.5)' });
+  rDescLbl.textContent = 'pR=1';
+  svg.appendChild(rDescLbl);
+
+  // P corner (right)
+  svg.appendChild(ce('circle', { class: 'ternary-corner-circle p', cx: Px, cy: Py, r: 14 }));
+  const pLbl = ce('text', { class: 'ternary-corner-label', x: Px, y: Py });
+  pLbl.textContent = 'P';
+  svg.appendChild(pLbl);
+  const pDescLbl = ce('text', { class: 'ternary-corner-label', x: Px + 18, y: Py + 25, 'font-size': 9, fill: 'rgba(255,255,255,.5)' });
+  pDescLbl.textContent = 'pP=1';
+  svg.appendChild(pDescLbl);
+
+  // S corner (top)
+  svg.appendChild(ce('circle', { class: 'ternary-corner-circle s', cx: Sx, cy: Sy, r: 14 }));
+  const sLbl = ce('text', { class: 'ternary-corner-label', x: Sx, y: Sy });
+  sLbl.textContent = 'S';
+  svg.appendChild(sLbl);
+  const sDescLbl = ce('text', { class: 'ternary-corner-label', x: Sx, y: Sy - 18, 'font-size': 9, fill: 'rgba(255,255,255,.5)' });
+  sDescLbl.textContent = 'pS=1';
+  svg.appendChild(sDescLbl);
+
+  // User's current strategy pin
+  const [uX, uY] = ternaryToXY(State.strategy.R, State.strategy.P, State.strategy.S);
+  // Pulsing glow halo
+  svg.appendChild(ce('circle', { class: 'ternary-pin-glow', cx: uX, cy: uY, r: 12 }));
+  // Determine if at equilibrium
+  const atEq = Math.abs(State.strategy.R - 1/3) < 0.04 &&
+               Math.abs(State.strategy.P - 1/3) < 0.04 &&
+               Math.abs(State.strategy.S - 1/3) < 0.04;
+  const pinClass = 'ternary-pin' + (atEq ? '' : ' locked');
+  svg.appendChild(ce('circle', { class: pinClass, cx: uX, cy: uY, r: 8 }));
+
+  // Toggle the equilibrium tag
+  $('#ternaryEqTag').classList.toggle('hidden', !atEq);
+}
+
+/* ============================================================
+   PLAY ROUND
+   ============================================================ */
+async function playOneRound() {
+  if (State.busy) return;
+  State.busy = true;
+
+  const yourAction = sampleUserAction();
+  const oppFn = OPPONENTS[State.oppKey];
+  const oppAction = oppFn.pickAction(State.history);
+  const payoff = PAYOFF[yourAction][oppAction];
+
+  State.history.push({ you: yourAction, opp: oppAction, payoff });
+  State.scoreYou += payoff;
+  State.scoreOpp -= payoff;
+  State.rounds++;
+
+  updateRoundDisplay(yourAction, oppAction, payoff);
+  updateScores();
+  renderHistoryStrip();
+  renderFreqChart();
+  renderPayoffChart();
+  renderGauge();
+  updateDiagnostics();
+
+  await wait(50);  // for animation pacing
+  State.busy = false;
+}
+
+async function playN(n, intervalMs = 250) {
+  if (State.busy) return;
+  State.autoplayActive = true;
+  State.autoplayCancel = false;
+  for (let i = 0; i < n; i++) {
+    if (State.autoplayCancel) break;
+    State.busy = true;
+    const yourAction = sampleUserAction();
+    const oppFn = OPPONENTS[State.oppKey];
+    const oppAction = oppFn.pickAction(State.history);
+    const payoff = PAYOFF[yourAction][oppAction];
+    State.history.push({ you: yourAction, opp: oppAction, payoff });
+    State.scoreYou += payoff;
+    State.scoreOpp -= payoff;
+    State.rounds++;
+    State.busy = false;
+
+    // Update charts every round for smooth visuals
+    updateScores();
+    renderHistoryStrip();
+    renderFreqChart();
+    renderPayoffChart();
+    renderGauge();
+    updateDiagnostics();
+    if (i === n - 1) {
+      updateRoundDisplay(yourAction, oppAction, payoff);
+    }
+    await wait(intervalMs);
+  }
+  State.autoplayActive = false;
+}
+
+function updateRoundDisplay(youAct, oppAct, payoff) {
+  const youIcon = $('#lastYouIcon');
+  const oppIcon = $('#lastOppIcon');
+  const youLabel = $('#lastYouLabel');
+  const oppLabel = $('#lastOppLabel');
+  const verdict = $('#lastVerdict');
+  const card = $('#latestRound');
+
+  youIcon.className = 'move-icon lg ' + youAct.toLowerCase() + ' mx-auto';
+  youIcon.textContent = ICONS[youAct];
+  oppIcon.className = 'move-icon lg ' + oppAct.toLowerCase() + ' mx-auto';
+  oppIcon.textContent = ICONS[oppAct];
+  youLabel.textContent = LABELS[youAct];
+  oppLabel.textContent = LABELS[oppAct];
+
+  card.className = 'round-result-card ' + (payoff > 0 ? 'win' : payoff < 0 ? 'loss' : 'tie');
+
+  if (payoff > 0) {
+    verdict.innerHTML = `<span class="text-coop-glow">You win this round (+1)</span>`;
+  } else if (payoff < 0) {
+    verdict.innerHTML = `<span class="text-defect-glow">You lose this round (−1)</span>`;
+  } else {
+    verdict.innerHTML = `<span class="text-white/65">Tie (0)</span>`;
+  }
+
+  // Re-trigger reveal-in animation
+  card.classList.remove('reveal-in');
+  void card.offsetWidth;
+  card.classList.add('reveal-in');
+}
+
+function updateScores() {
+  bumpScore('#scoreYou', State.scoreYou);
+  bumpScore('#scoreOpp', State.scoreOpp);
+  $('#roundCounter').textContent = State.rounds;
+  // Wins/losses/ties
+  const wins = State.history.filter(h => h.payoff > 0).length;
+  const losses = State.history.filter(h => h.payoff < 0).length;
+  const ties = State.history.filter(h => h.payoff === 0).length;
+  $('#winsYou').textContent = `${wins}W / ${losses}L / ${ties}T`;
+  // Average payoff
+  const avg = State.rounds > 0 ? State.scoreYou / State.rounds : 0;
+  $('#avgPayoff').textContent = (avg >= 0 ? '+' : '') + avg.toFixed(2);
+  $('#avgPayoff').style.color = Math.abs(avg) < 0.05 ? '#FBBF24' : (avg > 0 ? '#34D399' : '#FB7185');
+  $('#avgPayoffNote').textContent = State.rounds > 0
+    ? (Math.abs(avg) < 0.05 ? 'Near equilibrium expected (0)' : `Diverging from Nash by ${Math.abs(avg).toFixed(2)}`)
+    : 'Equilibrium expected: 0.00';
+}
+
+function bumpScore(sel, target) {
+  const el = $(sel);
+  const start = parseInt(el.textContent, 10) || 0;
+  if (start === target) return;
+  el.classList.add('bump');
+  const dur = 350;
+  const t0 = performance.now();
+  function tick(now) {
+    const t = Math.min((now - t0) / dur, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = Math.round(start + (target - start) * eased);
+    if (t < 1) requestAnimationFrame(tick);
+    else el.textContent = target;
+  }
+  requestAnimationFrame(tick);
+  setTimeout(() => el.classList.remove('bump'), 350);
+}
+
+/* ============================================================
+   FREQUENCY CHART
+   ============================================================ */
+function renderFreqChart() {
+  const svg = $('#freqChart');
+  svg.innerHTML = '';
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function ce(tag, attrs) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  const W = 600, H = 220, padL = 40, padR = 10, padT = 10, padB = 24;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  // Compute rolling 30-round frequencies for each round position
+  const N = State.history.length;
+  const windowSize = 30;
+  if (N < 1) {
+    // Just axes and uniform line
+    drawAxes();
+    return;
+  }
+
+  // For each round index i, compute the rolling frequency over rounds [max(0, i-windowSize+1), i]
+  const points = [];
+  for (let i = 0; i < N; i++) {
+    const start = Math.max(0, i - windowSize + 1);
+    const slice = State.history.slice(start, i + 1);
+    const counts = { R: 0, P: 0, S: 0 };
+    slice.forEach(h => counts[h.you]++);
+    const total = slice.length;
+    points.push({
+      i,
+      R: counts.R / total,
+      P: counts.P / total,
+      S: counts.S / total
+    });
+  }
+
+  // Build stacked area: from 0 to fR, fR to fR+fP, fR+fP to 1
+  const xScale = (i) => padL + (N <= 1 ? 0 : (i / (N - 1)) * plotW);
+  const yScale = (v) => padT + (1 - v) * plotH;
+
+  // Bottom band (R)
+  let pathR = `M ${padL} ${yScale(0)}`;
+  points.forEach((p, idx) => {
+    pathR += ` L ${xScale(p.i)} ${yScale(p.R)}`;
+  });
+  pathR += ` L ${xScale(N - 1)} ${yScale(0)} Z`;
+  svg.appendChild(ce('path', { class: 'chart-band r', d: pathR }));
+
+  // Middle band (P)
+  let pathP = '';
+  // Top edge: fR + fP
+  points.forEach((p, idx) => {
+    pathP += (idx === 0 ? 'M ' : ' L ') + xScale(p.i) + ' ' + yScale(p.R + p.P);
+  });
+  // Bottom edge (back): fR
+  for (let idx = points.length - 1; idx >= 0; idx--) {
+    const p = points[idx];
+    pathP += ' L ' + xScale(p.i) + ' ' + yScale(p.R);
+  }
+  pathP += ' Z';
+  svg.appendChild(ce('path', { class: 'chart-band p', d: pathP }));
+
+  // Top band (S)
+  let pathS = '';
+  // Top edge: 1
+  points.forEach((p, idx) => {
+    pathS += (idx === 0 ? 'M ' : ' L ') + xScale(p.i) + ' ' + yScale(p.R + p.P + p.S);
+  });
+  // Bottom edge (back): fR + fP
+  for (let idx = points.length - 1; idx >= 0; idx--) {
+    const p = points[idx];
+    pathS += ' L ' + xScale(p.i) + ' ' + yScale(p.R + p.P);
+  }
+  pathS += ' Z';
+  svg.appendChild(ce('path', { class: 'chart-band s', d: pathS }));
+
+  // Equilibrium reference lines at y = 1/3 and y = 2/3
+  svg.appendChild(ce('line', {
+    class: 'chart-eq-line',
+    x1: padL, y1: yScale(1/3), x2: padL + plotW, y2: yScale(1/3)
+  }));
+  svg.appendChild(ce('line', {
+    class: 'chart-eq-line',
+    x1: padL, y1: yScale(2/3), x2: padL + plotW, y2: yScale(2/3)
+  }));
+
+  drawAxes();
+
+  function drawAxes() {
+    // Y axis
+    svg.appendChild(ce('line', { class: 'chart-axis-line', x1: padL, y1: padT, x2: padL, y2: padT + plotH }));
+    svg.appendChild(ce('line', { class: 'chart-axis-line', x1: padL, y1: padT + plotH, x2: padL + plotW, y2: padT + plotH }));
+    // Y axis labels
+    [0, 0.33, 0.66, 1].forEach(v => {
+      const y = yScale(v);
+      const lbl = ce('text', { class: 'chart-axis-label', x: padL - 8, y: y + 3, 'text-anchor': 'end' });
+      lbl.textContent = (v * 100).toFixed(0) + '%';
+      svg.appendChild(lbl);
+    });
+    // X axis label
+    const xLbl = ce('text', { class: 'chart-axis-label', x: padL + plotW / 2, y: padT + plotH + 18, 'text-anchor': 'middle' });
+    xLbl.textContent = N === 0 ? 'No rounds yet' : `Round → ${N}`;
+    svg.appendChild(xLbl);
+  }
+}
+
+/* ============================================================
+   PAYOFF CHART
+   ============================================================ */
+function renderPayoffChart() {
+  const svg = $('#payoffChart');
+  svg.innerHTML = '';
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function ce(tag, attrs) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  const W = 600, H = 220, padL = 50, padR = 15, padT = 10, padB = 24;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  const N = State.history.length;
+
+  // Y range: at least [-0.5, +0.5], expand if avg payoff exceeds
+  let yMin = -0.5, yMax = 0.5;
+  if (N > 0) {
+    let cum = 0;
+    let minV = 0, maxV = 0;
+    State.history.forEach((h, i) => {
+      cum += h.payoff;
+      const avg = cum / (i + 1);
+      if (avg < minV) minV = avg;
+      if (avg > maxV) maxV = avg;
+    });
+    yMin = Math.min(-0.5, minV - 0.1);
+    yMax = Math.max(0.5, maxV + 0.1);
+  }
+
+  const yScale = (v) => padT + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+  const xScale = (i) => padL + (N <= 1 ? 0 : (i / (N - 1)) * plotW);
+
+  // Zero reference line
+  svg.appendChild(ce('line', {
+    class: 'chart-payoff-zero',
+    x1: padL, y1: yScale(0), x2: padL + plotW, y2: yScale(0)
+  }));
+
+  // Axes
+  svg.appendChild(ce('line', { class: 'chart-axis-line', x1: padL, y1: padT, x2: padL, y2: padT + plotH }));
+  svg.appendChild(ce('line', { class: 'chart-axis-line', x1: padL, y1: padT + plotH, x2: padL + plotW, y2: padT + plotH }));
+
+  // Y axis labels
+  [yMin, yMin / 2, 0, yMax / 2, yMax].forEach(v => {
+    if (Math.abs(v) < 1e-9 && v !== 0) return;
+    const y = yScale(v);
+    const lbl = ce('text', { class: 'chart-axis-label', x: padL - 8, y: y + 3, 'text-anchor': 'end' });
+    lbl.textContent = (v >= 0 ? '+' : '') + v.toFixed(2);
+    svg.appendChild(lbl);
+  });
+
+  // Compute running average payoff
+  if (N > 0) {
+    let cum = 0;
+    const path = [];
+    State.history.forEach((h, i) => {
+      cum += h.payoff;
+      const avg = cum / (i + 1);
+      path.push([xScale(i), yScale(avg)]);
+    });
+    let d = '';
+    path.forEach((p, i) => { d += (i === 0 ? 'M ' : ' L ') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); });
+    svg.appendChild(ce('path', { class: 'chart-payoff-line', d }));
+
+    // Update summary
+    const final = path[path.length - 1];
+    const avg = State.scoreYou / N;
+    $('#payoffSummary').textContent = `avg = ${avg >= 0 ? '+' : ''}${avg.toFixed(3)}`;
+  } else {
+    $('#payoffSummary').textContent = 'avg = 0.00';
+  }
+
+  // X axis label
+  const xLbl = ce('text', { class: 'chart-axis-label', x: padL + plotW / 2, y: padT + plotH + 18, 'text-anchor': 'middle' });
+  xLbl.textContent = N === 0 ? 'No rounds yet' : `Round → ${N}`;
+  svg.appendChild(xLbl);
+}
+
+/* ============================================================
+   PREDICTABILITY GAUGE
+   ============================================================
+   Computes KL(empirical || uniform) over the user's recent action
+   distribution and maps it to an arc gauge.
+   ============================================================ */
+function renderGauge() {
+  const svg = $('#gaugeSVG');
+  svg.innerHTML = '';
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  function ce(tag, attrs) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+
+  // Compute empirical distribution over last 30 rounds
+  const window = State.history.slice(-30);
+  let kl = 0;
+  if (window.length >= 5) {
+    const counts = { R: 0, P: 0, S: 0 };
+    window.forEach(h => counts[h.you]++);
+    const total = window.length;
+    ACTIONS.forEach(a => {
+      const p = counts[a] / total;
+      const q = 1/3;
+      if (p > 0) kl += p * Math.log(p / q);
+    });
+  }
+
+  // Map KL [0, log(3)] → angle [-90°, 90°]
+  // KL = 0 means uniform (perfect mix); KL = log(3) ≈ 1.099 means pure
+  const maxKL = Math.log(3);
+  const klClamped = Math.min(kl, maxKL);
+  const angle = -90 + (klClamped / maxKL) * 180;
+
+  // Background arcs (from -90° to +90°, drawn in 3 segments: green, yellow, red)
+  const cx = 150, cy = 150, r = 100;
+  function arc(startDeg, endDeg, color) {
+    const sa = (startDeg - 90) * Math.PI / 180;
+    const ea = (endDeg - 90) * Math.PI / 180;
+    const x1 = cx + r * Math.cos(sa), y1 = cy + r * Math.sin(sa);
+    const x2 = cx + r * Math.cos(ea), y2 = cy + r * Math.sin(ea);
+    const largeArc = (endDeg - startDeg) > 180 ? 1 : 0;
+    return {
+      d: `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`,
+      color
+    };
+  }
+  // Convert angle space: -90 means leftmost (KL=0), +90 means rightmost (KL=max)
+  // We'll draw three arcs in screen coordinates:
+  // start angle = 0 (leftmost), end angle = 180 (rightmost), translating to gauge positions
+  // (use angle interpretation: 0° = left, 90° = top, 180° = right)
+
+  // Easier: compute three sub-arcs of the half-circle
+  function subarc(startFrac, endFrac, color) {
+    const sDeg = startFrac * 180; // 0 = left, 180 = right
+    const eDeg = endFrac * 180;
+    const sa = (sDeg - 180) * Math.PI / 180; // map to absolute: left = -180° = pi
+    const ea = (eDeg - 180) * Math.PI / 180;
+    const x1 = cx + r * Math.cos(sa), y1 = cy + r * Math.sin(sa);
+    const x2 = cx + r * Math.cos(ea), y2 = cy + r * Math.sin(ea);
+    const largeArc = (eDeg - sDeg) > 180 ? 1 : 0;
+    return svg.appendChild(ce('path', {
+      class: 'gauge-bg-arc',
+      d: `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`,
+      stroke: color
+    }));
+  }
+  subarc(0,    1/3, '#34D399');   // green: low KL = mixed
+  subarc(1/3,  2/3, '#FBBF24');   // amber
+  subarc(2/3,  1,   '#FB7185');   // red: high KL = predictable
+
+  // Tick labels
+  const tickPositions = [
+    { frac: 0, label: 'Mixed' },
+    { frac: 0.5, label: '' },
+    { frac: 1, label: 'Pure' }
+  ];
+  tickPositions.forEach(t => {
+    const angDeg = t.frac * 180 - 180;  // -180 to 0
+    const angRad = angDeg * Math.PI / 180;
+    const xT = cx + (r + 18) * Math.cos(angRad);
+    const yT = cy + (r + 18) * Math.sin(angRad) + 4;
+    if (t.label) {
+      const lbl = ce('text', { class: 'gauge-tick-label', x: xT, y: yT });
+      lbl.textContent = t.label;
+      svg.appendChild(lbl);
+    }
+  });
+
+  // Needle
+  const needleAngle = angle * Math.PI / 180 - Math.PI / 2;  // -180 to 0 in screen coords
+  // Rebuild: angle is -90 (leftmost) to +90 (rightmost). We want needle to point
+  // -90 -> left (180° in screen), +90 -> right (0° in screen)
+  // So screen angle = -180 + (klClamped / maxKL) * 180
+  const screenAng = -180 + (klClamped / maxKL) * 180;
+  const screenAngRad = screenAng * Math.PI / 180;
+  const ndX = cx + (r - 8) * Math.cos(screenAngRad);
+  const ndY = cy + (r - 8) * Math.sin(screenAngRad);
+  svg.appendChild(ce('line', {
+    class: 'gauge-needle',
+    x1: cx, y1: cy, x2: ndX, y2: ndY
+  }));
+  // Pivot
+  svg.appendChild(ce('circle', { class: 'gauge-pivot', cx, cy, r: 8 }));
+
+  // Value label (below pivot)
+  const lbl = ce('text', { class: 'gauge-value-label', x: cx, y: cy + 35, 'font-size': 16 });
+  lbl.textContent = `KL = ${kl.toFixed(2)}`;
+  svg.appendChild(lbl);
+  const sublbl = ce('text', { class: 'gauge-value-label', x: cx, y: cy + 52, 'font-size': 10, fill: 'rgba(255,255,255,.5)' });
+  sublbl.textContent = window.length < 5 ? 'Need 5+ rounds' : '';
+  svg.appendChild(sublbl);
+
+  // Update gauge tag
+  const tag = $('#predTag');
+  if (window.length < 5) {
+    tag.textContent = 'building data';
+    tag.className = 'tag tag-violet';
+  } else if (kl < 0.05) {
+    tag.textContent = 'well-mixed';
+    tag.className = 'tag tag-coop';
+  } else if (kl < 0.3) {
+    tag.textContent = 'slightly skewed';
+    tag.className = 'tag tag-amber';
+  } else {
+    tag.textContent = 'predictable';
+    tag.className = 'tag tag-defect';
+  }
+}
+
+/* ============================================================
+   HISTORY STRIP (last 30 rounds)
+   ============================================================ */
+function renderHistoryStrip() {
+  const youRow = $('#histYou');
+  const oppRow = $('#histOpp');
+  const resultRow = $('#histResult');
+  youRow.innerHTML = '';
+  oppRow.innerHTML = '';
+  resultRow.innerHTML = '';
+
+  const recent = State.history.slice(-30);
+  recent.forEach(h => {
+    const youCell = document.createElement('div');
+    youCell.className = 'hist-cell ' + h.you.toLowerCase();
+    youCell.textContent = h.you;
+    youRow.appendChild(youCell);
+
+    const oppCell = document.createElement('div');
+    oppCell.className = 'hist-cell ' + h.opp.toLowerCase();
+    oppCell.textContent = h.opp;
+    oppRow.appendChild(oppCell);
+
+    const rCell = document.createElement('div');
+    rCell.className = 'hist-cell';
+    if (h.payoff > 0) {
+      rCell.style.background = 'rgba(52,211,153,.4)';
+      rCell.textContent = '+';
+    } else if (h.payoff < 0) {
+      rCell.style.background = 'rgba(251,113,133,.4)';
+      rCell.textContent = '−';
+    } else {
+      rCell.style.background = 'rgba(255,255,255,.1)';
+      rCell.textContent = '·';
+    }
+    resultRow.appendChild(rCell);
+  });
+
+  $('#historyCount').textContent = `${State.rounds} round${State.rounds === 1 ? '' : 's'}`;
+}
+
+/* ============================================================
+   DIAGNOSTICS
+   ============================================================ */
+function updateDiagnostics() {
+  $('#diagDeclared').textContent = `${formatPct(State.strategy.R)} ${formatPct(State.strategy.P)} ${formatPct(State.strategy.S)}`;
+
+  if (State.history.length > 0) {
+    // Empirical user dist
+    const counts = { R: 0, P: 0, S: 0 };
+    State.history.forEach(h => counts[h.you]++);
+    const total = State.history.length;
+    $('#diagEmpirical').textContent = `${Math.round(counts.R/total*100)}% ${Math.round(counts.P/total*100)}% ${Math.round(counts.S/total*100)}%`;
+
+    // Empirical opp dist
+    const oppCounts = { R: 0, P: 0, S: 0 };
+    State.history.forEach(h => oppCounts[h.opp]++);
+    $('#diagOppEmp').textContent = `${Math.round(oppCounts.R/total*100)}% ${Math.round(oppCounts.P/total*100)}% ${Math.round(oppCounts.S/total*100)}%`;
+
+    // Best response to opp empirical: pick action that maximizes E[U] given opp distribution
+    const oppDist = { R: oppCounts.R/total, P: oppCounts.P/total, S: oppCounts.S/total };
+    let best = 'R', bestEU = -Infinity;
+    ACTIONS.forEach(a => {
+      const eu = oppDist.R * PAYOFF[a].R + oppDist.P * PAYOFF[a].P + oppDist.S * PAYOFF[a].S;
+      if (eu > bestEU) { bestEU = eu; best = a; }
+    });
+    $('#diagBR').textContent = `${LABELS[best]} (EU = ${bestEU.toFixed(2)})`;
+  } else {
+    $('#diagEmpirical').textContent = '—';
+    $('#diagOppEmp').textContent = '—';
+    $('#diagBR').textContent = '—';
+  }
+}
+
+/* ============================================================
+   OPPONENT PICKER
+   ============================================================ */
+function bindOppPicker() {
+  $$('#oppPicker .opp-pick').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('#oppPicker .opp-pick').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      State.oppKey = btn.dataset.opp;
+      $('#oppLabel').textContent = OPPONENTS[State.oppKey].label;
+      showToast(`Opponent: ${OPPONENTS[State.oppKey].label}`);
+    });
+  });
+}
+
+/* ============================================================
+   ACTIONS
+   ============================================================ */
+function bindActions() {
+  $('#playOneBtn').addEventListener('click', () => playOneRound());
+  $('#play10Btn').addEventListener('click', () => {
+    if (!State.autoplayActive) playN(10, 120);
+  });
+  $('#play200Btn').addEventListener('click', () => {
+    if (!State.autoplayActive) {
+      showToast('Running 200 rounds…');
+      playN(200, 12);
+    }
+  });
+  $('#restartBtn').addEventListener('click', resetSession);
+}
+
+function resetSession() {
+  State.history = [];
+  State.scoreYou = 0;
+  State.scoreOpp = 0;
+  State.rounds = 0;
+  State.autoplayCancel = true;
+  $('#scoreYou').textContent = '0';
+  $('#scoreOpp').textContent = '0';
+  updateScores();
+  renderHistoryStrip();
+  renderFreqChart();
+  renderPayoffChart();
+  renderGauge();
+  updateDiagnostics();
+  // Reset round display
+  $('#lastYouIcon').textContent = '?';
+  $('#lastOppIcon').textContent = '?';
+  $('#lastYouLabel').textContent = '—';
+  $('#lastOppLabel').textContent = '—';
+  $('#lastVerdict').textContent = 'Run a round to begin.';
+  $('#latestRound').className = 'round-result-card';
+  showToast('Session reset.');
+}
+
+function showToast(text, duration = 1400) {
+  const t = $('#toast');
+  t.textContent = text;
+  t.classList.add('visible');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('visible'), duration);
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', () => {
+  // Initialize strategy to exact 1/3 (storage)
+  State.strategy = { R: 1/3, P: 1/3, S: 1/3 };
+  bindSliders();
+  bindPresets();
+  bindOppPicker();
+  bindActions();
+  syncStrategyUI();
+  renderTernary();
+  updatePureWarning();
+  renderFreqChart();
+  renderPayoffChart();
+  renderGauge();
+  updateDiagnostics();
+});
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'mixed-strategy',
+      getSession: function () {
+        if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
+        var you = State.scoreYou, opp = State.scoreOpp, total = you + opp;
+        var score = total !== 0 ? (you / (Math.abs(you) + Math.abs(opp))) : 0.5;
+        var outcome = you > opp ? 'win' : (you < opp ? 'loss' : 'draw');
+        return { score: score, outcome: outcome, detail: { you: you, opp: opp, rounds: State.history.length, opponent: State.oppKey } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

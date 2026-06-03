@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Centipede Game — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+          display: ['Instrument Serif', 'serif']
+        },
+        colors: {
+          ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+          violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+          coop: { DEFAULT: '#10B981', glow: '#34D399' },
+          defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+          equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+        }
+      }
+    }
+  };
+</script>
+
+<style>
+  html, body { background: #070612; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    color: #E8E6F5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden; min-height: 100vh;
+  }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  /* ========== Background ========== */
+  .arena-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410; }
+  .arena-bg::before {
+    content: ''; position: absolute; width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: 0.3; top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute; width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #F59E0B 0%, transparent 70%);
+    filter: blur(120px); opacity: 0.12; bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ========== Glass ========== */
+  .glass { background: rgba(18,16,42,.55); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); border: 1px solid rgba(255,255,255,.06); }
+  .glass-strong { background: rgba(11,10,26,.75); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); border: 1px solid rgba(255,255,255,.08); }
+  .glass-subtle { background: rgba(255,255,255,.025); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.05); }
+
+  /* ========== Buttons ========== */
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; font-weight: 500;
+    padding: 13px 28px; border-radius: 12px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124,92,255,.6); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 22px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+  .btn-ghost:active { transform: scale(.98); }
+
+  /* ========== Action buttons (Continue / Take) ========== */
+  .action-btn {
+    position: relative; padding: 22px 18px;
+    border-radius: 16px;
+    border: 1.5px solid;
+    background: rgba(255,255,255,.02);
+    transition: all .2s cubic-bezier(.4,0,.2,1);
+    cursor: pointer; overflow: hidden; text-align: left;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .action-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .action-btn:not(:disabled):hover { transform: translateY(-3px); }
+  .action-btn:not(:disabled):active { transform: translateY(0) scale(.99); }
+
+  .action-pass { border-color: rgba(124,92,255,.35); }
+  .action-pass:not(:disabled):hover {
+    background: rgba(124,92,255,.08); border-color: rgba(155,123,255,.6);
+    box-shadow: 0 12px 30px -8px rgba(124,92,255,.4);
+  }
+  .action-pass .label { color: #9B7BFF; }
+
+  .action-take { border-color: rgba(245,158,11,.35); }
+  .action-take:not(:disabled):hover {
+    background: rgba(245,158,11,.08); border-color: rgba(251,191,36,.6);
+    box-shadow: 0 12px 30px -8px rgba(245,158,11,.4);
+  }
+  .action-take .label { color: #FBBF24; }
+
+  .action-btn .label { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  .action-btn .desc { font-size: 12px; color: rgba(255,255,255,.5); line-height: 1.5; }
+  .action-btn .kbd {
+    position: absolute; top: 12px; right: 12px;
+    padding: 3px 8px; border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    background: rgba(255,255,255,.08); color: rgba(255,255,255,.55);
+  }
+
+  /* ========== Tags ========== */
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-violet { background: rgba(124,92,255,.12); border-color: rgba(124,92,255,.3); color: #9B7BFF; }
+  .tag-amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FBBF24; }
+
+  /* ========== Logo ========== */
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  /* ========== Tree SVG styles ========== */
+  .trunk-line { stroke: rgba(255,255,255,.1); stroke-width: 2; fill: none; transition: stroke .4s ease, stroke-width .4s ease; }
+  .trunk-line.visited { stroke: rgba(124,92,255,.55); stroke-width: 3; filter: drop-shadow(0 0 8px rgba(124,92,255,.6)); }
+  .trunk-line.spe-path { stroke: #FBBF24; stroke-width: 3.5; filter: drop-shadow(0 0 12px rgba(251,191,36,.8)); }
+
+  .take-line { stroke: rgba(244,63,94,.3); stroke-width: 1.5; stroke-dasharray: 3 3; fill: none; transition: all .4s ease; }
+  .take-line.taken {
+    stroke: #FB7185; stroke-width: 3; stroke-dasharray: 0;
+    filter: drop-shadow(0 0 10px rgba(244,63,94,.7));
+    animation: takeFlash .6s ease-out;
+  }
+  @keyframes takeFlash {
+    0% { stroke-width: 0; opacity: 0; }
+    50% { stroke-width: 5; opacity: 1; }
+    100% { stroke-width: 3; opacity: 1; }
+  }
+
+  .node-circle {
+    transition: r .3s cubic-bezier(.34,1.56,.64,1), fill .3s ease, filter .3s ease;
+    cursor: default;
+  }
+  .node-circle.visited { filter: drop-shadow(0 0 6px currentColor); }
+  .node-circle.active {
+    filter: drop-shadow(0 0 16px currentColor);
+    animation: nodePulse 1.4s ease-in-out infinite;
+  }
+  @keyframes nodePulse {
+    0%, 100% { opacity: 1; r: 14; }
+    50% { opacity: .75; r: 16; }
+  }
+  .node-circle.spe-highlight {
+    animation: speHighlight 1.2s ease-in-out;
+    filter: drop-shadow(0 0 20px #FBBF24);
+  }
+  @keyframes speHighlight {
+    0% { r: 14; }
+    50% { r: 20; }
+    100% { r: 14; }
+  }
+
+  .node-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 600;
+    fill: #fff;
+    text-anchor: middle;
+    pointer-events: none;
+    dominant-baseline: central;
+  }
+
+  .payoff-box {
+    transition: all .4s cubic-bezier(.16,1,.3,1);
+  }
+  .payoff-box.near { filter: drop-shadow(0 0 10px rgba(251,191,36,.4)); }
+  .payoff-box.taken {
+    animation: payoffTake .8s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes payoffTake {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+  }
+
+  .payoff-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    text-anchor: middle;
+    dominant-baseline: central;
+    pointer-events: none;
+  }
+
+  .role-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 10px; font-weight: 500;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    text-anchor: middle;
+    fill: rgba(255,255,255,.35);
+  }
+
+  .terminal-glow {
+    animation: terminalPulse 2s ease-in-out infinite;
+  }
+  @keyframes terminalPulse {
+    0%, 100% { filter: drop-shadow(0 0 8px rgba(52,211,153,.5)); }
+    50% { filter: drop-shadow(0 0 20px rgba(52,211,153,.9)); }
+  }
+
+  /* Backward induction pointer */
+  .bi-pointer {
+    filter: drop-shadow(0 0 16px #FBBF24);
+  }
+  .bi-arrow {
+    animation: biArrow 1s ease-in-out infinite;
+  }
+  @keyframes biArrow {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+
+  /* ========== Coin flight ========== */
+  .coin {
+    position: absolute; width: 22px; height: 22px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #FCD34D, #F59E0B 55%, #B45309);
+    box-shadow: 0 0 14px rgba(251,191,36,.7), inset 0 1px 0 rgba(255,255,255,.4);
+    z-index: 50; pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+    color: #7c2d12;
+  }
+  .coin::after { content: '$'; }
+
+  /* ========== Score display ========== */
+  .score-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; font-variant-numeric: tabular-nums;
+    transition: transform .35s cubic-bezier(.34,1.56,.64,1), color .35s ease;
+    display: inline-block; font-size: 32px; letter-spacing: -.02em; line-height: 1;
+  }
+  .score-num.bump { transform: scale(1.25); color: #FBBF24; }
+
+  /* ========== Opponent selector ========== */
+  .opp-pick {
+    padding: 10px 14px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.02);
+    transition: all .15s ease; cursor: pointer;
+    text-align: left;
+  }
+  .opp-pick:hover { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.18); }
+  .opp-pick.active {
+    background: rgba(245,158,11,.08);
+    border-color: rgba(245,158,11,.4);
+    box-shadow: 0 0 0 1px rgba(245,158,11,.2);
+  }
+
+  /* ========== Commentary banner ========== */
+  .commentary {
+    border-radius: 14px;
+    padding: 14px 18px;
+    border: 1.5px solid rgba(124,92,255,.2);
+    background: rgba(124,92,255,.06);
+    animation: commSlide .5s cubic-bezier(.16,1,.3,1);
+    min-height: 60px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  @keyframes commSlide {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .commentary .icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  /* Final analysis slide-in */
+  .final-panel { animation: finalSlide .6s cubic-bezier(.16,1,.3,1); }
+  @keyframes finalSlide {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+
+  /* BI step caption (anchored to pointer) */
+  .bi-caption {
+    position: absolute;
+    background: rgba(11,10,26,.95);
+    border: 1px solid rgba(251,191,36,.35);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 12px;
+    max-width: 260px;
+    color: rgba(255,255,255,.85);
+    line-height: 1.5;
+    box-shadow: 0 10px 30px -6px rgba(251,191,36,.35);
+    pointer-events: none;
+    z-index: 20;
+  }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+
+<!-- ============================================================
+     TOP BAR
+     ============================================================ -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
+      <div class="font-medium tracking-tight">Centipede Game</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="hidden md:flex items-center gap-2 text-xs text-white/55 px-3 py-2 rounded-lg glass-subtle">
+      <span>Node</span>
+      <span class="font-mono text-white" id="nodeLabel">1</span>
+      <span class="text-white/30">/</span>
+      <span class="font-mono text-white/60">6</span>
+    </div>
+    <button class="btn-ghost text-sm" id="restartBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      New game
+    </button>
+  </div>
+</header>
+
+<!-- ============================================================
+     MAIN
+     ============================================================ -->
+<main class="px-6 lg:px-10 py-6 max-w-7xl mx-auto">
+
+  <!-- Scoreboard -->
+  <div class="glass rounded-2xl p-5 mb-5 flex items-center justify-between">
+    <div class="flex items-center gap-5">
+      <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-primary to-violet-deep flex items-center justify-center font-semibold">P1</div>
+      <div>
+        <div class="text-[10px] uppercase tracking-wider text-white/45 mb-1">You (Player 1)</div>
+        <span class="score-num text-violet-glow" id="scoreYou">0</span>
+      </div>
+      <div class="text-white/15 text-3xl font-light mx-3">·</div>
+      <div>
+        <div class="text-[10px] uppercase tracking-wider text-white/45 mb-1" id="oppLabel">Reuben (Rational)</div>
+        <span class="score-num text-equilibrium-glow" id="scoreOpp">0</span>
+      </div>
+      <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-equilibrium to-amber-700 flex items-center justify-center font-semibold">P2</div>
+    </div>
+    <div class="text-right">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 mb-1">Current pot</div>
+      <div class="font-mono text-2xl font-semibold" id="potDisplay">$2</div>
+    </div>
+  </div>
+
+  <div class="grid lg:grid-cols-[1.6fr_1fr] gap-5">
+
+    <!-- Tree canvas -->
+    <div class="glass-strong rounded-3xl p-6 lg:p-8 relative" id="treeBox">
+      <div class="flex items-center justify-between mb-5">
+        <div>
+          <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Game tree</div>
+          <div class="text-sm text-white/55" id="turnLabel">Your move — pass or take?</div>
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-violet-primary"></span>
+            <span class="text-white/60">You</span>
+          </span>
+          <span class="flex items-center gap-1.5 ml-3">
+            <span class="w-2.5 h-2.5 rounded-full bg-equilibrium"></span>
+            <span class="text-white/60">Opp</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- The SVG tree -->
+      <div class="relative overflow-x-auto">
+        <svg id="tree" viewBox="0 0 820 340" class="w-full" style="min-width: 720px;" preserveAspectRatio="xMidYMid meet">
+          <!-- will be populated by JS -->
+        </svg>
+      </div>
+
+      <!-- Action row -->
+      <div class="grid grid-cols-2 gap-4 mt-6" id="actionRow">
+        <button class="action-btn action-pass" data-move="pass">
+          <span class="kbd">P</span>
+          <div class="label">Pass</div>
+          <div class="desc">Grow the pot. Hand the decision to your opponent.</div>
+        </button>
+        <button class="action-btn action-take" data-move="take">
+          <span class="kbd">T</span>
+          <div class="label">Take</div>
+          <div class="desc">End the game. Grab the current pot for yourself.</div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Right rail -->
+    <div class="space-y-5">
+
+      <!-- Commentary -->
+      <div id="commentaryWrap">
+        <div class="commentary">
+          <div class="icon">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01"/><circle cx="12" cy="12" r="9" stroke-width="2"/></svg>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-violet-glow mb-1">How this works</div>
+            <p class="text-xs text-white/70 leading-relaxed">Each round, the pot grows. Taking ends the game and gives you the larger share. Passing gives it to the opponent — who faces the same choice on a bigger pot.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Opponent picker -->
+      <div class="glass rounded-2xl p-4">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Opponent</div>
+        <div class="grid gap-2" id="oppPicker">
+          <button class="opp-pick active" data-opp="rational">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Reuben</div>
+                <div class="text-[11px] text-white/50">Rational · Backward induction</div>
+              </div>
+              <span class="tag tag-amber">SPE</span>
+            </div>
+          </button>
+          <button class="opp-pick" data-opp="empirical">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Eva</div>
+                <div class="text-[11px] text-white/50">Empirical · Plays like real people</div>
+              </div>
+              <span class="tag">Human-like</span>
+            </div>
+          </button>
+          <button class="opp-pick" data-opp="altruistic">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Alma</div>
+                <div class="text-[11px] text-white/50">Altruistic · Almost always passes</div>
+              </div>
+              <span class="tag" style="background: rgba(52,211,153,.12); border-color: rgba(52,211,153,.3); color: #34D399;">Trusting</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Strategy hints -->
+      <div class="glass rounded-2xl p-4">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Strategic consideration</div>
+        <div class="space-y-2 text-xs leading-relaxed">
+          <div class="flex gap-2">
+            <span class="text-violet-glow font-mono flex-shrink-0">›</span>
+            <span class="text-white/70">If you pass now, can you trust the opponent to pass back?</span>
+          </div>
+          <div class="flex gap-2">
+            <span class="text-violet-glow font-mono flex-shrink-0">›</span>
+            <span class="text-white/70">Compare the current payoff against one more round's risk.</span>
+          </div>
+          <div class="flex gap-2">
+            <span class="text-violet-glow font-mono flex-shrink-0">›</span>
+            <span class="text-white/70">SPE says take immediately. Most humans don't.</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- ============================================================
+       FINAL PANEL (shown after game)
+       ============================================================ -->
+  <div id="finalPanel" class="hidden mt-5">
+    <div class="glass-strong rounded-3xl p-6 lg:p-8 final-panel">
+      <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <div class="text-xs text-equilibrium-glow font-medium tracking-wider uppercase mb-2" id="outcomeTag">Game complete</div>
+          <h2 class="font-display text-3xl tracking-tight" id="outcomeHeadline">Final outcome</h2>
+        </div>
+        <button class="btn-ghost text-sm" id="runBIBtn">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12"/></svg>
+          Replay backward induction
+        </button>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-5 mb-5">
+        <div class="glass-subtle rounded-2xl p-5">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 mb-2 font-medium">What happened</div>
+          <div class="flex items-center gap-4 mb-3">
+            <div>
+              <div class="text-xs text-white/50 mb-1">You</div>
+              <div class="font-mono text-3xl font-bold text-violet-glow" id="finalScoreYou">0</div>
+            </div>
+            <div class="text-white/20 text-xl">·</div>
+            <div>
+              <div class="text-xs text-white/50 mb-1" id="finalOppLabel">Reuben</div>
+              <div class="font-mono text-3xl font-bold text-equilibrium-glow" id="finalScoreOpp">0</div>
+            </div>
+          </div>
+          <div class="text-xs text-white/55" id="finalPathDesc">—</div>
+        </div>
+        <div class="glass-subtle rounded-2xl p-5">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 mb-2 font-medium">What SPE predicted</div>
+          <div class="flex items-center gap-4 mb-3">
+            <div>
+              <div class="text-xs text-white/50 mb-1">You (SPE)</div>
+              <div class="font-mono text-3xl font-bold text-white/70">2</div>
+            </div>
+            <div class="text-white/20 text-xl">·</div>
+            <div>
+              <div class="text-xs text-white/50 mb-1">Opp (SPE)</div>
+              <div class="font-mono text-3xl font-bold text-white/70">0</div>
+            </div>
+          </div>
+          <div class="text-xs text-white/55">Take immediately at node 1. Backward induction predicts no cooperation at all.</div>
+        </div>
+      </div>
+
+      <div class="glass-subtle rounded-2xl p-5 mb-5">
+        <div class="text-[10px] uppercase tracking-wider text-equilibrium-glow mb-2 font-medium">Why theory says take at node 1</div>
+        <div class="text-sm text-white/80 leading-relaxed" id="biReasoning"></div>
+      </div>
+
+      <div class="glass-subtle rounded-2xl p-5">
+        <div class="text-[10px] uppercase tracking-wider text-violet-glow mb-2 font-medium">Theory vs behavior · the gap</div>
+        <p class="text-sm text-white/75 leading-relaxed">
+          In laboratory centipede experiments (<span class="italic">McKelvey & Palfrey, 1992</span>), fewer than <span class="text-white">5%</span> of players take at node 1, and most games end around node <span class="text-white">4–5</span>. Real people pass for longer than SPE predicts — likely because they expect reciprocity, care about fairness, or believe their opponent isn't perfectly rational either. This is one of the clearest demonstrations that <span class="text-white">pure backward induction often fails to describe actual play</span>, motivating alternative equilibrium concepts like Quantal Response and level-k reasoning.
+        </p>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script>
+/* =================================================================
+   GAME DEFINITION
+   - 6 decision nodes, alternating between Player 1 (odd) and Player 2 (even)
+   - At each node, active player can TAKE (end game) or PASS (continue)
+   - Payoffs: if node n is taken, payoffs are PAYOFFS[n]
+   - If no one takes by node 6, terminal payoffs are TERMINAL
+   ================================================================= */
+
+// Classic Centipede structure — pot grows as you pass, with a "split" where the taker gets more
+// Node 1: P1's choice. Take -> (2,0). Pass -> pot grows, P2 chooses at node 2.
+// Node 2: P2's choice. Take -> (1,4). Pass -> node 3.
+// Node 3: P1's choice. Take -> (6,2). Pass -> node 4.
+// Node 4: P2's choice. Take -> (3,8). Pass -> node 5.
+// Node 5: P1's choice. Take -> (10,6). Pass -> node 6.
+// Node 6: P2's choice. Take -> (7,12). Pass -> terminal (9,15).
+
+const PAYOFFS = {
+  // Payoffs if TAKEN at this node: [player1, player2]
+  1: [2, 0],
+  2: [1, 4],
+  3: [6, 2],
+  4: [3, 8],
+  5: [10, 6],
+  6: [7, 12]
+};
+const TERMINAL = [9, 15];   // if node 6 passes (game runs out)
+const TOTAL_NODES = 6;
+
+// Who moves at each node (1 = user, 2 = opponent)
+const MOVER = { 1: 1, 2: 2, 3: 1, 4: 2, 5: 1, 6: 2 };
+
+/* =================================================================
+   OPPONENTS
+   ================================================================= */
+const OPPONENTS = {
+  rational: {
+    name: 'Reuben',
+    label: 'Rational',
+    description: 'Plays backward induction strictly.',
+    // Always TAKE when it's their turn (SPE)
+    decide: () => 'take'
+  },
+  empirical: {
+    name: 'Eva',
+    label: 'Empirical',
+    description: 'Plays like real humans in experiments.',
+    // Probability of taking increases with node depth, calibrated so game usually ends around node 4-5
+    decide: (node) => {
+      const takeProb = { 2: 0.10, 4: 0.45, 6: 0.85 }[node] || 0.3;
+      return Math.random() < takeProb ? 'take' : 'pass';
+    }
+  },
+  altruistic: {
+    name: 'Alma',
+    label: 'Altruistic',
+    description: 'Almost always passes — trusts you.',
+    decide: (node) => {
+      // Very low probability of taking except at final node
+      const takeProb = { 2: 0.02, 4: 0.05, 6: 0.35 }[node] || 0.05;
+      return Math.random() < takeProb ? 'take' : 'pass';
+    }
+  }
+};
+
+/* =================================================================
+   STATE
+   ================================================================= */
+const State = {
+  node: 1,
+  scoreYou: 0,
+  scoreOpp: 0,
+  history: [],          // [{node, action:'take'|'pass', mover:1|2}]
+  oppKey: 'rational',
+  busy: false,
+  finished: false,
+  finalNode: null,      // node where game ended, or null if terminal reached
+  finalPayoff: null
+};
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+/* =================================================================
+   TREE LAYOUT & RENDERING
+   ================================================================= */
+// Node positions along a horizontal trunk
+function nodeX(i) { return 60 + (i - 1) * 125; }
+const TRUNK_Y = 170;
+
+function renderTree() {
+  const svg = $('#tree');
+  svg.innerHTML = '';
+
+  // Defs for gradients
+  const defs = `
+    <defs>
+      <linearGradient id="trunkGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#7C5CFF" stop-opacity="0.3"/>
+        <stop offset="100%" stop-color="#34D399" stop-opacity="0.4"/>
+      </linearGradient>
+      <filter id="softGlow"><feGaussianBlur stdDeviation="3"/></filter>
+    </defs>
+  `;
+
+  // TRUNK LINES between nodes (pass direction)
+  let trunks = '';
+  for (let i = 1; i < TOTAL_NODES; i++) {
+    trunks += `<line class="trunk-line" data-trunk="${i}" x1="${nodeX(i)}" y1="${TRUNK_Y}" x2="${nodeX(i+1)}" y2="${TRUNK_Y}" stroke-linecap="round"/>`;
+  }
+  // Terminal trunk (from node 6 to terminal payoff box)
+  trunks += `<line class="trunk-line" data-trunk="terminal" x1="${nodeX(TOTAL_NODES)}" y1="${TRUNK_Y}" x2="${nodeX(TOTAL_NODES) + 100}" y2="${TRUNK_Y}" stroke-linecap="round"/>`;
+
+  // TAKE BRANCHES — go perpendicular up or down to the payoff box
+  let takeBranches = '';
+  for (let i = 1; i <= TOTAL_NODES; i++) {
+    const y = (MOVER[i] === 1) ? TRUNK_Y - 55 : TRUNK_Y + 55;
+    takeBranches += `<line class="take-line" data-take="${i}" x1="${nodeX(i)}" y1="${TRUNK_Y}" x2="${nodeX(i)}" y2="${y}"/>`;
+  }
+
+  // PAYOFF BOXES — above trunk for P1 nodes, below for P2 nodes
+  let payoffBoxes = '';
+  for (let i = 1; i <= TOTAL_NODES; i++) {
+    const [p1, p2] = PAYOFFS[i];
+    const isUpward = MOVER[i] === 1;
+    const boxY = isUpward ? TRUNK_Y - 110 : TRUNK_Y + 55;
+    const boxColor = isUpward ? '#7C5CFF' : '#F59E0B';
+    payoffBoxes += `
+      <g class="payoff-box" data-payoff="${i}">
+        <rect x="${nodeX(i) - 28}" y="${boxY}" width="56" height="48" rx="10"
+              fill="rgba(255,255,255,0.02)" stroke="${boxColor}" stroke-opacity="0.35" stroke-width="1.5"/>
+        <text class="payoff-text" x="${nodeX(i)}" y="${boxY + 17}" font-size="12" fill="#9B7BFF">${p1}</text>
+        <line x1="${nodeX(i) - 18}" y1="${boxY + 24}" x2="${nodeX(i) + 18}" y2="${boxY + 24}" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+        <text class="payoff-text" x="${nodeX(i)}" y="${boxY + 33}" font-size="12" fill="#FBBF24">${p2}</text>
+      </g>
+    `;
+  }
+
+  // TERMINAL payoff (if game runs to end)
+  const tX = nodeX(TOTAL_NODES) + 100;
+  payoffBoxes += `
+    <g class="payoff-box terminal-glow" data-payoff="terminal">
+      <rect x="${tX - 32}" y="${TRUNK_Y - 28}" width="64" height="56" rx="12"
+            fill="rgba(52,211,153,0.08)" stroke="#34D399" stroke-opacity="0.55" stroke-width="2"/>
+      <text class="payoff-text" x="${tX}" y="${TRUNK_Y - 9}" font-size="13" fill="#9B7BFF">${TERMINAL[0]}</text>
+      <line x1="${tX - 22}" y1="${TRUNK_Y}" x2="${tX + 22}" y2="${TRUNK_Y}" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+      <text class="payoff-text" x="${tX}" y="${TRUNK_Y + 11}" font-size="13" fill="#FBBF24">${TERMINAL[1]}</text>
+    </g>
+  `;
+
+  // NODES — circles with number labels and role labels
+  let nodes = '';
+  for (let i = 1; i <= TOTAL_NODES; i++) {
+    const isP1 = MOVER[i] === 1;
+    const color = isP1 ? '#7C5CFF' : '#F59E0B';
+    const roleY = isP1 ? TRUNK_Y + 38 : TRUNK_Y - 32;
+    const roleText = isP1 ? 'You' : 'Opp';
+    nodes += `
+      <g data-node-group="${i}">
+        <circle class="node-circle" data-node="${i}" cx="${nodeX(i)}" cy="${TRUNK_Y}" r="14"
+                fill="${isP1 ? '#1A1736' : '#12102A'}"
+                stroke="${color}" stroke-width="2" style="color: ${color};"/>
+        <text class="node-label" x="${nodeX(i)}" y="${TRUNK_Y}">${i}</text>
+        <text class="role-label" x="${nodeX(i)}" y="${roleY}">${roleText}</text>
+      </g>
+    `;
+  }
+
+  // Start arrow
+  const startArrow = `
+    <g>
+      <text x="${nodeX(1) - 30}" y="${TRUNK_Y - 2}" font-family="JetBrains Mono" font-size="10" fill="rgba(255,255,255,0.4)" text-anchor="end">START</text>
+      <line x1="${nodeX(1) - 26}" y1="${TRUNK_Y}" x2="${nodeX(1) - 16}" y2="${TRUNK_Y}" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+    </g>
+    <defs><marker id="arrowhead" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><polygon points="0 0, 6 3, 0 6" fill="rgba(255,255,255,0.3)"/></marker></defs>
+  `;
+
+  svg.innerHTML = defs + trunks + takeBranches + payoffBoxes + nodes + startArrow;
+
+  updateActiveNode();
+}
+
+function updateActiveNode() {
+  $$('.node-circle').forEach(c => c.classList.remove('active'));
+  if (State.finished) return;
+  const active = document.querySelector(`[data-node="${State.node}"]`);
+  if (active) active.classList.add('active');
+}
+
+/* =================================================================
+   ANIMATE A PASS (trunk lights up, pointer moves to next node)
+   ================================================================= */
+async function animatePass(fromNode) {
+  const trunk = document.querySelector(`[data-trunk="${fromNode}"]`);
+  if (trunk) {
+    trunk.classList.add('visited');
+  }
+  const nodeG = document.querySelector(`[data-node="${fromNode}"]`);
+  if (nodeG) nodeG.classList.add('visited');
+  await wait(400);
+}
+
+/* =================================================================
+   ANIMATE A TAKE (branch flashes red, payoff box pulses, coins fly)
+   ================================================================= */
+async function animateTake(nodeNum) {
+  const takeLine = document.querySelector(`[data-take="${nodeNum}"]`);
+  const payoffBox = document.querySelector(`[data-payoff="${nodeNum}"]`);
+  if (takeLine) takeLine.classList.add('taken');
+  await wait(300);
+  if (payoffBox) payoffBox.classList.add('taken');
+
+  // Fly coins from payoff box to scoreboards
+  const [p1, p2] = PAYOFFS[nodeNum];
+  flyPayoffCoins(payoffBox, p1, p2);
+
+  await wait(700);
+}
+
+async function animateTerminal() {
+  const terminalTrunk = document.querySelector(`[data-trunk="terminal"]`);
+  if (terminalTrunk) terminalTrunk.classList.add('visited');
+  await wait(400);
+  const terminalBox = document.querySelector(`[data-payoff="terminal"]`);
+  if (terminalBox) terminalBox.classList.add('taken');
+  flyPayoffCoins(terminalBox, TERMINAL[0], TERMINAL[1]);
+  await wait(700);
+}
+
+/* =================================================================
+   COIN ANIMATION
+   ================================================================= */
+function flyPayoffCoins(sourceSVGEl, p1, p2) {
+  if (!sourceSVGEl) return;
+  const rect = sourceSVGEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+
+  const scoreYou = $('#scoreYou');
+  const scoreOpp = $('#scoreOpp');
+
+  spawnCoinsTo(cx, cy, scoreYou, Math.min(p1, 5), 'violet', 0);
+  spawnCoinsTo(cx, cy, scoreOpp, Math.min(p2, 5), 'amber', 120);
+
+  // Score bumps
+  setTimeout(() => {
+    bumpScore(scoreYou, State.scoreYou, State.scoreYou + p1);
+    State.scoreYou += p1;
+  }, 750);
+  setTimeout(() => {
+    bumpScore(scoreOpp, State.scoreOpp, State.scoreOpp + p2);
+    State.scoreOpp += p2;
+  }, 830);
+}
+
+function spawnCoinsTo(startX, startY, targetEl, count, _color, delay) {
+  if (count <= 0) return;
+  const targetRect = targetEl.getBoundingClientRect();
+  const endX = targetRect.left + targetRect.width / 2;
+  const endY = targetRect.top + targetRect.height / 2;
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      const coin = document.createElement('div');
+      coin.className = 'coin';
+      coin.style.left = startX + 'px';
+      coin.style.top = startY + 'px';
+      document.body.appendChild(coin);
+      const a = coin.animate([
+        { transform: 'translate(-50%,-50%) scale(.6)', opacity: 0 },
+        { transform: 'translate(-50%,-50%) scale(1.1)', opacity: 1, offset: 0.15 },
+        { left: endX + 'px', top: endY + 'px', transform: 'translate(-50%,-50%) scale(.7)', opacity: 0 }
+      ], { duration: 850, easing: 'cubic-bezier(.5,-.2,.5,1.2)', fill: 'forwards' });
+      a.onfinish = () => coin.remove();
+    }, delay + i * 90);
+  }
+}
+
+function bumpScore(el, from, to) {
+  el.classList.add('bump');
+  const dur = 500; const t0 = performance.now();
+  function tick(now) {
+    const t = Math.min((now - t0) / dur, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = Math.round(from + (to - from) * eased);
+    if (t < 1) requestAnimationFrame(tick);
+    else el.textContent = to;
+  }
+  requestAnimationFrame(tick);
+  setTimeout(() => el.classList.remove('bump'), 500);
+}
+
+/* =================================================================
+   COMMENTARY
+   ================================================================= */
+function setCommentary(title, body, tone = 'violet') {
+  const tones = {
+    violet: { bg: 'rgba(124,92,255,.06)', border: 'rgba(124,92,255,.2)', icon: 'linear-gradient(135deg, #7C5CFF, #5B3DCC)', title: '#9B7BFF' },
+    amber: { bg: 'rgba(245,158,11,.06)', border: 'rgba(245,158,11,.25)', icon: 'linear-gradient(135deg, #FBBF24, #92400E)', title: '#FBBF24' },
+    coop: { bg: 'rgba(16,185,129,.06)', border: 'rgba(16,185,129,.25)', icon: 'linear-gradient(135deg, #34D399, #047857)', title: '#34D399' }
+  };
+  const t = tones[tone];
+  $('#commentaryWrap').innerHTML = `
+    <div class="commentary" style="background: ${t.bg}; border-color: ${t.border};">
+      <div class="icon" style="background: ${t.icon};">
+        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01"/><circle cx="12" cy="12" r="9" stroke-width="2"/></svg>
+      </div>
+      <div>
+        <div class="text-xs font-medium mb-1" style="color: ${t.title};">${title}</div>
+        <p class="text-xs text-white/75 leading-relaxed">${body}</p>
+      </div>
+    </div>
+  `;
+}
+
+/* =================================================================
+   TURN LOGIC
+   ================================================================= */
+async function handleMove(action) {
+  if (State.busy || State.finished) return;
+  if (MOVER[State.node] !== 1) return;  // safety: only user moves when it's user's turn
+  State.busy = true;
+  setActionsDisabled(true);
+
+  await executeMove(1, action);
+
+  if (State.finished) return;
+
+  // Opponent's turn
+  await wait(600);
+  await opponentTurn();
+  State.busy = false;
+}
+
+async function executeMove(playerNum, action) {
+  const currentNode = State.node;
+  State.history.push({ node: currentNode, action, mover: playerNum });
+
+  if (action === 'take') {
+    State.finished = true;
+    State.finalNode = currentNode;
+    State.finalPayoff = PAYOFFS[currentNode];
+
+    setCommentary(
+      playerNum === 1 ? 'You took' : `${OPPONENTS[State.oppKey].name} took`,
+      `At node ${currentNode}, ${playerNum === 1 ? 'you' : 'the opponent'} chose to end the game. Payoffs: you ${PAYOFFS[currentNode][0]}, opp ${PAYOFFS[currentNode][1]}.`,
+      'amber'
+    );
+
+    await animateTake(currentNode);
+    updateActiveNode();
+    setTimeout(showFinalPanel, 900);
+    return;
+  }
+
+  // Pass
+  setCommentary(
+    playerNum === 1 ? 'You passed' : `${OPPONENTS[State.oppKey].name} passed`,
+    `Node ${currentNode} → ${currentNode + 1}. The pot grows. It's now ${MOVER[currentNode + 1] === 1 ? 'your' : `${OPPONENTS[State.oppKey].name}'s`} turn.`,
+    playerNum === 1 ? 'violet' : 'amber'
+  );
+
+  await animatePass(currentNode);
+  State.node = currentNode + 1;
+
+  // If we've passed node 6, game ends at terminal
+  if (State.node > TOTAL_NODES) {
+    State.finished = true;
+    State.finalNode = null;
+    State.finalPayoff = TERMINAL;
+    setCommentary(
+      'Terminal reached',
+      `Both players cooperated all the way. Terminal payoffs: you ${TERMINAL[0]}, opp ${TERMINAL[1]}.`,
+      'coop'
+    );
+    await animateTerminal();
+    setTimeout(showFinalPanel, 900);
+    return;
+  }
+
+  // Update UI
+  updatePotDisplay();
+  updateActiveNode();
+  updateNodeLabel();
+  updateTurnLabel();
+}
+
+async function opponentTurn() {
+  if (State.finished) return;
+  if (MOVER[State.node] !== 2) { setActionsDisabled(false); return; }
+
+  setActionsDisabled(true);
+  setCommentary(`${OPPONENTS[State.oppKey].name} is thinking…`,
+    `Evaluating node ${State.node}.`, 'amber');
+
+  await wait(900);
+
+  const decision = OPPONENTS[State.oppKey].decide(State.node);
+  await executeMove(2, decision);
+
+  if (!State.finished) {
+    // Back to user's turn
+    setActionsDisabled(false);
+  }
+}
+
+/* =================================================================
+   UI HELPERS
+   ================================================================= */
+function setActionsDisabled(d) {
+  $$('.action-btn').forEach(b => b.disabled = d);
+}
+function updateNodeLabel() { $('#nodeLabel').textContent = State.node; }
+function updatePotDisplay() {
+  // Pot = max of max payoffs at current node (representing "stakes at this decision")
+  if (State.finished) return;
+  const [p1, p2] = PAYOFFS[State.node];
+  $('#potDisplay').textContent = '$' + Math.max(p1, p2);
+}
+function updateTurnLabel() {
+  if (State.finished) { $('#turnLabel').textContent = 'Game complete'; return; }
+  if (MOVER[State.node] === 1) $('#turnLabel').textContent = 'Your move — pass or take?';
+  else $('#turnLabel').textContent = `${OPPONENTS[State.oppKey].name} is deciding…`;
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* =================================================================
+   FINAL PANEL + BACKWARD INDUCTION
+   ================================================================= */
+function showFinalPanel() {
+  const panel = $('#finalPanel');
+  panel.classList.remove('hidden');
+
+  const opp = OPPONENTS[State.oppKey];
+  $('#finalOppLabel').textContent = opp.name;
+  $('#finalScoreYou').textContent = State.scoreYou;
+  $('#finalScoreOpp').textContent = State.scoreOpp;
+
+  // Outcome tag + headline
+  let tag, headline, pathDesc;
+  if (State.finalNode === null) {
+    // Terminal reached
+    tag = 'Full cooperation';
+    headline = 'You both made it to the end.';
+    pathDesc = `Both players passed at every node. Terminal payoffs of <span class="text-coop-glow font-mono">${TERMINAL[0]}</span> / <span class="text-coop-glow font-mono">${TERMINAL[1]}</span> reached.`;
+  } else {
+    const n = State.finalNode;
+    const who = MOVER[n] === 1 ? 'You' : opp.name;
+    tag = n === 1 ? 'Subgame perfect play' : n <= 3 ? 'Early take' : 'Late take';
+    headline = `${who} took at node ${n}.`;
+    const [p1, p2] = PAYOFFS[n];
+    pathDesc = `${who} ended the game on node ${n} for a payoff of <span class="font-mono">${p1}</span> / <span class="font-mono">${p2}</span>.`;
+  }
+  $('#outcomeTag').textContent = tag;
+  $('#outcomeHeadline').textContent = headline;
+  $('#finalPathDesc').innerHTML = pathDesc;
+
+  // Backward induction reasoning text (full derivation)
+  $('#biReasoning').innerHTML = buildBIReasoning();
+
+  // Scroll into view gently
+  setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+
+  // Bind the "run again" BI button
+  $('#runBIBtn').onclick = runBackwardInduction;
+
+  // Also auto-run BI once
+  setTimeout(runBackwardInduction, 1100);
+}
+
+function buildBIReasoning() {
+  // Walk backward and narrate
+  const steps = [];
+  // Start from terminal: at node 6, P2 decides between TAKE (7,12) and PASS (terminal 9,15)
+  // For each node, active player takes if their taking payoff > their continuation value
+  let contYou, contOpp;
+  // Terminal values
+  contYou = TERMINAL[0]; contOpp = TERMINAL[1];
+  // Iterate backward: for node n, mover decides
+  const table = [];  // {node, mover, take, pass(cont), decision, newContYou, newContOpp}
+  for (let n = TOTAL_NODES; n >= 1; n--) {
+    const [takeYou, takeOpp] = PAYOFFS[n];
+    const moverNum = MOVER[n];  // 1 or 2
+    const moverPayoffIfTake = moverNum === 1 ? takeYou : takeOpp;
+    const moverPayoffIfPass = moverNum === 1 ? contYou : contOpp;
+    const decision = moverPayoffIfTake >= moverPayoffIfPass ? 'take' : 'pass';
+    const newContYou = decision === 'take' ? takeYou : contYou;
+    const newContOpp = decision === 'take' ? takeOpp : contOpp;
+    table.push({ node: n, mover: moverNum, takeYou, takeOpp, contYou, contOpp, decision });
+    contYou = newContYou; contOpp = newContOpp;
+  }
+  // Now build HTML
+  const lines = table.map((step, i) => {
+    const moverName = step.mover === 1 ? 'P1' : 'P2';
+    const moverColor = step.mover === 1 ? 'text-violet-glow' : 'text-equilibrium-glow';
+    const myTake = step.mover === 1 ? step.takeYou : step.takeOpp;
+    const myCont = step.mover === 1 ? step.contYou : step.contOpp;
+    const compare = step.decision === 'take' ? '≥' : '<';
+    return `<div class="mb-1.5">
+      <span class="font-mono text-[11px] text-white/40 mr-2">Node ${step.node}</span>
+      <span class="${moverColor} font-medium">${moverName}</span>
+      compares take = <span class="font-mono text-white">${myTake}</span>
+      ${compare}
+      pass = <span class="font-mono text-white">${myCont}</span>
+      → <span class="${step.decision === 'take' ? 'text-equilibrium-glow' : 'text-violet-glow'} font-medium">${step.decision.toUpperCase()}</span>
+    </div>`;
+  });
+  return lines.join('') + `<div class="mt-3 pt-3 border-t border-white/10 text-xs text-white/70">Working backward, the rational move at every node is <span class="text-equilibrium-glow font-medium">take</span>. In particular, at node 1, P1 takes immediately for payoff (2, 0). This is the <span class="text-white">unique subgame perfect equilibrium</span>.</div>`;
+}
+
+/* =================================================================
+   BACKWARD INDUCTION REPLAY
+   - Dim the tree, then walk from node 6 back to node 1
+   - Light each node up with a caption explaining the reasoning
+   - Finally, highlight the SPE path (take at node 1) in gold
+   ================================================================= */
+async function runBackwardInduction() {
+  // Remove any existing captions
+  $$('.bi-caption').forEach(el => el.remove());
+
+  // Dim the tree
+  $('#tree').style.transition = 'opacity .5s ease';
+  $('#tree').style.opacity = '0.4';
+  await wait(400);
+  $('#tree').style.opacity = '1';
+
+  // Reset visited classes temporarily for clean highlight
+  $$('.node-circle').forEach(c => { c.style.opacity = '0.3'; c.classList.remove('spe-highlight'); });
+  $$('.trunk-line').forEach(l => l.style.opacity = '0.3');
+  $$('.payoff-box').forEach(b => b.style.opacity = '0.3');
+
+  // Walk backward
+  for (let n = TOTAL_NODES; n >= 1; n--) {
+    const circle = document.querySelector(`[data-node="${n}"]`);
+    const payoffBox = document.querySelector(`[data-payoff="${n}"]`);
+    if (circle) { circle.style.opacity = '1'; circle.classList.add('spe-highlight'); }
+    if (payoffBox) payoffBox.style.opacity = '1';
+
+    // Show caption
+    const caption = buildBICaption(n);
+    const svgRect = $('#tree').getBoundingClientRect();
+    const treeBoxRect = $('#treeBox').getBoundingClientRect();
+    const cxEl = circle.getBBox();
+    const svgScale = svgRect.width / $('#tree').viewBox.baseVal.width;
+    const captionX = svgRect.left - treeBoxRect.left + nodeX(n) * svgScale;
+    const captionY = MOVER[n] === 1
+      ? svgRect.top - treeBoxRect.top + (TRUNK_Y - 140) * svgScale
+      : svgRect.top - treeBoxRect.top + (TRUNK_Y + 110) * svgScale;
+
+    const capEl = document.createElement('div');
+    capEl.className = 'bi-caption';
+    capEl.style.left = Math.max(8, captionX - 130) + 'px';
+    capEl.style.top = captionY + 'px';
+    capEl.innerHTML = caption;
+    $('#treeBox').appendChild(capEl);
+
+    await wait(1400);
+    capEl.style.transition = 'opacity .3s ease';
+    capEl.style.opacity = '0';
+    setTimeout(() => capEl.remove(), 300);
+    setTimeout(() => { if (circle) circle.classList.remove('spe-highlight'); }, 200);
+  }
+
+  // Restore everything and highlight the SPE path
+  $$('.node-circle').forEach(c => c.style.opacity = '1');
+  $$('.trunk-line').forEach(l => l.style.opacity = '1');
+  $$('.payoff-box').forEach(b => b.style.opacity = '1');
+
+  // Highlight SPE: just node 1 + its take branch
+  const speNode = document.querySelector(`[data-node="1"]`);
+  const speTake = document.querySelector(`[data-take="1"]`);
+  const spePayoff = document.querySelector(`[data-payoff="1"]`);
+  if (speNode) speNode.classList.add('spe-highlight');
+  if (speTake) speTake.classList.add('taken');
+  if (spePayoff) spePayoff.classList.add('near');
+
+  // Show SPE final caption
+  const speCaption = document.createElement('div');
+  speCaption.className = 'bi-caption';
+  const svgRect2 = $('#tree').getBoundingClientRect();
+  const treeBoxRect2 = $('#treeBox').getBoundingClientRect();
+  speCaption.style.left = (svgRect2.left - treeBoxRect2.left + 20) + 'px';
+  speCaption.style.top = (svgRect2.top - treeBoxRect2.top + 20) + 'px';
+  speCaption.style.borderColor = 'rgba(251,191,36,0.6)';
+  speCaption.style.background = 'rgba(245,158,11,0.1)';
+  speCaption.innerHTML = `<div class="font-medium text-equilibrium-glow mb-1">SPE path</div>
+    <div class="text-white/85">P1 takes at node 1. Payoffs (<span class="font-mono text-violet-glow">2</span>, <span class="font-mono text-equilibrium-glow">0</span>).</div>`;
+  $('#treeBox').appendChild(speCaption);
+}
+
+function buildBICaption(node) {
+  const mover = MOVER[node];
+  const [tY, tO] = PAYOFFS[node];
+  const moverName = mover === 1 ? 'P1' : 'P2';
+  const moverColor = mover === 1 ? '#9B7BFF' : '#FBBF24';
+
+  // Compute continuation value at this node (i.e., what mover gets if they pass)
+  let contYou = TERMINAL[0], contOpp = TERMINAL[1];
+  for (let n = TOTAL_NODES; n > node; n--) {
+    const [takeYou, takeOpp] = PAYOFFS[n];
+    const nMover = MOVER[n];
+    const myTake = nMover === 1 ? takeYou : takeOpp;
+    const myCont = nMover === 1 ? contYou : contOpp;
+    if (myTake >= myCont) {
+      contYou = takeYou; contOpp = takeOpp;
+    }
+  }
+  const myTakeNow = mover === 1 ? tY : tO;
+  const myContNow = mover === 1 ? contYou : contOpp;
+
+  return `
+    <div class="font-medium mb-1" style="color: ${moverColor};">Node ${node} · ${moverName}'s decision</div>
+    <div class="text-white/85">Take now: <span class="font-mono text-white">${myTakeNow}</span> · Pass (continue): <span class="font-mono text-white">${myContNow}</span></div>
+    <div class="text-[11px] text-white/55 mt-1">${myTakeNow >= myContNow ? '→ Taking is weakly better. Take.' : '→ Passing yields more. Pass.'}</div>
+  `;
+}
+
+/* =================================================================
+   OPPONENT PICKER
+   ================================================================= */
+function bindOppPicker() {
+  $$('#oppPicker .opp-pick').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.opp;
+      if (State.history.length > 0 && !State.finished) {
+        if (!confirm('Changing opponents will restart the game. Continue?')) return;
+      }
+      $$('#oppPicker .opp-pick').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      State.oppKey = key;
+      $('#oppLabel').textContent = `${OPPONENTS[key].name} (${OPPONENTS[key].label})`;
+      restart();
+    });
+  });
+}
+
+/* =================================================================
+   RESTART
+   ================================================================= */
+function restart() {
+  State.node = 1;
+  State.scoreYou = 0; State.scoreOpp = 0;
+  State.history = []; State.busy = false; State.finished = false;
+  State.finalNode = null; State.finalPayoff = null;
+  $('#scoreYou').textContent = '0';
+  $('#scoreOpp').textContent = '0';
+  $('#finalPanel').classList.add('hidden');
+  $$('.bi-caption').forEach(el => el.remove());
+  renderTree();
+  updateNodeLabel();
+  updatePotDisplay();
+  updateTurnLabel();
+  setActionsDisabled(false);
+  setCommentary(
+    'New game',
+    `You're at node 1. Pot is $${Math.max(...PAYOFFS[1])}. Pass to grow the stakes or take to end the game now.`,
+    'violet'
+  );
+}
+
+/* =================================================================
+   EVENTS
+   ================================================================= */
+function bindEvents() {
+  $$('.action-btn').forEach(btn => btn.addEventListener('click', () => handleMove(btn.dataset.move)));
+  $('#restartBtn').addEventListener('click', restart);
+  document.addEventListener('keydown', (e) => {
+    if (State.busy || State.finished) return;
+    if (e.key === 'p' || e.key === 'P') handleMove('pass');
+    if (e.key === 't' || e.key === 'T') handleMove('take');
+  });
+  bindOppPicker();
+}
+
+/* =================================================================
+   BOOT
+   ================================================================= */
+document.addEventListener('DOMContentLoaded', () => {
+  renderTree();
+  bindEvents();
+  updatePotDisplay();
+});
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'centipede',
+      getSession: function () {
+        if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
+        var you = State.scoreYou, opp = State.scoreOpp, total = you + opp;
+        var score = total > 0 ? (you / total) : 0.5;
+        var outcome = you > opp ? 'win' : (you < opp ? 'loss' : 'draw');
+        return { score: score, outcome: outcome, detail: { you: you, opp: opp, moves: State.history.length, opponent: State.oppKey } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

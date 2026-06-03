@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Signaling Game — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        display: ['Instrument Serif', 'serif']
+      },
+      colors: {
+        ink: { 950: '#070612', 900: '#0B0A1A', 800: '#12102A', 700: '#1A1736' },
+        violet: { glow: '#9B7BFF', primary: '#7C5CFF', deep: '#5B3DCC' },
+        coop: { DEFAULT: '#10B981', glow: '#34D399' },
+        defect: { DEFAULT: '#F43F5E', glow: '#FB7185' },
+        equilibrium: { DEFAULT: '#F59E0B', glow: '#FBBF24' }
+      }
+    } }
+  };
+</script>
+
+<style>
+  html, body { background: #070612; }
+  body { font-family: 'Inter', system-ui, sans-serif; color: #E8E6F5; -webkit-font-smoothing: antialiased; overflow-x: hidden; min-height: 100vh; }
+  ::selection { background: rgba(124, 92, 255, 0.35); color: #fff; }
+
+  .arena-bg { position: fixed; inset: 0; z-index: -2; overflow: hidden; background: #050410; }
+  .arena-bg::before {
+    content: ''; position: absolute; width: 70vw; height: 70vw; border-radius: 50%;
+    background: radial-gradient(circle, #5B3DCC 0%, transparent 65%);
+    filter: blur(140px); opacity: .28; top: -25vw; left: 30%;
+    animation: drift1 30s ease-in-out infinite;
+  }
+  .arena-bg::after {
+    content: ''; position: absolute; width: 50vw; height: 50vw; border-radius: 50%;
+    background: radial-gradient(circle, #F59E0B 0%, transparent 70%);
+    filter: blur(120px); opacity: .14; bottom: -20vw; right: -10vw;
+    animation: drift2 36s ease-in-out infinite;
+  }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6vw,4vh)} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8vw,-3vh)} }
+  .grain::before {
+    content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .glass { background: rgba(18,16,42,.55); backdrop-filter: blur(20px) saturate(140%); -webkit-backdrop-filter: blur(20px) saturate(140%); border: 1px solid rgba(255,255,255,.06); }
+  .glass-strong { background: rgba(11,10,26,.75); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%); border: 1px solid rgba(255,255,255,.08); }
+  .glass-subtle { background: rgba(255,255,255,.025); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.05); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC); color: #fff; font-weight: 500;
+    padding: 11px 22px; border-radius: 10px; font-size: 14px;
+    transition: transform .15s cubic-bezier(.4,0,.2,1), box-shadow .25s ease;
+    box-shadow: 0 4px 14px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.15);
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -6px rgba(124,92,255,.6); }
+  .btn-primary:active { transform: scale(.98); }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: rgba(255,255,255,.04); color: #E8E6F5; font-weight: 500;
+    padding: 11px 20px; border-radius: 10px; font-size: 13px;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
+  .btn-ghost:active { transform: scale(.98); }
+
+  .logo-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #7C5CFF 0%, #5B3DCC 60%, #10B981 140%);
+    position: relative;
+    box-shadow: 0 4px 12px -2px rgba(124,92,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+  }
+  .logo-mark::before {
+    content: ''; position: absolute; inset: 6px;
+    background:
+      linear-gradient(45deg, transparent 45%, white 45%, white 55%, transparent 55%),
+      linear-gradient(-45deg, transparent 45%, white 45%, white 55%, transparent 55%);
+    border-radius: 3px; opacity: .95;
+  }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 500; letter-spacing: .02em;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.07);
+    color: rgba(232,230,245,.75);
+  }
+  .tag-violet { background: rgba(124,92,255,.12); border-color: rgba(124,92,255,.3); color: #9B7BFF; }
+  .tag-amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.3); color: #FBBF24; }
+  .tag-coop { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.3); color: #34D399; }
+  .tag-defect { background: rgba(244,63,94,.12); border-color: rgba(244,63,94,.3); color: #FB7185; }
+  .tag-high { background: linear-gradient(135deg,rgba(52,211,153,.18),rgba(16,185,129,.06)); border-color: rgba(52,211,153,.4); color: #34D399; }
+  .tag-low { background: linear-gradient(135deg,rgba(251,113,133,.15),rgba(244,63,94,.04)); border-color: rgba(251,113,133,.4); color: #FB7185; }
+
+  /* ============================================================
+     TYPE CARD — sender's hidden type
+     ============================================================ */
+  .type-card {
+    position: relative;
+    border-radius: 18px;
+    background: rgba(255,255,255,.025);
+    border: 1.5px solid rgba(255,255,255,.08);
+    padding: 22px;
+    overflow: hidden;
+    min-height: 152px;
+  }
+  .type-card.high { background: linear-gradient(135deg, rgba(52,211,153,.1), rgba(16,185,129,.02)); border-color: rgba(52,211,153,.3); }
+  .type-card.low  { background: linear-gradient(135deg, rgba(251,113,133,.1), rgba(244,63,94,.02)); border-color: rgba(251,113,133,.3); }
+
+  .type-vault {
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, #1A1736, #0B0A1A);
+    border-radius: 16px;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(155,123,255,.85);
+    font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    letter-spacing: .08em;
+    z-index: 3;
+    transition: transform .9s cubic-bezier(.6,0,.4,1), opacity .5s ease;
+  }
+  .type-vault.open { transform: translateX(-105%); opacity: 0; }
+  .type-vault::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(155,123,255,.7), transparent);
+    animation: vaultShimmer 3s ease-in-out infinite;
+  }
+  @keyframes vaultShimmer { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
+
+  .type-icon {
+    width: 52px; height: 52px;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px;
+    margin-bottom: 12px;
+  }
+  .type-icon.high { background: linear-gradient(135deg, #34D399, #047857); }
+  .type-icon.low  { background: linear-gradient(135deg, #FB7185, #9F1239); }
+
+  /* ============================================================
+     SIGNAL BUTTONS
+     ============================================================ */
+  .signal-btn {
+    position: relative;
+    padding: 16px 14px;
+    border-radius: 14px;
+    border: 1.5px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.025);
+    transition: all .2s cubic-bezier(.4,0,.2,1);
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .signal-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .signal-btn:not(:disabled):hover {
+    transform: translateY(-3px);
+    border-color: rgba(124,92,255,.5);
+    background: rgba(124,92,255,.06);
+    box-shadow: 0 12px 30px -8px rgba(124,92,255,.4);
+  }
+  .signal-btn:not(:disabled):active { transform: scale(.99); }
+  .signal-btn.locked { border-color: rgba(124,92,255,.6); background: rgba(124,92,255,.1); }
+
+  .signal-btn .icon {
+    width: 32px; height: 32px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #7C5CFF, #5B3DCC);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+  .signal-btn .label { font-size: 14px; font-weight: 600; color: #E8E6F5; }
+  .signal-btn .cost-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 4px;
+    font-size: 11px;
+    color: rgba(255,255,255,.55);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .signal-btn .cost-low { color: #34D399; }
+  .signal-btn .cost-high { color: #FB7185; }
+
+  /* ============================================================
+     GAME TREE SVG
+     ============================================================ */
+  .tree-svg { display: block; width: 100%; height: auto; }
+  .tree-edge { stroke: rgba(255,255,255,.12); stroke-width: 1.5; fill: none; transition: all .4s ease; }
+  .tree-edge.active { stroke: rgba(155,123,255,.85); stroke-width: 2.5; filter: drop-shadow(0 0 6px rgba(124,92,255,.6)); }
+  .tree-edge.user-path { stroke: #FBBF24; stroke-width: 3; filter: drop-shadow(0 0 10px rgba(251,191,36,.7)); }
+  .tree-edge.dimmed { stroke: rgba(255,255,255,.05); }
+  .tree-node-circle { transition: all .3s ease; }
+  .tree-node-circle.dimmed { opacity: .35; }
+  .tree-label { font-family: 'Inter', sans-serif; font-size: 10px; fill: rgba(255,255,255,.6); font-weight: 500; pointer-events: none; }
+  .tree-label.muted { fill: rgba(255,255,255,.3); }
+  .tree-label-num { font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  .tree-pulse {
+    animation: treePulse 1.5s ease-in-out infinite;
+  }
+  @keyframes treePulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: .7; transform: scale(1.15); }
+  }
+
+  /* Signal-flying packet animation */
+  .signal-packet {
+    position: absolute;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #FCD34D, #F59E0B 60%, #B45309);
+    box-shadow: 0 0 14px rgba(251,191,36,.8);
+    z-index: 30;
+    pointer-events: none;
+  }
+
+  /* ============================================================
+     BELIEF BARS
+     ============================================================ */
+  .belief-row { display: grid; grid-template-columns: 60px 1fr 50px; gap: 10px; align-items: center; }
+  .belief-row + .belief-row { margin-top: 8px; }
+  .belief-label { font-size: 12px; color: rgba(255,255,255,.7); font-weight: 500; }
+  .belief-track {
+    height: 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.06);
+    overflow: hidden;
+    position: relative;
+  }
+  .belief-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width .9s cubic-bezier(.16,1,.3,1);
+    position: relative;
+  }
+  .belief-fill.high { background: linear-gradient(90deg, rgba(52,211,153,.6), #34D399); box-shadow: 0 0 10px rgba(52,211,153,.4); }
+  .belief-fill.low  { background: linear-gradient(90deg, rgba(251,113,133,.6), #FB7185); box-shadow: 0 0 10px rgba(251,113,133,.4); }
+  .belief-pct {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600;
+    color: rgba(255,255,255,.85);
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+
+  /* ============================================================
+     PAYOFF MATRIX
+     ============================================================ */
+  .pmatrix-grid {
+    display: grid; grid-template-columns: 60px 1fr 1fr 1fr; gap: 4px;
+    font-size: 11px;
+  }
+  .pmatrix-th { padding: 6px; color: rgba(255,255,255,.4); font-weight: 500; text-transform: uppercase; letter-spacing: .04em; text-align: center; }
+  .pmatrix-cell {
+    padding: 8px 6px; border-radius: 6px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.05);
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    transition: all .25s ease;
+  }
+  .pmatrix-cell.relevant { background: rgba(124,92,255,.15); border-color: rgba(124,92,255,.4); }
+  .pmatrix-cell .you { color: #9B7BFF; font-weight: 600; }
+  .pmatrix-cell .firm { color: #FBBF24; font-weight: 600; opacity: .7; }
+  .pmatrix-row-label { padding: 8px 4px; font-weight: 500; color: rgba(255,255,255,.7); display: flex; align-items: center; justify-content: center; }
+
+  /* ============================================================
+     OPPONENT/STRATEGY PICKER
+     ============================================================ */
+  .opp-pick {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.02);
+    transition: all .15s ease;
+    cursor: pointer;
+    text-align: left;
+  }
+  .opp-pick:hover { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.18); }
+  .opp-pick.active {
+    background: rgba(124,92,255,.08);
+    border-color: rgba(124,92,255,.4);
+    box-shadow: 0 0 0 1px rgba(124,92,255,.2);
+  }
+
+  /* Wage/firm decision card */
+  .wage-card {
+    padding: 18px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(245,158,11,.12), rgba(245,158,11,.03));
+    border: 1.5px solid rgba(245,158,11,.3);
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    min-height: 100px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .wage-card.empty {
+    background: rgba(255,255,255,.02);
+    border: 1.5px dashed rgba(255,255,255,.1);
+    color: rgba(255,255,255,.4);
+  }
+  .wage-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; font-size: 32px; letter-spacing: -.02em;
+    background: linear-gradient(135deg, #FBBF24, #F59E0B);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    line-height: 1;
+  }
+  .wage-card.revealed { animation: wageReveal .5s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes wageReveal {
+    0% { opacity: 0; transform: scale(.8); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+
+  /* ============================================================
+     OUTCOME / RESULT BANNER
+     ============================================================ */
+  .outcome-banner {
+    border-radius: 16px;
+    padding: 20px 22px;
+    border: 1.5px solid;
+    display: flex; gap: 16px; align-items: center;
+  }
+  .outcome-banner .o-icon {
+    width: 48px; height: 48px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 22px; font-weight: 700;
+  }
+  .banner-correct { background: rgba(16,185,129,.08); border-color: rgba(16,185,129,.35); }
+  .banner-overpay { background: rgba(245,158,11,.08); border-color: rgba(251,191,36,.35); }
+  .banner-underpay { background: rgba(244,63,94,.08); border-color: rgba(251,113,133,.35); }
+
+  /* Score */
+  .score-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700; font-variant-numeric: tabular-nums;
+    transition: transform .35s cubic-bezier(.34,1.56,.64,1), color .35s ease;
+    display: inline-block; font-size: 26px; letter-spacing: -.02em; line-height: 1;
+  }
+  .score-num.bump { transform: scale(1.2); color: #FBBF24; }
+
+  /* ============================================================
+     EQUILIBRIUM CLASSIFIER
+     ============================================================ */
+  .eq-card {
+    padding: 16px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.07);
+  }
+  .eq-card.match {
+    background: linear-gradient(135deg, rgba(52,211,153,.08), rgba(52,211,153,.02));
+    border-color: rgba(52,211,153,.4);
+    box-shadow: 0 0 0 1px rgba(52,211,153,.2);
+  }
+  .eq-card.partial {
+    background: linear-gradient(135deg, rgba(251,191,36,.08), rgba(251,191,36,.02));
+    border-color: rgba(251,191,36,.35);
+  }
+
+  .reveal-in { animation: revealIn .55s cubic-bezier(.16,1,.3,1); }
+  @keyframes revealIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* History table */
+  .hist-row {
+    display: grid;
+    grid-template-columns: 30px 80px 100px 80px 60px 70px;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.02);
+    border: 1px solid rgba(255,255,255,.04);
+    font-size: 12px;
+    transition: background .15s ease;
+  }
+  .hist-row:hover { background: rgba(255,255,255,.04); }
+  .hist-row .h-num { font-family: 'JetBrains Mono', monospace; color: rgba(255,255,255,.4); font-size: 11px; text-align: center; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #FFFFFF 0%, #C9BFFF 50%, #7C5CFF 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+</style>
+</head>
+
+<body class="grain min-h-screen">
+
+<div class="arena-bg"></div>
+
+<!-- Top bar -->
+<header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
+  <div class="flex items-center gap-3">
+    <div class="logo-mark"></div>
+    <div>
+      <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
+      <div class="font-medium tracking-tight">Signaling Game · Job Market</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="hidden md:flex items-center gap-2 text-xs text-white/55 px-3 py-2 rounded-lg glass-subtle">
+      <span>Round</span>
+      <span class="font-mono text-white" id="roundNum">1</span>
+    </div>
+    <button class="btn-ghost text-sm" id="restartBtn">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Reset session
+    </button>
+  </div>
+</header>
+
+<main class="px-6 lg:px-10 py-6 max-w-7xl mx-auto">
+
+  <!-- =========================================================
+       TOP ROW: TYPE CARD · WAGE CARD · SCORE
+       ========================================================= -->
+  <div class="grid lg:grid-cols-[1fr_1fr_1fr] gap-3 mb-5">
+
+    <!-- Worker type card (sender) -->
+    <div class="type-card" id="typeCard">
+      <div class="type-vault" id="typeVault">
+        <span class="flex items-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+          PRIVATE · ASSIGNING TYPE
+        </span>
+      </div>
+      <div class="text-[10px] uppercase tracking-wider text-violet-glow font-medium mb-2">Your type · only you see this</div>
+      <div class="flex items-center gap-3">
+        <div class="type-icon" id="typeIcon">⚡</div>
+        <div>
+          <div class="text-2xl font-display tracking-tight" id="typeLabel">High productivity</div>
+          <div class="text-xs text-white/55 mt-1" id="typeMeta">True productivity: 100 utils</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Firm's wage decision -->
+    <div class="wage-card empty" id="wageCard">
+      <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2" id="wageLabel">Firm's offer</div>
+      <div class="text-sm text-white/40" id="wageBody">Choose a signal first</div>
+    </div>
+
+    <!-- Score -->
+    <div class="payoff-card" style="padding: 16px; border-radius: 14px; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06);">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1.5">Your total</div>
+          <div class="score-num" id="scoreYou" style="color: #9B7BFF;">0</div>
+          <div class="text-[11px] text-white/45 mt-1">utils across rounds</div>
+        </div>
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-1.5">Firm's total</div>
+          <div class="score-num" id="scoreFirm" style="color: #FBBF24;">0</div>
+          <div class="text-[11px] text-white/45 mt-1">profit across rounds</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="grid lg:grid-cols-[1.4fr_1fr] gap-5">
+
+    <!-- =========================================================
+         LEFT COL — Game tree + signal selector
+         ========================================================= -->
+    <div class="space-y-5">
+
+      <!-- Game tree -->
+      <div class="glass-strong rounded-3xl p-5 lg:p-6 relative" id="treeWrap">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-1">Game tree</div>
+            <div class="text-sm text-white/55" id="treeStatus">Nature has chosen your type. Now choose a signal.</div>
+          </div>
+          <div class="flex items-center gap-3 text-[11px]">
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-coop"></span>High</span>
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-defect"></span>Low</span>
+          </div>
+        </div>
+
+        <svg class="tree-svg" id="treeSVG" viewBox="0 0 720 380" preserveAspectRatio="xMidYMid meet">
+          <!-- Built dynamically -->
+        </svg>
+      </div>
+
+      <!-- Signal buttons -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-xs text-white/50 uppercase tracking-wider font-medium">Choose your signal</div>
+          <div class="text-[11px] text-white/45" id="signalSubLabel">The firm sees this; not your type</div>
+        </div>
+        <div class="grid grid-cols-3 gap-3" id="signalRow"></div>
+      </div>
+    </div>
+
+    <!-- =========================================================
+         RIGHT COL — Belief panel · payoff matrix · firm picker
+         ========================================================= -->
+    <div class="space-y-5">
+
+      <!-- Firm's beliefs -->
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-0.5">Firm's beliefs</div>
+            <div class="text-[11px] text-white/50">P(your type | signal observed)</div>
+          </div>
+          <span class="tag tag-amber" id="beliefStateLabel">Prior</span>
+        </div>
+        <div class="belief-row">
+          <span class="belief-label flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-coop"></span>High
+          </span>
+          <div class="belief-track"><div class="belief-fill high" id="beliefHigh" style="width: 50%"></div></div>
+          <span class="belief-pct" id="beliefHighPct">50%</span>
+        </div>
+        <div class="belief-row">
+          <span class="belief-label flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-defect"></span>Low
+          </span>
+          <div class="belief-track"><div class="belief-fill low" id="beliefLow" style="width: 50%"></div></div>
+          <span class="belief-pct" id="beliefLowPct">50%</span>
+        </div>
+        <div class="text-[11px] text-white/55 mt-3 leading-relaxed" id="bayesNote">
+          Before any signal, the firm holds a uniform prior over your type.
+        </div>
+      </div>
+
+      <!-- Firm strategy picker -->
+      <div class="glass rounded-2xl p-5">
+        <div class="text-xs text-white/50 uppercase tracking-wider mb-3 font-medium">Firm's belief regime</div>
+        <div class="space-y-2" id="firmPicker">
+          <button class="opp-pick active" data-firm="separating">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Separating-believer</div>
+                <div class="text-[11px] text-white/55">Assumes High → PhD, Low → No degree</div>
+              </div>
+              <span class="tag tag-coop">Strong inference</span>
+            </div>
+          </button>
+          <button class="opp-pick" data-firm="pooling">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Pooling-believer</div>
+                <div class="text-[11px] text-white/55">Assumes both types signal alike — uses prior</div>
+              </div>
+              <span class="tag tag-violet">No inference</span>
+            </div>
+          </button>
+          <button class="opp-pick" data-firm="bayesian">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm font-medium">Bayesian-rational</div>
+                <div class="text-[11px] text-white/55">Updates beliefs based on observed history</div>
+              </div>
+              <span class="tag tag-amber">Adaptive</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Payoff matrix -->
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-xs text-violet-glow font-medium tracking-wider uppercase">Your payoffs</div>
+          <span class="text-[11px] text-white/45">net of education cost</span>
+        </div>
+        <div class="text-[11px] text-white/55 mb-2 leading-relaxed">Education cost = wage paid − cost incurred. Cost depends on your type.</div>
+        <div class="pmatrix-grid" id="pmatrix"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- =========================================================
+       OUTCOME / RESULT PANEL
+       ========================================================= -->
+  <div id="resultPanel" class="hidden mt-5">
+    <div class="glass-strong rounded-3xl p-6 lg:p-8 reveal-in">
+      <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <div class="text-xs text-equilibrium-glow font-medium tracking-wider uppercase mb-2">Round resolved</div>
+          <h2 class="font-display text-3xl tracking-tight" id="resultHeadline">Outcome</h2>
+        </div>
+        <button class="btn-primary" id="newRoundBtn">
+          Next round
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+        </button>
+      </div>
+
+      <div id="resultBanner" class="mb-5"></div>
+
+      <!-- The reveal: type vs belief -->
+      <div class="grid md:grid-cols-3 gap-4 mb-5">
+        <div class="payoff-card" style="padding: 16px; border-radius: 14px; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06);">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2">Your true type</div>
+          <div id="revealType"></div>
+        </div>
+        <div class="payoff-card" style="padding: 16px; border-radius: 14px; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06);">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2">Signal sent</div>
+          <div class="font-medium text-base" id="revealSignal">—</div>
+          <div class="text-[11px] text-white/55 mt-1" id="revealSignalCost">—</div>
+        </div>
+        <div class="payoff-card" style="padding: 16px; border-radius: 14px; background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06);">
+          <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2">Firm's posterior P(High)</div>
+          <div class="font-mono text-xl font-bold" id="revealBelief">—</div>
+          <div class="text-[11px] text-white/55 mt-1" id="revealBeliefNote">—</div>
+        </div>
+      </div>
+
+      <!-- Equilibrium classifier (after 3+ rounds) -->
+      <div id="eqClassifier" class="hidden mb-5"></div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       HISTORY (compact list)
+       ========================================================= -->
+  <div class="mt-5 glass rounded-2xl p-5" id="historyBox">
+    <div class="text-xs text-violet-glow font-medium tracking-wider uppercase mb-3">Round history</div>
+    <div class="grid grid-cols-[30px_80px_100px_80px_60px_70px] gap-2.5 text-[10px] uppercase tracking-wider text-white/40 font-medium px-3 pb-2">
+      <span>#</span>
+      <span>Type</span>
+      <span>Signal</span>
+      <span>Wage</span>
+      <span>Cost</span>
+      <span class="text-right">Net</span>
+    </div>
+    <div class="space-y-1.5" id="historyList">
+      <div class="text-[12px] text-white/40 px-3 py-2">No rounds played yet.</div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+/* ============================================================
+   GAME PARAMETERS — Spence-style job-market model
+   ============================================================
+   Two types: H (high productivity, prob 0.5) and L (low, prob 0.5)
+   True productivity:  H = 100, L = 50
+   Signals (education levels):
+     'none'  — No degree
+     'BA'    — Bachelor's
+     'PhD'   — PhD
+   Education cost depends on type — *cheaper* for high types:
+     COST[type][signal]
+   Wages (firm's three actions):
+     'low'    = 50
+     'medium' = 75
+     'high'   = 100
+   Firm's profit = (true productivity − wage paid)
+   Worker's net  = (wage received − education cost)
+   ============================================================ */
+const CONFIG = {
+  prior: { H: 0.5, L: 0.5 },
+  trueProductivity: { H: 100, L: 50 },
+  signals: ['none', 'BA', 'PhD'],
+  signalLabels: { none: 'No degree', BA: "Bachelor's", PhD: 'PhD' },
+  signalIcons: { none: '🚫', BA: '🎓', PhD: '🎯' },
+  // Costs: how many utils a type pays to acquire each signal
+  cost: {
+    H: { none: 0, BA: 10, PhD: 25 },     // High types find ed cheap
+    L: { none: 0, BA: 30, PhD: 70 }      // Low types find it costly
+  },
+  wages: { low: 50, medium: 75, high: 100 },
+  // Firm action mapping: which wage to offer per signal under each belief regime
+  // (these are the "strategy" of the firm; user can pick which firm to face)
+};
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+/* ============================================================
+   FIRM STRATEGIES
+   ============================================================ */
+const FIRMS = {
+  /* SEPARATING-BELIEVER
+     Assumes high types signal PhD, low types signal No degree.
+     If signal = PhD → believe High → wage = high (100)
+     If signal = No degree → believe Low → wage = low (50)
+     If signal = BA → off-equilibrium → wage = medium (uses prior)
+     Belief update: P(H | sig) is 1 if sig=PhD, 0 if sig=none, prior if BA */
+  separating: {
+    label: 'Separating-believer',
+    decideWage: (signal) => {
+      if (signal === 'PhD') return 'high';
+      if (signal === 'none') return 'low';
+      return 'medium';   // BA — off-eq
+    },
+    posterior: (signal) => {
+      if (signal === 'PhD') return { H: 0.99, L: 0.01 };
+      if (signal === 'none') return { H: 0.01, L: 0.99 };
+      return { H: 0.5, L: 0.5 };
+    },
+    note: 'Separating-believer assumes PhD ⇒ High, No degree ⇒ Low.'
+  },
+
+  /* POOLING-BELIEVER
+     Assumes both types choose the same signal. Posterior = prior regardless.
+     Wage = expected productivity given prior = 0.5 * 100 + 0.5 * 50 = 75 (medium) */
+  pooling: {
+    label: 'Pooling-believer',
+    decideWage: () => 'medium',
+    posterior: () => ({ H: 0.5, L: 0.5 }),
+    note: 'Pooling-believer ignores signals: pays expected productivity = 75.'
+  },
+
+  /* BAYESIAN-RATIONAL
+     Updates beliefs from observed (signal, type) history. Initially uniform prior.
+     Pays a wage matching expected productivity given posterior beliefs.
+     Posteriors stored on the firm object and updated each round. */
+  bayesian: {
+    label: 'Bayesian-rational',
+    counts: { /* runtime: signal -> { H: int, L: int } */ },
+    decideWage: function(signal) {
+      const post = this.posterior(signal);
+      const expProd = post.H * CONFIG.trueProductivity.H + post.L * CONFIG.trueProductivity.L;
+      // Map to nearest wage tier
+      if (expProd >= 90) return 'high';
+      if (expProd >= 60) return 'medium';
+      return 'low';
+    },
+    posterior: function(signal) {
+      const c = this.counts[signal] || { H: 0, L: 0 };
+      const total = c.H + c.L;
+      // With 0 observations, uniform; otherwise empirical with Laplace smoothing
+      if (total === 0) return { H: 0.5, L: 0.5 };
+      const pH = (c.H + 1) / (total + 2);
+      return { H: pH, L: 1 - pH };
+    },
+    record: function(signal, type) {
+      if (!this.counts[signal]) this.counts[signal] = { H: 0, L: 0 };
+      this.counts[signal][type]++;
+    },
+    reset: function() { this.counts = {}; },
+    note: 'Bayesian-rational learns from history: posterior = past frequency of types given signal.'
+  }
+};
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const State = {
+  round: 1,
+  type: null,           // 'H' or 'L'
+  signal: null,         // chosen this round
+  wage: null,           // firm's offer (key into CONFIG.wages)
+  scoreYou: 0,
+  scoreFirm: 0,
+  firmKey: 'separating',
+  busy: false,
+  finished: false,
+  history: [],          // [{type, signal, wage, cost, netYou, profitFirm}]
+};
+
+/* ============================================================
+   INIT NEW ROUND
+   ============================================================ */
+function newRound() {
+  // Reset round-level state
+  State.type = Math.random() < CONFIG.prior.H ? 'H' : 'L';
+  State.signal = null;
+  State.wage = null;
+  State.busy = false;
+  State.finished = false;
+
+  // Reset UI
+  $('#roundNum').textContent = State.round;
+  $('#resultPanel').classList.add('hidden');
+  $('#wageCard').className = 'wage-card empty';
+  $('#wageCard').innerHTML = `
+    <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2">Firm's offer</div>
+    <div class="text-sm text-white/40">Choose a signal first</div>
+  `;
+  $('#treeStatus').textContent = 'Nature has chosen your type. Now choose a signal.';
+
+  // Update tree (clear path + replay nature step)
+  renderTree();
+
+  // Render type card with vault opening animation
+  renderTypeCard();
+
+  // Reset beliefs to prior
+  setBeliefs(CONFIG.prior, true);
+  $('#beliefStateLabel').textContent = 'Prior';
+  $('#bayesNote').textContent = 'Before any signal, the firm holds a uniform prior over your type.';
+
+  // Render signal buttons (with cost annotations for the assigned type)
+  renderSignalButtons();
+
+  // Render payoff matrix
+  renderPayoffMatrix();
+}
+
+/* ============================================================
+   TYPE CARD ANIMATION
+   ============================================================ */
+function renderTypeCard() {
+  const card = $('#typeCard');
+  const vault = $('#typeVault');
+  const icon = $('#typeIcon');
+  const lbl = $('#typeLabel');
+  const meta = $('#typeMeta');
+
+  // Reset to closed vault
+  vault.classList.remove('open');
+  card.classList.remove('high', 'low');
+  // Pre-fill (but hidden behind vault)
+  if (State.type === 'H') {
+    icon.className = 'type-icon high';
+    icon.textContent = '⚡';
+    lbl.textContent = 'High productivity';
+    meta.textContent = 'True productivity: 100 utils';
+  } else {
+    icon.className = 'type-icon low';
+    icon.textContent = '🐢';
+    lbl.textContent = 'Low productivity';
+    meta.textContent = 'True productivity: 50 utils';
+  }
+  // Open vault after a beat
+  setTimeout(() => {
+    vault.classList.add('open');
+    card.classList.add(State.type === 'H' ? 'high' : 'low');
+  }, 350);
+}
+
+/* ============================================================
+   SIGNAL BUTTONS
+   ============================================================ */
+function renderSignalButtons() {
+  const row = $('#signalRow');
+  row.innerHTML = '';
+  CONFIG.signals.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'signal-btn';
+    btn.dataset.signal = s;
+    const cost = CONFIG.cost[State.type][s];
+    const costClass = cost === 0 ? '' : (cost <= 25 ? 'cost-low' : 'cost-high');
+    btn.innerHTML = `
+      <div class="icon">${CONFIG.signalIcons[s]}</div>
+      <div class="label">${CONFIG.signalLabels[s]}</div>
+      <div class="cost-row">
+        <span>cost to you</span>
+        <span class="${costClass}">${cost === 0 ? 'free' : `−${cost}`}</span>
+      </div>
+    `;
+    btn.addEventListener('click', () => chooseSignal(s));
+    row.appendChild(btn);
+  });
+}
+
+/* ============================================================
+   PAYOFF MATRIX — type-specific
+   ============================================================ */
+function renderPayoffMatrix() {
+  const m = $('#pmatrix');
+  m.innerHTML = '';
+  // Header row
+  m.innerHTML += `<div></div>`;
+  CONFIG.signals.forEach(s => {
+    m.innerHTML += `<div class="pmatrix-th">${CONFIG.signalLabels[s]}</div>`;
+  });
+  // Wage rows
+  Object.entries(CONFIG.wages).forEach(([wKey, wVal]) => {
+    m.innerHTML += `<div class="pmatrix-row-label">${wKey === 'low' ? 'Low $' : wKey === 'medium' ? 'Med $' : 'High $'}</div>`;
+    CONFIG.signals.forEach(s => {
+      const cost = CONFIG.cost[State.type][s];
+      const net = wVal - cost;
+      const netStr = net >= 0 ? `+${net}` : `${net}`;
+      m.innerHTML += `<div class="pmatrix-cell" data-cell="${wKey}_${s}">
+        <span class="you">${netStr}</span>
+      </div>`;
+    });
+  });
+}
+
+function highlightMatrixCell(wKey, signal) {
+  $$('.pmatrix-cell').forEach(c => c.classList.remove('relevant'));
+  const cell = document.querySelector(`[data-cell="${wKey}_${signal}"]`);
+  if (cell) cell.classList.add('relevant');
+}
+
+/* ============================================================
+   TREE RENDERING
+   ============================================================ */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svgEl(tag, attrs = {}) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+/*
+  Tree layout:
+                             [Nature]
+                            /        \
+                          (H)          (L)            <-- Nature's choice
+                         /|\          /|\
+                       n  B  P     n  B  P            <-- Sender's signal
+                       /\ /\ /\
+                     low med high                     <-- Firm's wage
+*/
+function renderTree() {
+  const svg = $('#treeSVG');
+  svg.innerHTML = '';
+  const W = 720, H = 380;
+  const cx = W / 2;
+
+  // Nature node
+  const natureX = cx, natureY = 30;
+  // Type nodes
+  const typeY = 105;
+  const HX = cx - 180, LX = cx + 180;
+  // Signal positions (per type)
+  const sigY = 200;
+  const sigOffsets = [-65, 0, 65];     // none, BA, PhD
+  // Firm wage positions (only show for the *chosen* type's branch fully)
+  const wageY = 320;
+
+  // ===== Edges from nature to types =====
+  svg.appendChild(svgEl('line', {
+    class: 'tree-edge' + (State.type === 'H' ? ' user-path' : ' dimmed'),
+    x1: natureX, y1: natureY + 12, x2: HX, y2: typeY - 12,
+    'data-edge': 'nature-H'
+  }));
+  svg.appendChild(svgEl('line', {
+    class: 'tree-edge' + (State.type === 'L' ? ' user-path' : ' dimmed'),
+    x1: natureX, y1: natureY + 12, x2: LX, y2: typeY - 12,
+    'data-edge': 'nature-L'
+  }));
+
+  // Edge labels (probabilities)
+  const lblHE = svgEl('text', {
+    class: 'tree-label tree-label-num',
+    x: (natureX + HX) / 2 - 14, y: (natureY + typeY) / 2 + 4
+  });
+  lblHE.textContent = `${CONFIG.prior.H}`;
+  svg.appendChild(lblHE);
+  const lblLE = svgEl('text', {
+    class: 'tree-label tree-label-num',
+    x: (natureX + LX) / 2 + 14, y: (natureY + typeY) / 2 + 4
+  });
+  lblLE.textContent = `${CONFIG.prior.L}`;
+  svg.appendChild(lblLE);
+
+  // ===== Type nodes =====
+  // Nature node
+  const natureG = svgEl('g');
+  natureG.appendChild(svgEl('circle', { class: 'tree-node-circle', cx: natureX, cy: natureY, r: 12, fill: '#1A1736', stroke: 'rgba(155,123,255,.7)', 'stroke-width': 2 }));
+  const natureLbl = svgEl('text', { x: natureX, y: natureY + 4, 'text-anchor': 'middle', 'font-family': 'JetBrains Mono', 'font-size': 11, 'font-weight': 700, fill: '#9B7BFF' });
+  natureLbl.textContent = 'N';
+  natureG.appendChild(natureLbl);
+  const natureCaption = svgEl('text', { class: 'tree-label', x: natureX, y: natureY - 14, 'text-anchor': 'middle' });
+  natureCaption.textContent = 'Nature picks type';
+  natureG.appendChild(natureCaption);
+  svg.appendChild(natureG);
+
+  // High-type node
+  const isHigh = State.type === 'H';
+  const isLow = State.type === 'L';
+  const hG = svgEl('g');
+  hG.appendChild(svgEl('circle', {
+    class: 'tree-node-circle' + (isLow ? ' dimmed' : ''),
+    cx: HX, cy: typeY, r: 14, fill: isHigh ? '#10B981' : '#1A1736', stroke: '#34D399', 'stroke-width': 2
+  }));
+  if (isHigh) {
+    hG.appendChild(svgEl('circle', { cx: HX, cy: typeY, r: 14, fill: 'none', stroke: '#34D399', 'stroke-width': 2, opacity: 0.5, class: 'tree-pulse' }));
+  }
+  const hL = svgEl('text', { x: HX, y: typeY + 4, 'text-anchor': 'middle', 'font-family': 'JetBrains Mono', 'font-size': 12, 'font-weight': 700, fill: '#fff' });
+  hL.textContent = 'H';
+  hG.appendChild(hL);
+  const hCap = svgEl('text', { class: 'tree-label' + (isLow ? ' muted' : ''), x: HX, y: typeY - 22, 'text-anchor': 'middle' });
+  hCap.textContent = 'Sender (you)';
+  hG.appendChild(hCap);
+  svg.appendChild(hG);
+
+  // Low-type node
+  const lG = svgEl('g');
+  lG.appendChild(svgEl('circle', {
+    class: 'tree-node-circle' + (isHigh ? ' dimmed' : ''),
+    cx: LX, cy: typeY, r: 14, fill: isLow ? '#F43F5E' : '#1A1736', stroke: '#FB7185', 'stroke-width': 2
+  }));
+  if (isLow) {
+    lG.appendChild(svgEl('circle', { cx: LX, cy: typeY, r: 14, fill: 'none', stroke: '#FB7185', 'stroke-width': 2, opacity: 0.5, class: 'tree-pulse' }));
+  }
+  const lL = svgEl('text', { x: LX, y: typeY + 4, 'text-anchor': 'middle', 'font-family': 'JetBrains Mono', 'font-size': 12, 'font-weight': 700, fill: '#fff' });
+  lL.textContent = 'L';
+  lG.appendChild(lL);
+  const lCap = svgEl('text', { class: 'tree-label' + (isHigh ? ' muted' : ''), x: LX, y: typeY - 22, 'text-anchor': 'middle' });
+  lCap.textContent = 'Sender (you)';
+  lG.appendChild(lCap);
+  svg.appendChild(lG);
+
+  // ===== Signal branches (only for active type) =====
+  const activeX = isHigh ? HX : LX;
+  const sigPositions = CONFIG.signals.map((s, i) => ({
+    signal: s,
+    x: activeX + sigOffsets[i],
+    y: sigY
+  }));
+  sigPositions.forEach(p => {
+    // Edge from active type to this signal
+    const isPath = State.signal === p.signal;
+    svg.appendChild(svgEl('line', {
+      class: 'tree-edge' + (isPath ? ' user-path' : ''),
+      x1: activeX, y1: typeY + 14, x2: p.x, y2: p.y - 12,
+      'data-edge': `type-${p.signal}`
+    }));
+    // Signal node (small box)
+    svg.appendChild(svgEl('rect', {
+      class: 'tree-node-circle',
+      x: p.x - 18, y: p.y - 12, width: 36, height: 24, rx: 6,
+      fill: isPath ? 'rgba(251,191,36,.2)' : '#1A1736',
+      stroke: isPath ? '#FBBF24' : 'rgba(155,123,255,.5)',
+      'stroke-width': isPath ? 2 : 1
+    }));
+    const sLbl = svgEl('text', { x: p.x, y: p.y + 4, 'text-anchor': 'middle', 'font-family': 'JetBrains Mono', 'font-size': 10, 'font-weight': 600, fill: isPath ? '#FBBF24' : 'rgba(255,255,255,.7)' });
+    sLbl.textContent = p.signal === 'none' ? 'No deg' : p.signal;
+    svg.appendChild(sLbl);
+  });
+
+  // Receiver (firm) node + caption (under chosen signal)
+  if (State.signal) {
+    const sigPos = sigPositions.find(p => p.signal === State.signal);
+    // Receiver node
+    svg.appendChild(svgEl('circle', {
+      cx: sigPos.x, cy: wageY - 30, r: 12, fill: '#1A1736',
+      stroke: 'rgba(251,191,36,.8)', 'stroke-width': 2
+    }));
+    const rcvLbl = svgEl('text', { x: sigPos.x, y: wageY - 26, 'text-anchor': 'middle', 'font-family': 'JetBrains Mono', 'font-size': 11, 'font-weight': 700, fill: '#FBBF24' });
+    rcvLbl.textContent = 'R';
+    svg.appendChild(rcvLbl);
+    const rcvCap = svgEl('text', { class: 'tree-label', x: sigPos.x, y: wageY - 50, 'text-anchor': 'middle' });
+    rcvCap.textContent = 'Receiver (firm)';
+    svg.appendChild(rcvCap);
+
+    // Wage branches
+    if (State.wage) {
+      const wages = ['low', 'medium', 'high'];
+      const wOffsets = [-50, 0, 50];
+      wages.forEach((w, i) => {
+        const wx = sigPos.x + wOffsets[i];
+        const isWPath = State.wage === w;
+        svg.appendChild(svgEl('line', {
+          class: 'tree-edge' + (isWPath ? ' user-path' : ''),
+          x1: sigPos.x, y1: wageY - 18, x2: wx, y2: wageY - 4
+        }));
+        svg.appendChild(svgEl('rect', {
+          x: wx - 16, y: wageY - 4, width: 32, height: 20, rx: 5,
+          fill: isWPath ? 'rgba(52,211,153,.2)' : '#1A1736',
+          stroke: isWPath ? '#34D399' : 'rgba(155,123,255,.4)',
+          'stroke-width': isWPath ? 2 : 1
+        }));
+        const wL = svgEl('text', { x: wx, y: wageY + 10, 'text-anchor': 'middle', 'font-family': 'JetBrains Mono', 'font-size': 10, fill: isWPath ? '#34D399' : 'rgba(255,255,255,.6)' });
+        wL.textContent = '$' + CONFIG.wages[w];
+        svg.appendChild(wL);
+      });
+    }
+  }
+
+  // Caption labels along the side
+  const layerLbls = [
+    { y: 30,  text: 'Nature' },
+    { y: 105, text: 'Sender' },
+    { y: 200, text: 'Signal' },
+    { y: 320, text: 'Firm' }
+  ];
+  layerLbls.forEach(l => {
+    const t = svgEl('text', {
+      class: 'tree-label muted',
+      x: 14, y: l.y + 4,
+      'font-family': 'JetBrains Mono', 'font-size': 10
+    });
+    t.textContent = l.text;
+    svg.appendChild(t);
+  });
+}
+
+/* ============================================================
+   BELIEFS
+   ============================================================ */
+function setBeliefs(beliefs, immediate = false) {
+  const pH = Math.round(beliefs.H * 100);
+  const pL = 100 - pH;
+  const fillH = $('#beliefHigh');
+  const fillL = $('#beliefLow');
+  if (immediate) {
+    fillH.style.transition = 'none';
+    fillL.style.transition = 'none';
+  } else {
+    fillH.style.transition = '';
+    fillL.style.transition = '';
+  }
+  fillH.style.width = pH + '%';
+  fillL.style.width = pL + '%';
+  $('#beliefHighPct').textContent = pH + '%';
+  $('#beliefLowPct').textContent = pL + '%';
+}
+
+/* ============================================================
+   CHOOSE SIGNAL — main flow
+   ============================================================ */
+async function chooseSignal(s) {
+  if (State.busy || State.finished || State.signal) return;
+  State.busy = true;
+  State.signal = s;
+
+  // Lock signal buttons
+  $$('.signal-btn').forEach(b => {
+    b.disabled = true;
+    if (b.dataset.signal === s) b.classList.add('locked');
+  });
+
+  // Animate signal packet flying from sender to receiver
+  await animateSignalPacket(s);
+
+  // Update tree (now shows signal path)
+  renderTree();
+  $('#treeStatus').textContent = `Signal sent: ${CONFIG.signalLabels[s]}. Firm is updating beliefs…`;
+
+  // Firm updates beliefs and decides wage
+  const firm = FIRMS[State.firmKey];
+  await wait(300);
+
+  // Belief animation
+  const post = firm.posterior(s);
+  setBeliefs(post);
+  $('#beliefStateLabel').textContent = 'Posterior';
+  $('#bayesNote').innerHTML = bayesExplanation(s, post);
+
+  await wait(900);   // give the bars time to animate
+
+  // Firm decides wage
+  State.wage = firm.decideWage(s);
+  showWage();
+
+  // Highlight the relevant cell in the payoff matrix
+  highlightMatrixCell(State.wage, s);
+
+  // Update tree to show wage branch
+  renderTree();
+  $('#treeStatus').textContent = `Firm offered $${CONFIG.wages[State.wage]}. Round complete.`;
+
+  await wait(700);
+
+  // Compute payoffs
+  const cost = CONFIG.cost[State.type][s];
+  const wageVal = CONFIG.wages[State.wage];
+  const netYou = wageVal - cost;
+  const profitFirm = CONFIG.trueProductivity[State.type] - wageVal;
+
+  State.scoreYou += netYou;
+  State.scoreFirm += profitFirm;
+  bumpScore('#scoreYou', State.scoreYou);
+  bumpScore('#scoreFirm', State.scoreFirm);
+
+  // Record in history
+  State.history.push({
+    round: State.round,
+    type: State.type, signal: s, wage: State.wage,
+    cost, netYou, profitFirm
+  });
+
+  // Bayesian firm: record observation for future rounds
+  if (State.firmKey === 'bayesian') {
+    FIRMS.bayesian.record(s, State.type);
+  }
+
+  renderHistory();
+
+  // Show result panel
+  showResult(post, netYou, profitFirm);
+  State.finished = true;
+}
+
+function animateSignalPacket(signal) {
+  return new Promise(resolve => {
+    const treeWrap = $('#treeWrap');
+    const svg = $('#treeSVG');
+    const rect = svg.getBoundingClientRect();
+    const wrapRect = treeWrap.getBoundingClientRect();
+    const scaleX = rect.width / 720;
+    const scaleY = rect.height / 380;
+    // Start at active type node
+    const HX = 360 - 180, LX = 360 + 180;
+    const startX = (State.type === 'H' ? HX : LX) * scaleX + (rect.left - wrapRect.left);
+    const startY = 105 * scaleY + (rect.top - wrapRect.top);
+    // End at signal node
+    const sigOffsets = { none: -65, BA: 0, PhD: 65 };
+    const activeX = State.type === 'H' ? HX : LX;
+    const endX = (activeX + sigOffsets[signal]) * scaleX + (rect.left - wrapRect.left);
+    const endY = 200 * scaleY + (rect.top - wrapRect.top);
+
+    const packet = document.createElement('div');
+    packet.className = 'signal-packet';
+    packet.style.left = startX + 'px';
+    packet.style.top = startY + 'px';
+    treeWrap.appendChild(packet);
+
+    const a = packet.animate([
+      { transform: 'translate(-50%,-50%) scale(.4)', opacity: 0 },
+      { transform: 'translate(-50%,-50%) scale(1.2)', opacity: 1, offset: 0.2 },
+      { left: endX + 'px', top: endY + 'px', transform: 'translate(-50%,-50%) scale(.8)', opacity: 0 }
+    ], { duration: 700, easing: 'cubic-bezier(.5,-.1,.5,1.1)', fill: 'forwards' });
+
+    a.onfinish = () => { packet.remove(); resolve(); };
+  });
+}
+
+function bayesExplanation(signal, post) {
+  const firm = FIRMS[State.firmKey];
+  const sigName = CONFIG.signalLabels[signal];
+  if (State.firmKey === 'separating') {
+    if (signal === 'PhD') return `Saw PhD → assumes High type → P(High) → <span class="text-coop-glow">${Math.round(post.H*100)}%</span>.`;
+    if (signal === 'none') return `Saw No degree → assumes Low type → P(High) → <span class="text-defect-glow">${Math.round(post.H*100)}%</span>.`;
+    return `Saw <span class="text-equilibrium-glow">${sigName}</span> — off the equilibrium path. Falls back to prior.`;
+  }
+  if (State.firmKey === 'pooling') {
+    return `Pooling-believer ignores the signal. Posterior = prior = <span class="text-equilibrium-glow">${Math.round(post.H*100)}%</span>.`;
+  }
+  // Bayesian
+  const c = FIRMS.bayesian.counts[signal];
+  if (!c || (c.H + c.L) === 0) {
+    return `No history of <span class="text-equilibrium-glow">${sigName}</span> yet. Posterior defaults to prior <span class="text-coop-glow">${Math.round(post.H*100)}%</span>.`;
+  }
+  return `Past <span class="text-equilibrium-glow">${sigName}</span>: <span class="text-coop-glow">${c.H} High</span>, <span class="text-defect-glow">${c.L} Low</span> → posterior P(High) = <span class="text-coop-glow">${Math.round(post.H*100)}%</span> (Laplace-smoothed).`;
+}
+
+/* ============================================================
+   SHOW WAGE
+   ============================================================ */
+function showWage() {
+  const card = $('#wageCard');
+  card.className = 'wage-card revealed';
+  const wageVal = CONFIG.wages[State.wage];
+  const wageLabel = State.wage === 'low' ? 'Low offer' : State.wage === 'medium' ? 'Medium offer' : 'High offer';
+  card.innerHTML = `
+    <div class="text-[10px] uppercase tracking-wider text-equilibrium-glow font-medium mb-2">Firm's offer</div>
+    <div class="wage-num">$${wageVal}</div>
+    <div class="text-[11px] text-white/60 mt-1.5">${wageLabel}</div>
+  `;
+}
+
+/* ============================================================
+   RESULT PANEL
+   ============================================================ */
+function showResult(post, netYou, profitFirm) {
+  const wageVal = CONFIG.wages[State.wage];
+  const trueProd = CONFIG.trueProductivity[State.type];
+  const cost = CONFIG.cost[State.type][State.signal];
+  const firmCorrect = (State.type === 'H' && post.H >= 0.6) || (State.type === 'L' && post.L >= 0.6);
+  const firmOverpaid = State.type === 'L' && wageVal > 50;
+  const firmUnderpaid = State.type === 'H' && wageVal < 100;
+
+  // Reveal type
+  $('#revealType').innerHTML = `
+    <div class="flex items-center gap-2.5">
+      <div class="type-icon ${State.type === 'H' ? 'high' : 'low'}" style="width: 36px; height: 36px; font-size: 18px; margin: 0; border-radius: 10px;">${State.type === 'H' ? '⚡' : '🐢'}</div>
+      <div>
+        <div class="font-medium">${State.type === 'H' ? 'High productivity' : 'Low productivity'}</div>
+        <div class="text-[11px] text-white/55">True value: ${trueProd} utils</div>
+      </div>
+    </div>
+  `;
+
+  $('#revealSignal').textContent = CONFIG.signalLabels[State.signal];
+  $('#revealSignalCost').textContent = `Education cost: ${cost === 0 ? 'free' : `−${cost} utils`}`;
+
+  $('#revealBelief').innerHTML = `<span class="${post.H >= 0.5 ? 'text-coop-glow' : 'text-defect-glow'}">${Math.round(post.H * 100)}%</span>`;
+  $('#revealBeliefNote').textContent = firmCorrect
+    ? '✓ Belief aligned with truth'
+    : `Belief misaligned (truth: ${State.type === 'H' ? 'High' : 'Low'})`;
+
+  // Banner — narrative outcome
+  let banner;
+  if (firmOverpaid && State.type === 'L') {
+    banner = `
+      <div class="outcome-banner banner-overpay">
+        <div class="o-icon" style="background: rgba(251,191,36,.2); color: #FBBF24;">!</div>
+        <div>
+          <div class="font-semibold text-base mb-1">You bluffed successfully</div>
+          <div class="text-sm text-white/70">You're a low-productivity worker who got an above-market wage. The firm overpaid by <span class="font-mono text-equilibrium-glow">$${wageVal - 50}</span>. Your net (after education cost): <span class="font-mono text-coop-glow">+${netYou}</span>.</div>
+        </div>
+      </div>
+    `;
+  } else if (firmUnderpaid && State.type === 'H') {
+    banner = `
+      <div class="outcome-banner banner-underpay">
+        <div class="o-icon" style="background: rgba(244,63,94,.2); color: #FB7185;">↓</div>
+        <div>
+          <div class="font-semibold text-base mb-1">You undersold yourself</div>
+          <div class="text-sm text-white/70">You're a high-productivity worker who didn't signal strongly enough. The firm paid <span class="font-mono">$${100 - wageVal}</span> below your true value. Your net: <span class="font-mono">${netYou >= 0 ? '+' : ''}${netYou}</span>.</div>
+        </div>
+      </div>
+    `;
+  } else if (firmCorrect) {
+    banner = `
+      <div class="outcome-banner banner-correct">
+        <div class="o-icon" style="background: rgba(16,185,129,.2); color: #34D399;">✓</div>
+        <div>
+          <div class="font-semibold text-base mb-1">Honest signaling</div>
+          <div class="text-sm text-white/70">Your signal accurately revealed your type. Firm paid <span class="font-mono">$${wageVal}</span>; your net: <span class="font-mono ${netYou >= 0 ? 'text-coop-glow' : 'text-defect-glow'}">${netYou >= 0 ? '+' : ''}${netYou}</span>.</div>
+        </div>
+      </div>
+    `;
+  } else {
+    banner = `
+      <div class="outcome-banner banner-correct">
+        <div class="o-icon" style="background: rgba(124,92,255,.2); color: #9B7BFF;">·</div>
+        <div>
+          <div class="font-semibold text-base mb-1">Round resolved</div>
+          <div class="text-sm text-white/70">Your net this round: <span class="font-mono ${netYou >= 0 ? 'text-coop-glow' : 'text-defect-glow'}">${netYou >= 0 ? '+' : ''}${netYou}</span>. Firm's profit: <span class="font-mono">${profitFirm >= 0 ? '+' : ''}${profitFirm}</span>.</div>
+        </div>
+      </div>
+    `;
+  }
+  $('#resultBanner').innerHTML = banner;
+
+  $('#resultHeadline').textContent = `Net this round: ${netYou >= 0 ? '+' : ''}${netYou} utils`;
+
+  // Equilibrium classifier (after 3+ rounds)
+  if (State.history.length >= 3) {
+    renderEqClassifier();
+    $('#eqClassifier').classList.remove('hidden');
+  } else {
+    $('#eqClassifier').classList.add('hidden');
+  }
+
+  $('#resultPanel').classList.remove('hidden');
+  setTimeout(() => $('#resultPanel').scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+}
+
+function renderEqClassifier() {
+  // Examine user's signal-given-type pattern across history
+  const byType = { H: {}, L: {} };
+  State.history.forEach(h => {
+    byType[h.type][h.signal] = (byType[h.type][h.signal] || 0) + 1;
+  });
+
+  // Most common signal per type
+  const dominantSig = (counts) => {
+    let best = null, bestN = 0, total = 0;
+    Object.entries(counts).forEach(([s, n]) => { total += n; if (n > bestN) { best = s; bestN = n; } });
+    return { signal: best, share: total ? bestN / total : 0 };
+  };
+  const hDom = dominantSig(byType.H);
+  const lDom = dominantSig(byType.L);
+  const hN = Object.values(byType.H).reduce((a, b) => a + b, 0);
+  const lN = Object.values(byType.L).reduce((a, b) => a + b, 0);
+
+  let strategyName, isEq, explanation;
+  if (hN === 0 || lN === 0) {
+    // Haven't seen both types yet
+    strategyName = 'Insufficient data';
+    isEq = 'partial';
+    explanation = 'Both types haven\'t played yet — keep playing rounds to classify your strategy.';
+  } else if (hDom.signal === lDom.signal && hDom.share > 0.65 && lDom.share > 0.65) {
+    strategyName = 'Pooling strategy';
+    isEq = (hDom.signal === 'none') ? 'match' : 'partial';
+    explanation = `Both types are sending the same signal (<span class="text-equilibrium-glow">${CONFIG.signalLabels[hDom.signal]}</span>) most of the time. ` +
+      (hDom.signal === 'none'
+        ? 'This is a <span class="text-coop-glow">pooling Bayesian Nash equilibrium</span> — both types pool on no degree because the cost of education exceeds any wage gain when the firm can\'t distinguish types.'
+        : 'A pooling equilibrium typically requires both types to choose the cheapest signal (no degree). Choosing a costly common signal usually isn\'t a BNE because at least one type would deviate.'
+      );
+  } else if (hDom.signal === 'PhD' && lDom.signal === 'none' && hDom.share > 0.65 && lDom.share > 0.65) {
+    strategyName = 'Separating strategy';
+    isEq = 'match';
+    explanation = `High types signal <span class="text-coop-glow">PhD</span>, Low types signal <span class="text-defect-glow">No degree</span>. This is the canonical <span class="text-coop-glow">separating Bayesian Nash equilibrium</span>: the cost differential between types makes truthful signaling self-enforcing — Low types find PhD too expensive to mimic, High types find PhD worth its cost.`;
+  } else if (hDom.signal !== lDom.signal && (hDom.share > 0.65 || lDom.share > 0.65)) {
+    strategyName = 'Partial separation';
+    isEq = 'partial';
+    explanation = `High types tend toward <span class="text-coop-glow">${CONFIG.signalLabels[hDom.signal]}</span>, Low types toward <span class="text-defect-glow">${CONFIG.signalLabels[lDom.signal]}</span>. Not the canonical separating equilibrium (which requires the extremes), but the firm can still extract some information from your signal.`;
+  } else {
+    strategyName = 'Mixed / inconsistent';
+    isEq = 'partial';
+    explanation = 'Your signaling is inconsistent across rounds. In the canonical Spence model, equilibrium strategies are either fully separating or fully pooling — mixed play is rarely an equilibrium and typically leaves money on the table.';
+  }
+
+  const cardClass = isEq === 'match' ? 'eq-card match' : 'eq-card partial';
+
+  $('#eqClassifier').innerHTML = `
+    <div class="${cardClass}">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <div class="text-[10px] uppercase tracking-wider text-violet-glow font-medium mb-1">Your strategy across ${State.history.length} rounds</div>
+          <div class="font-display text-2xl tracking-tight">${strategyName}</div>
+        </div>
+        <span class="tag ${isEq === 'match' ? 'tag-coop' : 'tag-amber'}">
+          ${isEq === 'match' ? 'Bayesian Nash equilibrium' : 'Not equilibrium play'}
+        </span>
+      </div>
+      <p class="text-sm text-white/75 leading-relaxed">${explanation}</p>
+
+      <div class="grid grid-cols-2 gap-3 mt-4">
+        <div class="glass-subtle rounded-lg p-3">
+          <div class="text-[10px] uppercase tracking-wider text-coop-glow font-medium mb-2">When type was High (${hN} rounds)</div>
+          <div class="text-sm">${hN === 0 ? '<span class="text-white/40">No data yet</span>' : `Most common: <span class="font-medium">${CONFIG.signalLabels[hDom.signal]}</span> (${Math.round(hDom.share * 100)}%)`}</div>
+        </div>
+        <div class="glass-subtle rounded-lg p-3">
+          <div class="text-[10px] uppercase tracking-wider text-defect-glow font-medium mb-2">When type was Low (${lN} rounds)</div>
+          <div class="text-sm">${lN === 0 ? '<span class="text-white/40">No data yet</span>' : `Most common: <span class="font-medium">${CONFIG.signalLabels[lDom.signal]}</span> (${Math.round(lDom.share * 100)}%)`}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   HISTORY LIST
+   ============================================================ */
+function renderHistory() {
+  const list = $('#historyList');
+  if (State.history.length === 0) {
+    list.innerHTML = '<div class="text-[12px] text-white/40 px-3 py-2">No rounds played yet.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  // Render most recent first
+  [...State.history].reverse().forEach(h => {
+    const row = document.createElement('div');
+    row.className = 'hist-row';
+    const typeColor = h.type === 'H' ? 'tag-high' : 'tag-low';
+    row.innerHTML = `
+      <span class="h-num">${h.round}</span>
+      <span class="tag ${typeColor}">${h.type === 'H' ? 'High ⚡' : 'Low 🐢'}</span>
+      <span>${CONFIG.signalLabels[h.signal]}</span>
+      <span class="font-mono text-equilibrium-glow">$${CONFIG.wages[h.wage]}</span>
+      <span class="font-mono text-white/55">−${h.cost}</span>
+      <span class="font-mono text-right ${h.netYou >= 0 ? 'text-coop-glow' : 'text-defect-glow'}">${h.netYou >= 0 ? '+' : ''}${h.netYou}</span>
+    `;
+    list.appendChild(row);
+  });
+}
+
+/* ============================================================
+   SCORE TICKER
+   ============================================================ */
+function bumpScore(sel, target) {
+  const el = $(sel);
+  const start = parseInt(el.textContent.replace(/,/g, ''), 10) || 0;
+  el.classList.add('bump');
+  const dur = 600;
+  const t0 = performance.now();
+  function tick(now) {
+    const t = Math.min((now - t0) / dur, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = Math.round(start + (target - start) * eased);
+    if (t < 1) requestAnimationFrame(tick);
+    else el.textContent = target;
+  }
+  requestAnimationFrame(tick);
+  setTimeout(() => el.classList.remove('bump'), 600);
+}
+
+/* ============================================================
+   FIRM PICKER
+   ============================================================ */
+function bindFirmPicker() {
+  $$('#firmPicker .opp-pick').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (State.busy) return;
+      const newKey = btn.dataset.firm;
+      // If mid-round (signal sent), just update for next round
+      $$('#firmPicker .opp-pick').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      State.firmKey = newKey;
+      // If round hasn't started signaling, refresh beliefs to prior
+      if (!State.signal) {
+        setBeliefs(CONFIG.prior, true);
+        $('#bayesNote').textContent = FIRMS[newKey].note;
+      }
+    });
+  });
+}
+
+/* ============================================================
+   ACTIONS
+   ============================================================ */
+function nextRound() {
+  State.round++;
+  newRound();
+}
+
+function resetSession() {
+  State.round = 1;
+  State.scoreYou = 0;
+  State.scoreFirm = 0;
+  State.history = [];
+  $('#scoreYou').textContent = '0';
+  $('#scoreFirm').textContent = '0';
+  FIRMS.bayesian.reset();
+  renderHistory();
+  newRound();
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ============================================================
+   BOOT
+   ============================================================ */
+document.addEventListener('DOMContentLoaded', () => {
+  bindFirmPicker();
+  $('#newRoundBtn').addEventListener('click', nextRound);
+  $('#restartBtn').addEventListener('click', resetSession);
+  newRound();
+});
+</script>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+  if (window.SAProgress) {
+    window.SAProgress.initArena({
+      slug: 'signaling',
+      getSession: function () {
+        if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
+        var you = State.scoreYou, firm = State.scoreFirm;
+        return { score: null, outcome: 'completed', detail: { you: you, firm: firm, rounds: State.history.length, firmKey: State.firmKey } };
+      }
+    });
+  }
+</script>
+
+</body>
+</html>
