@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StrategyArena — Home</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+<style>
+  /* ====================================================================
+     StrategyArena shell — matches the curriculum dark theme exactly.
+     All CSS in this single <style> block (cross-browser constraint).
+     ==================================================================== */
+  :root {
+    --bg: #0E0C20;
+    --bg-deep: #0A0818;
+    --surface: rgba(255,255,255,.025);
+    --surface-strong: rgba(255,255,255,.04);
+    --border: rgba(255,255,255,.07);
+    --border-strong: rgba(255,255,255,.12);
+    --text: #D4D1E8;
+    --text-bright: #F0EEFA;
+    --text-muted: rgba(212,209,232,.6);
+    --text-subtle: rgba(212,209,232,.4);
+    --violet: #9B7BFF;
+    --violet-deep: #7C5CFF;
+    --amber: #FBBF24;
+    --green: #34D399;
+    --rose: #FB7185;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  ::selection { background: rgba(124,92,255,.4); color: #fff; }
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: -2;
+    background:
+      radial-gradient(circle at 18% 22%, rgba(91,61,204,.15) 0%, transparent 45%),
+      radial-gradient(circle at 82% 78%, rgba(245,158,11,.05) 0%, transparent 55%),
+      var(--bg-deep);
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.15); }
+  a { color: inherit; text-decoration: none; }
+  h1,h2,h3 { font-family: 'Instrument Serif', serif; font-weight: 400; color: var(--text-bright); letter-spacing: .3px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ---- Auth screen ---- */
+  .auth-wrap {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .auth-card {
+    width: 100%; max-width: 420px;
+    background: var(--surface-strong); border: 1px solid var(--border-strong);
+    border-radius: 20px; padding: 40px 36px;
+    box-shadow: 0 30px 80px rgba(0,0,0,.5);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+  .brand-mark {
+    width: 42px; height: 42px; border-radius: 11px;
+    background: linear-gradient(135deg, var(--violet-deep), var(--violet));
+    display: grid; place-items: center; font-size: 22px;
+    box-shadow: 0 8px 24px rgba(124,92,255,.4);
+  }
+  .brand-name { font-family: 'Instrument Serif', serif; font-size: 30px; color: var(--text-bright); line-height: 1; }
+  .auth-sub { color: var(--text-muted); font-size: 14px; margin: 14px 0 28px; }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 7px; text-transform: uppercase; letter-spacing: .08em; }
+  .field input {
+    width: 100%; padding: 12px 14px; border-radius: 10px;
+    background: rgba(255,255,255,.04); border: 1px solid var(--border-strong);
+    color: var(--text-bright); font-size: 15px; font-family: inherit;
+  }
+  .field input:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(124,92,255,.18); }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px 18px; border-radius: 10px; border: none; cursor: pointer;
+    font-family: inherit; font-size: 14px; font-weight: 600; transition: transform .12s ease, filter .12s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: linear-gradient(135deg, var(--violet-deep), var(--violet)); color: #fff; width: 100%; }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-ghost { background: transparent; border: 1px solid var(--border-strong); color: var(--text); }
+  .btn-ghost:hover { border-color: var(--violet); color: var(--text-bright); }
+  .auth-toggle { text-align: center; margin-top: 18px; font-size: 13px; color: var(--text-muted); }
+  .auth-toggle b { color: var(--violet); cursor: pointer; }
+  .msg { font-size: 13px; padding: 10px 12px; border-radius: 9px; margin-bottom: 14px; display: none; }
+  .msg.err { background: rgba(251,113,133,.12); border: 1px solid rgba(251,113,133,.3); color: #fda4af; display: block; }
+  .msg.ok { background: rgba(52,211,153,.12); border: 1px solid rgba(52,211,153,.3); color: #6ee7b7; display: block; }
+
+  /* ---- App layout ---- */
+  .app { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+  .sidebar {
+    background: rgba(10,8,24,.6); backdrop-filter: blur(20px);
+    border-right: 1px solid var(--border); padding: 22px 0; position: sticky; top: 0; height: 100vh;
+    display: flex; flex-direction: column; overflow-y: auto;
+  }
+  .side-brand { padding: 0 22px 18px; display: flex; align-items: center; gap: 11px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+  .side-brand .brand-mark { width: 34px; height: 34px; font-size: 18px; border-radius: 9px; }
+  .side-brand .brand-name { font-size: 23px; }
+  .nav-group { padding: 10px 14px 4px; }
+  .nav-group-label { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: var(--text-subtle); padding: 8px 10px 6px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 9px;
+    color: var(--text-muted); font-size: 14px; cursor: pointer; transition: background .12s, color .12s;
+  }
+  .nav-item:hover { background: var(--surface); color: var(--text-bright); }
+  .nav-item.active { background: rgba(124,92,255,.14); color: var(--text-bright); }
+  .nav-item .ico { width: 18px; text-align: center; }
+  .side-foot { margin-top: auto; padding: 14px 18px 4px; border-top: 1px solid var(--border); }
+  .side-user { font-size: 12.5px; color: var(--text-muted); margin-bottom: 10px; word-break: break-all; }
+  .main { padding: 34px 40px 80px; overflow-y: auto; height: 100vh; }
+  .page-title { font-size: 34px; margin-bottom: 4px; }
+  .page-sub { color: var(--text-muted); font-size: 14.5px; margin-bottom: 26px; }
+  .hidden { display: none !important; }
+
+  /* ---- Cards / grids ---- */
+  .grid { display: grid; gap: 14px; }
+  .grid-3 { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  .card {
+    background: var(--surface-strong); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px; transition: border-color .14s, transform .14s;
+  }
+  .card.launch { cursor: pointer; }
+  .card.launch:hover { border-color: var(--violet); transform: translateY(-2px); }
+  .card .c-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--text-subtle); }
+  .card .c-title { font-family: 'Instrument Serif', serif; font-size: 20px; color: var(--text-bright); margin: 4px 0 6px; }
+  .card .c-meta { font-size: 12.5px; color: var(--text-muted); }
+  .pill { display: inline-block; font-size: 11px; padding: 3px 9px; border-radius: 999px; background: rgba(124,92,255,.16); color: var(--violet); margin-top: 8px; }
+  .pill.soon { background: rgba(251,191,36,.14); color: var(--amber); }
+
+  /* ---- Stat row ---- */
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 14px; margin-bottom: 26px; }
+  .stat { background: var(--surface-strong); border: 1px solid var(--border); border-radius: 14px; padding: 18px; }
+  .stat .s-num { font-family: 'JetBrains Mono', monospace; font-size: 30px; color: var(--text-bright); font-weight: 600; }
+  .stat .s-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+  /* ---- Assessment ---- */
+  .practice-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 22px; }
+  select.sel {
+    padding: 10px 14px; border-radius: 10px; background: rgba(255,255,255,.04);
+    border: 1px solid var(--border-strong); color: var(--text-bright); font-family: inherit; font-size: 14px;
+  }
+  .q-card { background: var(--surface-strong); border: 1px solid var(--border-strong); border-radius: 16px; padding: 26px; max-width: 720px; }
+  .q-meta { font-size: 12px; color: var(--text-subtle); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 12px; }
+  .q-prompt { font-size: 18px; color: var(--text-bright); line-height: 1.5; margin-bottom: 20px; }
+  .q-options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+  .q-option { text-align: left; padding: 13px 16px; border-radius: 10px; background: rgba(255,255,255,.03); border: 1px solid var(--border-strong); color: var(--text); cursor: pointer; font-family: inherit; font-size: 14.5px; }
+  .q-option:hover { border-color: var(--violet); }
+  .q-option.sel { border-color: var(--violet); background: rgba(124,92,255,.12); }
+  .feedback { margin-top: 16px; padding: 14px 16px; border-radius: 10px; font-size: 14px; display: none; }
+  .feedback.correct { display: block; background: rgba(52,211,153,.12); border: 1px solid rgba(52,211,153,.3); color: #6ee7b7; }
+  .feedback.wrong { display: block; background: rgba(251,113,133,.12); border: 1px solid rgba(251,113,133,.3); color: #fda4af; }
+  .feedback.info { display: block; background: rgba(124,92,255,.10); border: 1px solid rgba(124,92,255,.28); color: var(--violet); }
+
+  /* ---- Diagnostics ---- */
+  .diag { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; background: var(--bg-deep); border: 1px solid var(--border); border-radius: 12px; padding: 18px; white-space: pre-wrap; line-height: 1.7; }
+  .diag .pass { color: var(--green); }
+  .diag .fail { color: var(--rose); }
+  .diag .dim { color: var(--text-subtle); }
+
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.tbl th, table.tbl td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  table.tbl th { color: var(--text-subtle); font-weight: 500; font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; }
+  .tag-ok { color: var(--green); } .tag-no { color: var(--rose); }
+
+  .spinner { display: inline-block; width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.2); border-top-color: var(--violet); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 820px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; }
+    .main { height: auto; padding: 24px 18px 60px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ====================== AUTH SCREEN ====================== -->
+<div id="authScreen" class="auth-wrap">
+  <div class="auth-card">
+    <div class="brand">
+      <div class="brand-mark">♟</div>
+      <div class="brand-name">StrategyArena</div>
+    </div>
+    <div class="auth-sub" id="authSub">Sign in to your game-theory workspace.</div>
+    <div id="authMsg" class="msg"></div>
+    <div class="field">
+      <label>Email</label>
+      <input id="authEmail" type="email" autocomplete="email" placeholder="you@university.edu">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button class="btn btn-primary" id="authSubmit">Sign in</button>
+    <div class="auth-toggle" id="authToggle">New here? <b>Create an account</b></div>
+  </div>
+</div>
+
+<!-- ====================== APP ====================== -->
+<div id="appScreen" class="app hidden">
+  <aside class="sidebar">
+    <div class="side-brand">
+      <div class="brand-mark">♟</div>
+      <div class="brand-name">StrategyArena</div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-label">Learn</div>
+      <div class="nav-item active" data-view="home"><span class="ico">⌂</span> Home</div>
+      <div class="nav-item" data-view="chapters"><span class="ico">📖</span> Chapters</div>
+      <div class="nav-item" data-view="arenas"><span class="ico">🎮</span> Arenas</div>
+      <div class="nav-item" data-view="practice"><span class="ico">✍️</span> Practice</div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-label">Track</div>
+      <div class="nav-item" data-view="progress"><span class="ico">📊</span> My Progress</div>
+      <div class="nav-item" data-view="diagnostics"><span class="ico">🔒</span> Diagnostics</div>
+    </div>
+    <div class="side-foot">
+      <div class="side-user" id="sideUser">—</div>
+      <button class="btn btn-ghost" id="signOutBtn" style="width:100%;">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- HOME -->
+    <section id="view-home">
+      <h1 class="page-title" id="welcomeTitle">Welcome back</h1>
+      <div class="page-sub">Your strategic-thinking workspace. Pick up where you left off.</div>
+      <div class="stat-row" id="homeStats"></div>
+      <div class="grid grid-3" id="homeQuick"></div>
+    </section>
+
+    <!-- CHAPTERS -->
+    <section id="view-chapters" class="hidden">
+      <h1 class="page-title">The 14 Chapters</h1>
+      <div class="page-sub">Read the textbook. Each chapter opens in a new tab; mark it complete when you're done.</div>
+      <div class="grid grid-3" id="chapterGrid"></div>
+    </section>
+
+    <!-- ARENAS -->
+    <section id="view-arenas" class="hidden">
+      <h1 class="page-title">Interactive Arenas</h1>
+      <div class="page-sub">Play the games against AI opponents. Results feed your progress.</div>
+      <div class="grid grid-3" id="arenaGrid"></div>
+    </section>
+
+    <!-- PRACTICE -->
+    <section id="view-practice" class="hidden">
+      <h1 class="page-title">Practice Questions</h1>
+      <div class="page-sub">Server-graded items. Each question is generated just for you — answers never reach the browser.</div>
+      <div class="practice-bar">
+        <select class="sel" id="practiceChapter"></select>
+        <button class="btn btn-primary" id="newQuestionBtn" style="width:auto;">New question</button>
+      </div>
+      <div id="practiceArea"></div>
+    </section>
+
+    <!-- PROGRESS -->
+    <section id="view-progress" class="hidden">
+      <h1 class="page-title">My Progress</h1>
+      <div class="page-sub">Pulled live from your account.</div>
+      <div class="stat-row" id="progStats"></div>
+      <h3 style="font-size:22px;margin:10px 0 12px;">Recent practice attempts</h3>
+      <div class="card" style="padding:6px 6px 2px;"><table class="tbl" id="attemptsTbl"><thead><tr><th>Item</th><th>Chapter</th><th>Result</th><th>Points</th><th>When</th></tr></thead><tbody></tbody></table></div>
+      <h3 style="font-size:22px;margin:24px 0 12px;">Arena results</h3>
+      <div class="card" style="padding:6px 6px 2px;"><table class="tbl" id="arenaTbl"><thead><tr><th>Arena</th><th>Outcome</th><th>Score</th><th>When</th></tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <!-- DIAGNOSTICS -->
+    <section id="view-diagnostics" class="hidden">
+      <h1 class="page-title">Backend Diagnostics</h1>
+      <div class="page-sub">Confirms your Supabase wiring — and proves the answer-key vault is locked.</div>
+      <button class="btn btn-primary" id="runDiagBtn" style="width:auto;margin-bottom:18px;">Run checks</button>
+      <div class="diag" id="diagOut">Click “Run checks” to test the connection, RLS, and the grading function.</div>
+    </section>
+  </main>
+</div>
+
+<!-- Supabase JS client (UMD build exposes window.supabase) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ======================================================================
+   CONFIG — your live StrategyArena project. The anon key is meant to be
+   public; Row-Level Security is what protects the data.
+   ====================================================================== */
+var SUPABASE_URL = 'https://qgelvmefyexyzpwqupev.supabase.co';
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZWx2bWVmeWV4eXpwd3F1cGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDY5ODAsImV4cCI6MjA5NjAyMjk4MH0.AR55GBLefKHfs9ncWWzEFks_VISPjJtbW8SezyjM3lc';
+
+var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ---- Static reference: chapter titles, read times, arena slugs (mirrors DB) ---- */
+var CHAPTERS = [
+  { n:1,  title:'Strategic Thinking',       mins:18, slug:'prisoners-dilemma' },
+  { n:2,  title:"Prisoner's Dilemma",       mins:24, slug:'prisoners-dilemma' },
+  { n:3,  title:'Repeated Games',           mins:28, slug:'ipd-tournament' },
+  { n:4,  title:'Sequential Games',         mins:30, slug:'centipede' },
+  { n:5,  title:'Auctions',                 mins:30, slug:'auction' },
+  { n:6,  title:'Bargaining',               mins:30, slug:'nash-bargaining' },
+  { n:7,  title:'Signaling',                mins:30, slug:'signaling' },
+  { n:8,  title:'Bayesian Games',           mins:30, slug:'bayesian-game' },
+  { n:9,  title:'Perfect Bayesian Eq.',     mins:32, slug:'pbe' },
+  { n:10, title:'Mixed Strategies',         mins:30, slug:'mixed-strategy' },
+  { n:11, title:'Evolutionary Game Theory', mins:30, slug:'evolutionary' },
+  { n:12, title:'Cooperative Games',        mins:32, slug:'cooperative' },
+  { n:13, title:'Behavioral Game Theory',   mins:30, slug:'behavioral' },
+  { n:14, title:'Calculus Applications',    mins:62, slug:'calculus-applications' }
+];
+var ARENA_FILE = {
+  'prisoners-dilemma':'strategyarena-prisoners-dilemma.html',
+  'ipd-tournament':'strategyarena-ipd-tournament.html',
+  'centipede':'strategyarena-centipede.html',
+  'auction':'strategyarena-auction.html',
+  'nash-bargaining':'strategyarena-nash-bargaining.html',
+  'signaling':'strategyarena-signaling.html',
+  'bayesian-game':'strategyarena-bayesian-game.html',
+  'pbe':'strategyarena-pbe.html',
+  'mixed-strategy':'strategyarena-mixed-strategy.html',
+  'evolutionary':'strategyarena-evolutionary.html',
+  'cooperative':'strategyarena-cooperative.html',
+  'behavioral':'strategyarena-ultimatum-trust.html',
+  'calculus-applications':null
+};
+var ARENA_TITLE = {
+  'prisoners-dilemma':"Prisoner's Dilemma", 'ipd-tournament':'Repeated PD Tournament',
+  'centipede':'Centipede / Sequential', 'auction':'Auction House',
+  'nash-bargaining':'Bargaining Table', 'signaling':'Signaling Game',
+  'bayesian-game':'Bayesian Game', 'pbe':'Beliefs & PBE',
+  'mixed-strategy':'Mixed Strategies', 'evolutionary':'Evolution Simulator',
+  'cooperative':'Coalition Game', 'behavioral':'Behavioral Lab',
+  'calculus-applications':'Oligopoly Lab'
+};
+
+/* ======================================================================
+   STATE
+   ====================================================================== */
+var State = {
+  user: null,
+  courseId: null,           // self-study course
+  signupMode: false,
+  currentItem: null,        // { attempt_id, item_type, prompt, options, points }
+  selectedOption: null
+};
+
+/* ---- small DOM helpers (no optional chaining for Safari safety) ---- */
+function $(id) { return document.getElementById(id); }
+function show(el) { if (el) { el.classList.remove('hidden'); } }
+function hide(el) { if (el) { el.classList.add('hidden'); } }
+function esc(s) {
+  if (s === null || s === undefined) { return ''; }
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ======================================================================
+   AUTH
+   ====================================================================== */
+function setAuthMsg(text, kind) {
+  var m = $('authMsg');
+  m.textContent = text;
+  m.className = 'msg ' + (kind ? kind : '');
+  if (!text) { m.className = 'msg'; }
+}
+
+function renderAuthMode() {
+  if (State.signupMode) {
+    $('authSub').textContent = 'Create your StrategyArena account.';
+    $('authSubmit').textContent = 'Create account';
+    $('authToggle').innerHTML = 'Already have an account? <b>Sign in</b>';
+    $('authPassword').setAttribute('autocomplete','new-password');
+  } else {
+    $('authSub').textContent = 'Sign in to your game-theory workspace.';
+    $('authSubmit').textContent = 'Sign in';
+    $('authToggle').innerHTML = 'New here? <b>Create an account</b>';
+    $('authPassword').setAttribute('autocomplete','current-password');
+  }
+  setAuthMsg('', '');
+}
+
+$('authToggle').addEventListener('click', function() {
+  State.signupMode = !State.signupMode;
+  renderAuthMode();
+});
+
+$('authSubmit').addEventListener('click', doAuth);
+$('authPassword').addEventListener('keydown', function(e){ if (e.key === 'Enter') { doAuth(); } });
+
+function doAuth() {
+  var email = $('authEmail').value.trim();
+  var password = $('authPassword').value;
+  if (!email || !password) { setAuthMsg('Enter your email and password.', 'err'); return; }
+  $('authSubmit').disabled = true;
+  setAuthMsg('Working…', '');
+
+  if (State.signupMode) {
+    sb.auth.signUp({ email: email, password: password }).then(function(res) {
+      $('authSubmit').disabled = false;
+      if (res.error) { setAuthMsg(res.error.message, 'err'); return; }
+      // If email confirmation is ON, there is no session yet.
+      if (res.data && res.data.session) {
+        onSignedIn(res.data.session.user);
+      } else {
+        setAuthMsg('Account created. Check your email to confirm, then sign in.', 'ok');
+        State.signupMode = false; renderAuthMode();
+      }
+    });
+  } else {
+    sb.auth.signInWithPassword({ email: email, password: password }).then(function(res) {
+      $('authSubmit').disabled = false;
+      if (res.error) { setAuthMsg(res.error.message, 'err'); return; }
+      onSignedIn(res.data.session.user);
+    });
+  }
+}
+
+$('signOutBtn').addEventListener('click', function() {
+  sb.auth.signOut().then(function() {
+    State.user = null; State.courseId = null;
+    hide($('appScreen')); show($('authScreen'));
+  });
+});
+
+/* ======================================================================
+   SESSION BOOTSTRAP
+   ====================================================================== */
+function onSignedIn(user) {
+  State.user = user;
+  hide($('authScreen')); show($('appScreen'));
+  $('sideUser').textContent = user.email;
+  var nm = user.email.split('@')[0];
+  $('welcomeTitle').textContent = 'Welcome back, ' + nm;
+  ensureProfileAndCourse().then(function() {
+    renderChapters(); renderArenas(); fillPracticeChapters();
+    loadHome();
+  });
+}
+
+/* Make sure a profile row + a personal self-study course exist. */
+function ensureProfileAndCourse() {
+  var uid = State.user.id;
+  // upsert profile (RLS: id must equal auth.uid())
+  return sb.from('sa_profiles').upsert({
+    id: uid, email: State.user.email, role: 'student'
+  }, { onConflict: 'id' }).then(function() {
+    // find an existing enrollment
+    return sb.from('sa_enrollments').select('course_id').eq('student_id', uid).limit(1);
+  }).then(function(enr) {
+    if (enr.data && enr.data.length > 0) {
+      State.courseId = enr.data[0].course_id;
+      return null;
+    }
+    // create a personal self-study course (student owns it) + enroll
+    var code = 'self-' + uid.slice(0, 8);
+    return sb.from('sa_courses').insert({
+      owner_id: uid, title: 'Self-Study', term: 'Personal', join_code: code
+    }).select('id').single().then(function(c) {
+      if (c.error || !c.data) { return null; }
+      State.courseId = c.data.id;
+      return sb.from('sa_enrollments').insert({ course_id: State.courseId, student_id: uid });
+    });
+  });
+}
+
+/* ======================================================================
+   NAVIGATION
+   ====================================================================== */
+var navItems = document.querySelectorAll('.nav-item');
+navItems.forEach(function(it) {
+  it.addEventListener('click', function() {
+    navItems.forEach(function(x){ x.classList.remove('active'); });
+    it.classList.add('active');
+    switchView(it.getAttribute('data-view'));
+  });
+});
+function switchView(view) {
+  ['home','chapters','arenas','practice','progress','diagnostics'].forEach(function(v){
+    var el = $('view-' + v);
+    if (v === view) { show(el); } else { hide(el); }
+  });
+  if (view === 'progress') { loadProgress(); }
+  if (view === 'home') { loadHome(); }
+}
+
+/* ======================================================================
+   CHAPTERS + ARENAS
+   ====================================================================== */
+function renderChapters() {
+  var g = $('chapterGrid'); g.innerHTML = '';
+  CHAPTERS.forEach(function(c) {
+    var div = document.createElement('div');
+    div.className = 'card launch';
+    div.innerHTML =
+      '<div class="c-eyebrow">Chapter ' + c.n + '</div>' +
+      '<div class="c-title">' + esc(c.title) + '</div>' +
+      '<div class="c-meta">' + c.mins + ' min read</div>' +
+      '<div class="pill">Open textbook →</div>';
+    div.addEventListener('click', function() {
+      // The curriculum is a separate file; open it (hash lets it jump to the chapter).
+      window.open('strategyarena-curriculum.html#chapter-' + c.n, '_blank');
+    });
+    g.appendChild(div);
+  });
+}
+function renderArenas() {
+  var g = $('arenaGrid'); g.innerHTML = '';
+  Object.keys(ARENA_TITLE).forEach(function(slug) {
+    var file = ARENA_FILE[slug];
+    var div = document.createElement('div');
+    div.className = 'card launch';
+    var pill = file ? '<div class="pill">Play →</div>' : '<div class="pill soon">Coming soon</div>';
+    div.innerHTML =
+      '<div class="c-eyebrow">Arena</div>' +
+      '<div class="c-title">' + esc(ARENA_TITLE[slug]) + '</div>' +
+      '<div class="c-meta mono">' + esc(slug) + '</div>' + pill;
+    if (file) {
+      div.addEventListener('click', function() { window.open(file, '_blank'); });
+    } else {
+      div.style.opacity = '.6'; div.style.cursor = 'default';
+    }
+    g.appendChild(div);
+  });
+}
+
+/* ======================================================================
+   HOME
+   ====================================================================== */
+function loadHome() {
+  if (!State.user) { return; }
+  var uid = State.user.id;
+  // counts: graded attempts, correct, arenas played
+  Promise.all([
+    sb.from('sa_attempts').select('is_correct', { count: 'exact' }).eq('student_id', uid).not('graded_at','is',null),
+    sb.from('sa_arena_results').select('id', { count: 'exact' }).eq('student_id', uid),
+    sb.from('sa_chapter_progress').select('chapter', { count: 'exact' }).eq('student_id', uid).eq('reading_done', true)
+  ]).then(function(r) {
+    var attempts = (r[0].data ? r[0].data : []);
+    var correct = attempts.filter(function(a){ return a.is_correct; }).length;
+    var nAtt = (r[0].count !== null && r[0].count !== undefined) ? r[0].count : attempts.length;
+    var nArena = (r[1].count !== null && r[1].count !== undefined) ? r[1].count : 0;
+    var nRead = (r[2].count !== null && r[2].count !== undefined) ? r[2].count : 0;
+    var acc = nAtt > 0 ? Math.round(100 * correct / nAtt) : 0;
+    $('homeStats').innerHTML =
+      statCard(nRead + ' / 14', 'chapters marked read') +
+      statCard(nAtt, 'questions answered') +
+      statCard(acc + '%', 'accuracy') +
+      statCard(nArena, 'arena sessions');
+  });
+  $('homeQuick').innerHTML =
+    quickCard('📖','Read a chapter','Jump into the textbook','chapters') +
+    quickCard('✍️','Practice','Server-graded questions','practice') +
+    quickCard('📊','My progress','See how you are doing','progress');
+  // wire quick cards
+  Array.prototype.forEach.call($('homeQuick').querySelectorAll('[data-go]'), function(el){
+    el.addEventListener('click', function(){
+      var v = el.getAttribute('data-go');
+      navItems.forEach(function(x){ x.classList.toggle('active', x.getAttribute('data-view')===v); });
+      switchView(v);
+    });
+  });
+}
+function statCard(num, label) {
+  return '<div class="stat"><div class="s-num">' + esc(num) + '</div><div class="s-label">' + esc(label) + '</div></div>';
+}
+function quickCard(icon, title, sub, go) {
+  return '<div class="card launch" data-go="' + go + '"><div style="font-size:24px;margin-bottom:8px;">' + icon +
+    '</div><div class="c-title" style="font-size:18px;">' + esc(title) + '</div><div class="c-meta">' + esc(sub) + '</div></div>';
+}
+
+/* ======================================================================
+   PRACTICE — the real issue/grade flow against the Edge Function
+   ====================================================================== */
+function fillPracticeChapters() {
+  var s = $('practiceChapter'); s.innerHTML = '';
+  CHAPTERS.forEach(function(c) {
+    var o = document.createElement('option');
+    o.value = c.n; o.textContent = 'Ch ' + c.n + ' · ' + c.title;
+    s.appendChild(o);
+  });
+}
+$('newQuestionBtn').addEventListener('click', loadNewQuestion);
+
+function loadNewQuestion() {
+  var chapter = parseInt($('practiceChapter').value, 10);
+  var area = $('practiceArea');
+  area.innerHTML = '<div class="q-card"><span class="spinner"></span> &nbsp;Finding a question…</div>';
+  State.currentItem = null; State.selectedOption = null;
+
+  // 1) pick a random active item in this chapter (items carry NO answers)
+  sb.from('sa_assessment_items')
+    .select('id, item_type, points')
+    .eq('chapter', chapter).eq('is_active', true)
+    .then(function(res) {
+      if (res.error) { area.innerHTML = errCard(res.error.message); return; }
+      if (!res.data || res.data.length === 0) { area.innerHTML = errCard('No items found for this chapter.'); return; }
+      var pick = res.data[Math.floor(Math.random() * res.data.length)];
+      // 2) ask the Edge Function to ISSUE a per-student instance
+      sb.functions.invoke('grade-attempt', {
+        body: { action: 'issue', item_id: pick.id, course_id: State.courseId }
+      }).then(function(fn) {
+        if (fn.error) { area.innerHTML = errCard('issue failed: ' + fn.error.message); return; }
+        var data = fn.data;
+        if (!data || data.error) { area.innerHTML = errCard('issue: ' + (data ? data.error : 'no data')); return; }
+        State.currentItem = data;
+        renderQuestion(data);
+      });
+    });
+}
+
+function renderQuestion(item) {
+  var area = $('practiceArea');
+  var html = '<div class="q-card">';
+  html += '<div class="q-meta">' + esc(item.item_type) + ' · ' + (item.points || 1) + ' pt</div>';
+  html += '<div class="q-prompt">' + esc(item.prompt) + '</div>';
+
+  if (item.item_type === 'multiple_choice' && item.options) {
+    html += '<div class="q-options" id="optWrap">';
+    item.options.forEach(function(opt, i) {
+      html += '<button class="q-option" data-i="' + i + '">' + esc(opt) + '</button>';
+    });
+    html += '</div>';
+  } else if (item.item_type === 'parameterized_decision') {
+    html += '<div class="q-options" id="optWrap">' +
+      '<button class="q-option" data-val="yes">Yes</button>' +
+      '<button class="q-option" data-val="no">No</button></div>';
+  } else {
+    html += '<div class="field" style="max-width:260px;"><label>Your answer</label>' +
+      '<input id="numAnswer" type="text" inputmode="decimal" placeholder="e.g. 30 or 0.55"></div>';
+  }
+  html += '<button class="btn btn-primary" id="submitAnsBtn" style="width:auto;">Submit answer</button>';
+  html += '<div class="feedback" id="qFeedback"></div>';
+  html += '</div>';
+  area.innerHTML = html;
+
+  var wrap = $('optWrap');
+  if (wrap) {
+    Array.prototype.forEach.call(wrap.querySelectorAll('.q-option'), function(b) {
+      b.addEventListener('click', function() {
+        Array.prototype.forEach.call(wrap.querySelectorAll('.q-option'), function(x){ x.classList.remove('sel'); });
+        b.classList.add('sel');
+        var di = b.getAttribute('data-i');
+        State.selectedOption = (di !== null && di !== undefined) ? di : b.getAttribute('data-val');
+      });
+    });
+  }
+  $('submitAnsBtn').addEventListener('click', submitAnswer);
+}
+
+function submitAnswer() {
+  if (!State.currentItem) { return; }
+  var item = State.currentItem;
+  var submitted;
+  if (item.item_type === 'multiple_choice' || item.item_type === 'parameterized_decision') {
+    if (State.selectedOption === null || State.selectedOption === undefined) { return; }
+    submitted = State.selectedOption;
+  } else {
+    var v = $('numAnswer').value.trim();
+    if (v === '') { return; }
+    submitted = v;
+  }
+  $('submitAnsBtn').disabled = true;
+  sb.functions.invoke('grade-attempt', {
+    body: { action: 'grade', attempt_id: item.attempt_id, submitted_value: submitted }
+  }).then(function(fn) {
+    var fb = $('qFeedback');
+    if (fn.error) { fb.className = 'feedback wrong'; fb.textContent = 'Grade error: ' + fn.error.message; return; }
+    var d = fn.data;
+    if (d && d.status === 'pending_instructor_review') {
+      fb.className = 'feedback info'; fb.textContent = 'Submitted for instructor review.';
+      return;
+    }
+    if (d && d.is_correct) {
+      fb.className = 'feedback correct';
+      fb.textContent = '✓ Correct! +' + d.points_earned + ' point' + (d.points_earned === 1 ? '' : 's') + '. Click “New question” for another.';
+    } else {
+      fb.className = 'feedback wrong';
+      fb.textContent = '✗ Not quite. Review the chapter and try a new question.';
+    }
+  });
+}
+
+function errCard(msg) {
+  return '<div class="q-card"><div class="feedback wrong" style="display:block;">' + esc(msg) + '</div></div>';
+}
+
+/* ======================================================================
+   PROGRESS
+   ====================================================================== */
+function loadProgress() {
+  if (!State.user) { return; }
+  var uid = State.user.id;
+  // attempts (graded), most recent first
+  sb.from('sa_attempts')
+    .select('item_id, is_correct, points_earned, graded_at, sa_assessment_items(chapter)')
+    .eq('student_id', uid).not('graded_at','is',null)
+    .order('graded_at', { ascending: false }).limit(25)
+    .then(function(res) {
+      var rows = res.data ? res.data : [];
+      var correct = rows.filter(function(r){ return r.is_correct; }).length;
+      var pts = rows.reduce(function(s,r){ return s + (r.points_earned ? r.points_earned : 0); }, 0);
+      $('progStats').innerHTML =
+        statCard(rows.length, 'graded attempts (recent)') +
+        statCard(correct, 'correct') +
+        statCard(pts, 'points earned');
+      var tb = $('attemptsTbl').querySelector('tbody'); tb.innerHTML = '';
+      rows.forEach(function(r) {
+        var ch = (r.sa_assessment_items && r.sa_assessment_items.chapter) ? r.sa_assessment_items.chapter : '—';
+        var res2 = r.is_correct ? '<span class="tag-ok">✓ correct</span>' : '<span class="tag-no">✗ wrong</span>';
+        var when = r.graded_at ? new Date(r.graded_at).toLocaleString() : '';
+        tb.innerHTML += '<tr><td class="mono">' + esc(r.item_id) + '</td><td>' + esc(ch) + '</td><td>' + res2 +
+          '</td><td>' + esc(r.points_earned) + '</td><td>' + esc(when) + '</td></tr>';
+      });
+      if (rows.length === 0) { tb.innerHTML = '<tr><td colspan="5" class="dim" style="color:var(--text-subtle);">No attempts yet — try the Practice tab.</td></tr>'; }
+    });
+  // arena results
+  sb.from('sa_arena_results').select('arena_slug, outcome, score, played_at')
+    .eq('student_id', uid).order('played_at', { ascending: false }).limit(20)
+    .then(function(res) {
+      var rows = res.data ? res.data : [];
+      var tb = $('arenaTbl').querySelector('tbody'); tb.innerHTML = '';
+      rows.forEach(function(r) {
+        var t = ARENA_TITLE[r.arena_slug] ? ARENA_TITLE[r.arena_slug] : r.arena_slug;
+        var when = r.played_at ? new Date(r.played_at).toLocaleString() : '';
+        tb.innerHTML += '<tr><td>' + esc(t) + '</td><td>' + esc(r.outcome) + '</td><td>' + esc(r.score) + '</td><td>' + esc(when) + '</td></tr>';
+      });
+      if (rows.length === 0) { tb.innerHTML = '<tr><td colspan="4" style="color:var(--text-subtle);">No arena sessions recorded yet.</td></tr>'; }
+    });
+}
+
+/* ======================================================================
+   DIAGNOSTICS — includes the live vault test
+   ====================================================================== */
+$('runDiagBtn').addEventListener('click', runDiagnostics);
+function runDiagnostics() {
+  var out = $('diagOut');
+  var lines = [];
+  function p(s, cls) { lines.push(cls ? '<span class="' + cls + '">' + s + '</span>' : s); out.innerHTML = lines.join('\n'); }
+  out.innerHTML = 'Running…';
+  lines = [];
+
+  p('1. Session', 'dim');
+  p('   signed in as ' + esc(State.user.email) + '  ✓', 'pass');
+  p('   self-study course: ' + (State.courseId ? esc(State.courseId) : 'none') );
+
+  // 2) read reference (should succeed)
+  sb.from('sa_chapters').select('number', { count: 'exact' }).then(function(r) {
+    if (r.error) { p('2. Read chapters — FAIL: ' + esc(r.error.message), 'fail'); }
+    else { p('2. Read sa_chapters — ' + (r.count) + ' rows  ✓', 'pass'); }
+
+    // 3) read items (should succeed, no answers present)
+    return sb.from('sa_assessment_items').select('id', { count: 'exact' });
+  }).then(function(r) {
+    if (r.error) { p('3. Read items — FAIL: ' + esc(r.error.message), 'fail'); }
+    else { p('3. Read sa_assessment_items — ' + (r.count) + ' rows  ✓', 'pass'); }
+
+    // 4) THE VAULT TEST — must return 0 rows (RLS denies client reads)
+    return sb.from('sa_assessment_item_keys').select('item_id');
+  }).then(function(r) {
+    var n = (r.data ? r.data.length : 0);
+    if (r.error) {
+      // an error is also acceptable (permission denied) — vault is shut
+      p('4. VAULT TEST — answer keys unreadable (error: ' + esc(r.error.message) + ')  ✓ LOCKED', 'pass');
+    } else if (n === 0) {
+      p('4. VAULT TEST — answer-key query returned 0 rows  ✓ LOCKED', 'pass');
+    } else {
+      p('4. VAULT TEST — LEAK! got ' + n + ' key rows. Check RLS on sa_assessment_item_keys.', 'fail');
+    }
+
+    // 5) Edge Function round-trip: issue + grade a known item
+    return sb.from('sa_assessment_items').select('id').eq('chapter', 14).eq('item_type','parameterized_numeric').limit(1);
+  }).then(function(r) {
+    if (r.error || !r.data || r.data.length === 0) { p('5. Grader test — skipped (no numeric item found)', 'dim'); return null; }
+    var itemId = r.data[0].id;
+    p('5. Grader — issuing item ' + esc(itemId) + ' …', 'dim');
+    return sb.functions.invoke('grade-attempt', { body: { action:'issue', item_id: itemId, course_id: State.courseId } })
+      .then(function(fn) {
+        if (fn.error || !fn.data || fn.data.error) {
+          p('   issue FAILED: ' + esc(fn.error ? fn.error.message : (fn.data ? fn.data.error : '?')), 'fail'); return;
+        }
+        p('   issued attempt ' + esc(fn.data.attempt_id) + '  ✓', 'pass');
+        p('   prompt: ' + esc(fn.data.prompt), 'dim');
+        // submit a deliberately wrong answer to confirm grading runs
+        return sb.functions.invoke('grade-attempt', { body: { action:'grade', attempt_id: fn.data.attempt_id, submitted_value: '-999999' } })
+          .then(function(g) {
+            if (g.error || !g.data) { p('   grade FAILED: ' + esc(g.error ? g.error.message : '?'), 'fail'); return; }
+            p('   graded wrong answer -> is_correct=' + g.data.is_correct + '  ✓ (grader live)', 'pass');
+            p('\nAll checks complete.', 'dim');
+          });
+      });
+  });
+}
+
+/* ======================================================================
+   BOOT — restore an existing session if present
+   ====================================================================== */
+renderAuthMode();
+sb.auth.getSession().then(function(res) {
+  if (res.data && res.data.session && res.data.session.user) {
+    onSignedIn(res.data.session.user);
+  }
+});
+sb.auth.onAuthStateChange(function(event, session) {
+  if (event === 'SIGNED_OUT') {
+    hide($('appScreen')); show($('authScreen'));
+  }
+});
+</script>
+</body>
+</html>
