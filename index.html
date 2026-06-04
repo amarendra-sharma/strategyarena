@@ -260,6 +260,7 @@
       <div class="page-sub">Your strategic-thinking workspace. Pick up where you left off.</div>
       <div class="stat-row" id="homeStats"></div>
       <div class="grid grid-3" id="homeQuick"></div>
+      <div id="homeCourses"></div>
     </section>
 
     <!-- CHAPTERS -->
@@ -425,12 +426,17 @@ function enterApp(user){
   if(role==='instructor' || role==='admin'){ show($('teachGroup')); } else { hide($('teachGroup')); }
   if(role==='admin'){ show($('adminGroup')); } else { hide($('adminGroup')); }
   // student self-study provisioning (own course for practice/progress)
-  ensureProfileAndCourse().then(function(){
+  // platform settings (needed by the subscribe prompt for everyone) + access
+  loadPlatformSettings();
+  resolveAccess().then(function(){
+    // student self-study provisioning (own course for practice/progress)
+    return ensureProfileAndCourse();
+  }).then(function(){
     renderChapters(); renderArenas(); fillPracticeChapters();
+    maybeHandleInboundCourse();
   });
   // teaching data (only matters if they teach, but harmless otherwise)
   if(role==='instructor' || role==='admin'){
-    loadPlatformSettings();
     loadCourses().then(function(){ switchView('home'); });
   } else {
     switchView('home');
@@ -1070,20 +1076,100 @@ function loadStaff(){
   });
 }
 
+/* ---- Access gating: Ch1-2 + Prisoner's Dilemma arena are free; rest needs a sub ---- */
+var FREE_CHAPTERS = { 1:true, 2:true };
+var FREE_ARENAS = { 'prisoners-dilemma':true };
+function resolveAccess() {
+  // Cache on State.hasAccess. Staff always have access. Otherwise true if the
+  // student has an active, non-expired subscription in any enrolled course.
+  if (State.role === 'admin' || State.role === 'instructor') { State.hasAccess = true; return Promise.resolve(true); }
+  var uid = State.user.id;
+  return sb.from('sa_subscriptions').select('status,expires_at').eq('student_id', uid).eq('status','active').then(function(res){
+    var rows = res.data ? res.data : [];
+    var now = Date.now();
+    var ok = false, i;
+    for (i = 0; i < rows.length; i++) {
+      var exp = rows[i].expires_at ? new Date(rows[i].expires_at).getTime() : null;
+      if (exp === null || exp > now) { ok = true; break; }
+    }
+    State.hasAccess = ok;
+    return ok;
+  }).catch(function(){ State.hasAccess = false; return false; });
+}
+function chapterLocked(n) { if (State.hasAccess) { return false; } return !FREE_CHAPTERS[n]; }
+function arenaLocked(slug) { if (State.hasAccess) { return false; } return !FREE_ARENAS[slug]; }
+function openSubscribePrompt(whatLabel) {
+  var link = State.settings ? State.settings.stripe_link : '';
+  var price = State.settings ? State.settings.price_cents : 0;
+  var cur = State.settings ? State.settings.currency : 'usd';
+  var m = document.createElement('div'); m.className = 'modal-bg';
+  var priceStr = (price ? money(price, cur) : '');
+  m.innerHTML = '<div class="modal" style="max-width:460px;text-align:center;">' +
+    '<div style="font-size:30px;margin-bottom:8px;">🔒</div>' +
+    '<h2 style="margin-bottom:8px;">Subscribe to unlock</h2>' +
+    '<p style="color:var(--text-muted);font-size:14px;margin-bottom:18px;">' + esc(whatLabel) + ' is part of the full course. Chapters 1–2 and the Prisoner\'s Dilemma arena are free to preview' + (priceStr ? ('; full access is ' + esc(priceStr) + ' for the course.') : '.') + '</p>' +
+    (link ? ('<a class="btn btn-primary" href="' + esc(link) + '" target="_blank" style="width:100%;margin-bottom:10px;">Subscribe now</a>') : '<div class="msg err" style="display:block;">No payment link is configured yet. Please contact your instructor.</div>') +
+    '<p style="font-size:12px;color:var(--text-subtle);margin-bottom:14px;">After paying, your access is activated by your instructor (or automatically once payment is confirmed).</p>' +
+    '<button class="btn btn-ghost" id="subClose" style="width:100%;">Maybe later</button></div>';
+  $('modalHost').appendChild(m);
+  function close(){ $('modalHost').innerHTML=''; }
+  $('subClose').addEventListener('click', close);
+  m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
+}
+
 /* ============ STUDENT-SIDE VIEWS (merged from the student app) ============ */
+
+/* ---- Join a professor's course by code, with optional ?course=CODE URL param ---- */
+function joinCourseByCode(code, cb) {
+  code = (code || '').trim();
+  if (!code) { if (cb) { cb('Enter a join code.'); } return; }
+  var uid = State.user.id;
+  sb.from('sa_courses').select('id,title,owner_id,requires_payment').eq('join_code', code).maybeSingle().then(function(res) {
+    if (res.error || !res.data) { if (cb) { cb('No course found with that code.'); } return; }
+    var course = res.data;
+    if (course.owner_id === uid) { if (cb) { cb('That is your own course.'); } return; }
+    // enroll (RLS enroll_self_insert: student_id = self)
+    sb.from('sa_enrollments').upsert({ course_id: course.id, student_id: uid, status: 'active' }, { onConflict: 'course_id,student_id' }).then(function(ins) {
+      if (ins.error) { if (cb) { cb(ins.error.message); } return; }
+      // create a pending subscription if the course requires payment (student can't self-activate)
+      if (course.requires_payment) {
+        sb.from('sa_subscriptions').upsert({ student_id: uid, course_id: course.id, status: 'pending', source: 'self_report' }, { onConflict: 'student_id,course_id' }).then(function() {
+          if (cb) { cb(null, course); }
+        });
+      } else {
+        if (cb) { cb(null, course); }
+      }
+    });
+  });
+}
+
+function maybeHandleInboundCourse() {
+  // Support arriving via ...app.html?course=CODE (e.g. a MacroNations redirect link).
+  var m = window.location.search.match(/[?&]course=([^&]+)/);
+  if (!m) { return; }
+  var code = decodeURIComponent(m[1]);
+  joinCourseByCode(code, function(err, course) {
+    if (!err && course) {
+      // refresh enrollment-derived state silently
+      ensureProfileAndCourse();
+    }
+  });
+}
 function ensureProfileAndCourse() {
   var uid = State.user.id;
-  // upsert profile (RLS: id must equal auth.uid())
-  return sb.from('sa_profiles').upsert({
-    id: uid, email: State.user.email, role: 'student'
-  }, { onConflict: 'id' }).then(function() {
-    // find an existing enrollment
-    return sb.from('sa_enrollments').select('course_id').eq('student_id', uid).limit(1);
-  }).then(function(enr) {
-    if (enr.data && enr.data.length > 0) {
-      State.selfCourseId = enr.data[0].course_id;
-      return null;
+  // profile row already upserted in onSignedIn (without role, so admin/instructor
+  // roles are never clobbered). Go straight to resolving the student's course.
+  return sb.from('sa_enrollments').select('course_id, sa_courses(owner_id)').eq('student_id', uid).then(function(enr) {
+    var rows = enr.data ? enr.data : [];
+    // Prefer a self-study course (one the student owns); else any enrollment.
+    var selfRow = null, anyRow = null, i;
+    for (i = 0; i < rows.length; i++) {
+      anyRow = rows[i];
+      var oc = rows[i].sa_courses ? rows[i].sa_courses.owner_id : null;
+      if (oc === uid) { selfRow = rows[i]; break; }
     }
+    if (selfRow) { State.selfCourseId = selfRow.course_id; return null; }
+    if (anyRow) { State.selfCourseId = anyRow.course_id; return null; }
     // create a personal self-study course (student owns it) + enroll
     var code = 'self-' + uid.slice(0, 8);
     return sb.from('sa_courses').insert({
@@ -1099,15 +1185,17 @@ function ensureProfileAndCourse() {
 function renderChapters() {
   var g = $('chapterGrid'); g.innerHTML = '';
   STUDENT_CHAPTERS.forEach(function(c) {
+    var locked = chapterLocked(c.n);
     var div = document.createElement('div');
     div.className = 'card launch';
+    var pill = locked ? '<div class="pill soon">🔒 Subscribe to unlock</div>' : '<div class="pill">Open textbook →</div>';
     div.innerHTML =
-      '<div class="c-eyebrow">Chapter ' + c.n + '</div>' +
+      '<div class="c-eyebrow">Chapter ' + c.n + (FREE_CHAPTERS[c.n] ? ' · Free' : '') + '</div>' +
       '<div class="c-title">' + esc(c.title) + '</div>' +
-      '<div class="c-meta">' + c.mins + ' min read</div>' +
-      '<div class="pill">Open textbook →</div>';
+      '<div class="c-meta">' + c.mins + ' min read</div>' + pill;
+    if (locked) { div.style.opacity = '.7'; }
     div.addEventListener('click', function() {
-      // The curriculum is a separate file; open it (hash lets it jump to the chapter).
+      if (chapterLocked(c.n)) { openSubscribePrompt('Chapter ' + c.n + ', ' + c.title); return; }
       window.open('strategyarena-curriculum.html#chapter-' + c.n, '_blank');
     });
     g.appendChild(div);
@@ -1118,15 +1206,22 @@ function renderArenas() {
   var g = $('arenaGrid'); g.innerHTML = '';
   Object.keys(ARENA_TITLE).forEach(function(slug) {
     var file = ARENA_FILE[slug];
+    var locked = arenaLocked(slug);
     var div = document.createElement('div');
     div.className = 'card launch';
-    var pill = file ? '<div class="pill">Play →</div>' : '<div class="pill soon">Coming soon</div>';
+    var pill;
+    if (!file) { pill = '<div class="pill soon">Coming soon</div>'; }
+    else if (locked) { pill = '<div class="pill soon">🔒 Subscribe to unlock</div>'; }
+    else { pill = '<div class="pill">Play →</div>'; }
     div.innerHTML =
-      '<div class="c-eyebrow">Arena</div>' +
+      '<div class="c-eyebrow">Arena' + (FREE_ARENAS[slug] ? ' · Free' : '') + '</div>' +
       '<div class="c-title">' + esc(ARENA_TITLE[slug]) + '</div>' +
       '<div class="c-meta mono">' + esc(slug) + '</div>' + pill;
-    if (file) {
+    if (file && !locked) {
       div.addEventListener('click', function() { window.open(file, '_blank'); });
+    } else if (file && locked) {
+      div.style.opacity = '.7';
+      div.addEventListener('click', function() { openSubscribePrompt(ARENA_TITLE[slug] + ' arena'); });
     } else {
       div.style.opacity = '.6'; div.style.cursor = 'default';
     }
@@ -1158,14 +1253,59 @@ function loadHome() {
   $('homeQuick').innerHTML =
     quickCard('📖','Read a chapter','Jump into the textbook','chapters') +
     quickCard('✍️','Practice','Server-graded questions','practice') +
-    quickCard('📊','My progress','See how you are doing','progress');
+    quickCard('📊','My progress','See how you are doing','progress') +
+    '<div class="card launch" id="joinCourseCard"><div style="font-size:24px;margin-bottom:8px;">🎓</div><div class="c-title" style="font-size:18px;">Join a course</div><div class="c-meta">Enter your professor\'s join code</div></div>';
   // wire quick cards
   Array.prototype.forEach.call($('homeQuick').querySelectorAll('[data-go]'), function(el){
     el.addEventListener('click', function(){
       var v = el.getAttribute('data-go');
-      navItems.forEach(function(x){ x.classList.toggle('active', x.getAttribute('data-view')===v); });
+      Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(x){ x.classList.toggle('active', x.getAttribute('data-view')===v); });
       switchView(v);
     });
+  });
+  var jc = $('joinCourseCard');
+  if (jc) { jc.addEventListener('click', openJoinCourse); }
+  // show the student's enrolled professor courses (if any)
+  loadMyCourses();
+}
+
+function openJoinCourse() {
+  var m = document.createElement('div'); m.className = 'modal-bg';
+  m.innerHTML = '<div class="modal" style="max-width:440px;"><h2>Join a course</h2><div id="jcMsg" class="msg"></div>' +
+    '<div class="field"><label>Join code from your professor</label><input id="jcCode" placeholder="strat-xxxxx"></div>' +
+    '<div class="inline-actions" style="justify-content:flex-end;"><button class="btn btn-ghost" id="jcCancel">Cancel</button><button class="btn btn-primary" id="jcJoin">Join</button></div></div>';
+  $('modalHost').appendChild(m);
+  function close(){ $('modalHost').innerHTML=''; }
+  $('jcCancel').addEventListener('click', close);
+  m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
+  $('jcJoin').addEventListener('click', function(){
+    $('jcJoin').disabled = true;
+    joinCourseByCode($('jcCode').value, function(err, course){
+      $('jcJoin').disabled = false;
+      var el = $('jcMsg');
+      if (err) { el.textContent = err; el.className = 'msg err'; return; }
+      el.textContent = 'Joined "' + (course.title || 'course') + '". ' + (course.requires_payment ? 'Subscribe to unlock all content.' : ''); el.className = 'msg ok';
+      setTimeout(function(){ close(); loadHome(); }, 1200);
+    });
+  });
+}
+
+function loadMyCourses() {
+  if (!$('homeCourses')) { return; }
+  var uid = State.user.id;
+  sb.from('sa_enrollments').select('status, sa_courses(id,title,term,owner_id,requires_payment)').eq('student_id', uid).eq('status','active').then(function(res){
+    var rows = res.data ? res.data : [];
+    // only professor courses (not the student's own self-study)
+    var prof = rows.filter(function(r){ return r.sa_courses && r.sa_courses.owner_id !== uid; });
+    if (prof.length === 0) { $('homeCourses').innerHTML = ''; return; }
+    var html = '<h3 style="font-size:20px;margin:26px 0 12px;">My courses</h3><div class="grid grid-3">';
+    prof.forEach(function(r){
+      var c = r.sa_courses;
+      html += '<div class="card"><div class="c-eyebrow">'+esc(c.term||'Course')+'</div><div class="c-title">'+esc(c.title)+'</div>' +
+        '<div class="c-meta">'+(c.requires_payment?'Paid access':'Free')+'</div></div>';
+    });
+    html += '</div>';
+    $('homeCourses').innerHTML = html;
   });
 }
 
