@@ -1550,6 +1550,7 @@
   <main class="main">
     <div class="reading-bar">
       <div style="display: flex; align-items: center; gap: 14px;">
+        <a href="index.html" class="sa-back-btn" title="Back to menu" style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:9px;border:1px solid var(--border-strong);color:var(--text-muted);font-size:13px;text-decoration:none;background:var(--surface);transition:all .12s;">&#8592; Menu</a>
         <button class="menu-toggle" id="menuToggle">☰</button>
         <div class="reading-bar-meta">
           <span><span class="pulse-dot"></span> &nbsp;Reading mode</span>
@@ -1601,11 +1602,10 @@
         <h1 class="chapter-title">About the Author</h1>
 
         <div style="display:flex;gap:26px;align-items:flex-start;margin:28px 0 32px;flex-wrap:wrap;">
-          <div style="flex-shrink:0;width:128px;height:128px;border-radius:18px;background:linear-gradient(135deg,rgba(124,92,255,.25),rgba(155,123,255,.08));border:1px solid var(--border-strong);display:grid;place-items:center;font-family:'Instrument Serif',serif;font-size:46px;color:var(--violet);">AS</div>
+          <div style="flex-shrink:0;width:128px;height:128px;border-radius:18px;background:linear-gradient(135deg,rgba(124,92,255,.25),rgba(155,123,255,.08));border:1px solid var(--border-strong);display:grid;place-items:center;font-family:'Instrument Serif',serif;font-size:46px;color:var(--violet);overflow:hidden;" id="authorAvatar">AS</div>
           <div style="flex:1;min-width:240px;">
-            <div style="font-family:'Instrument Serif',serif;font-size:30px;color:var(--text-bright);line-height:1.1;">Amarendra Sharma, Ph.D.</div>
-            <div style="font-size:14.5px;color:var(--violet);margin:6px 0 2px;">Professor of Economics, Binghamton University</div>
-            <div style="font-size:13.5px;color:var(--text-muted);">Founder, MacroNations &middot; Founder, StrategyArena</div>
+            <div style="font-family:'Instrument Serif',serif;font-size:30px;color:var(--text-bright);line-height:1.1;" id="authorName">Amarendra Sharma, Ph.D.</div>
+            <div style="font-size:13.5px;color:var(--text-muted);margin-top:6px;" id="authorSubMeta">Founder, MacroNations &middot; Founder, StrategyArena</div>
           </div>
         </div>
 
@@ -9571,6 +9571,66 @@ document.addEventListener('DOMContentLoaded', () => {
   updateSidebarProgress();
   renderMath();
 });
+</script>
+
+<!-- Author bio loader: pulls custom bio/photo from platform settings (admin-editable) -->
+<script>
+(function () {
+  function applyBio(row) {
+    if (!row) { return; }
+    if (row.author_name) {
+      var nm = document.getElementById('authorName');
+      if (nm) { nm.textContent = row.author_name; }
+    }
+    if (row.author_subtitle !== undefined && row.author_subtitle !== null) {
+      var sub = document.getElementById('authorSubMeta');
+      // only override if admin actually set a subtitle; blank keeps the founder line
+      if (sub && row.author_subtitle !== '') { sub.textContent = row.author_subtitle; }
+    }
+    if (row.author_photo_url) {
+      var av = document.getElementById('authorAvatar');
+      if (av) {
+        av.textContent = '';
+        av.style.backgroundImage = 'url(' + row.author_photo_url + ')';
+        av.style.backgroundSize = 'cover';
+        av.style.backgroundPosition = 'center';
+      }
+    }
+    if (row.author_bio_html) {
+      // Replace the built-in bio paragraphs with the custom HTML, if provided.
+      var art = document.querySelector('article[data-chapter="-1"] .reading');
+      if (art) {
+        var keep = art.querySelector('.chapter-meta');
+        var title = art.querySelector('.chapter-title');
+        var headerBlock = art.querySelector('div[style*="display:flex"]');
+        // Build a fresh body: meta + title + author header + custom bio.
+        var custom = document.createElement('div');
+        custom.innerHTML = row.author_bio_html;
+        // Remove old prose paragraphs/key-idea/also-by blocks (everything after header)
+        var nodes = Array.prototype.slice.call(art.children);
+        var afterHeader = false;
+        nodes.forEach(function (n) {
+          if (n === headerBlock) { afterHeader = true; return; }
+          if (afterHeader) { art.removeChild(n); }
+        });
+        art.appendChild(custom);
+      }
+    }
+  }
+  function tryLoad() {
+    if (!window.SAProgress || !window.SAProgress._client) { return; }
+    var sb = window.SAProgress._client;
+    sb.from('sa_platform_settings').select('author_name,author_subtitle,author_bio_html,author_photo_url').eq('id', 1).single()
+      .then(function (res) { if (res && res.data) { applyBio(res.data); } })
+      .catch(function () {});
+  }
+  // sa-progress.js loads just above; give it a tick to define the client.
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(tryLoad, 300);
+  } else {
+    window.addEventListener('DOMContentLoaded', function () { setTimeout(tryLoad, 300); });
+  }
+})();
 </script>
 
 </body>
