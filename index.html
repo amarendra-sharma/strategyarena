@@ -3,126 +3,124 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StrategyArena — Home</title>
+<title>StrategyArena</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
 <style>
-  /* ====================================================================
-     StrategyArena shell — matches the curriculum dark theme exactly.
-     All CSS in this single <style> block (cross-browser constraint).
-     ==================================================================== */
   :root {
-    --bg: #0E0C20;
-    --bg-deep: #0A0818;
-    --surface: rgba(255,255,255,.025);
-    --surface-strong: rgba(255,255,255,.04);
-    --border: rgba(255,255,255,.07);
-    --border-strong: rgba(255,255,255,.12);
-    --text: #D4D1E8;
-    --text-bright: #F0EEFA;
-    --text-muted: rgba(212,209,232,.6);
-    --text-subtle: rgba(212,209,232,.4);
-    --violet: #9B7BFF;
-    --violet-deep: #7C5CFF;
-    --amber: #FBBF24;
-    --green: #34D399;
-    --rose: #FB7185;
+    --bg:#0E0C20; --bg-deep:#0A0818; --surface:rgba(255,255,255,.025);
+    --surface-strong:rgba(255,255,255,.04); --border:rgba(255,255,255,.07);
+    --border-strong:rgba(255,255,255,.12); --text:#D4D1E8; --text-bright:#F0EEFA;
+    --text-muted:rgba(212,209,232,.6); --text-subtle:rgba(212,209,232,.4);
+    --violet:#9B7BFF; --violet-deep:#7C5CFF; --amber:#FBBF24; --green:#34D399; --rose:#FB7185;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { background: var(--bg); }
-  body {
-    font-family: 'Inter', system-ui, sans-serif;
-    color: var(--text);
-    -webkit-font-smoothing: antialiased;
-    line-height: 1.6;
-    min-height: 100vh;
-  }
-  ::selection { background: rgba(124,92,255,.4); color: #fff; }
-  body::before {
-    content: '';
-    position: fixed; inset: 0; z-index: -2;
-    background:
-      radial-gradient(circle at 18% 22%, rgba(91,61,204,.15) 0%, transparent 45%),
-      radial-gradient(circle at 82% 78%, rgba(245,158,11,.05) 0%, transparent 55%),
-      var(--bg-deep);
-  }
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 5px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.15); }
-  a { color: inherit; text-decoration: none; }
-  h1,h2,h3 { font-family: 'Instrument Serif', serif; font-weight: 400; color: var(--text-bright); letter-spacing: .3px; }
-  .mono { font-family: 'JetBrains Mono', monospace; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { background:var(--bg); }
+  body { font-family:'Inter',system-ui,sans-serif; color:var(--text); -webkit-font-smoothing:antialiased; line-height:1.6; min-height:100vh; }
+  body::before { content:''; position:fixed; inset:0; z-index:-2;
+    background: radial-gradient(circle at 18% 22%, rgba(91,61,204,.15) 0%, transparent 45%),
+                radial-gradient(circle at 82% 78%, rgba(245,158,11,.05) 0%, transparent 55%), var(--bg-deep); }
+  ::selection { background:rgba(124,92,255,.4); color:#fff; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:rgba(255,255,255,.08); border-radius:5px; }
+  a { color:inherit; text-decoration:none; }
+  h1,h2,h3 { font-family:'Instrument Serif',serif; font-weight:400; color:var(--text-bright); letter-spacing:.3px; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  .hidden { display:none !important; }
 
-  /* ---- Auth screen ---- */
-  .auth-wrap {
-    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
-  }
-  .auth-card {
-    width: 100%; max-width: 420px;
-    background: var(--surface-strong); border: 1px solid var(--border-strong);
-    border-radius: 20px; padding: 40px 36px;
-    box-shadow: 0 30px 80px rgba(0,0,0,.5);
-  }
-  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
-  .brand-mark {
-    width: 42px; height: 42px; border-radius: 11px;
-    background: linear-gradient(135deg, var(--violet-deep), var(--violet));
-    display: grid; place-items: center; font-size: 22px;
-    box-shadow: 0 8px 24px rgba(124,92,255,.4);
-  }
-  .brand-name { font-family: 'Instrument Serif', serif; font-size: 30px; color: var(--text-bright); line-height: 1; }
-  .auth-sub { color: var(--text-muted); font-size: 14px; margin: 14px 0 28px; }
-  .field { margin-bottom: 16px; }
-  .field label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 7px; text-transform: uppercase; letter-spacing: .08em; }
-  .field input {
-    width: 100%; padding: 12px 14px; border-radius: 10px;
-    background: rgba(255,255,255,.04); border: 1px solid var(--border-strong);
-    color: var(--text-bright); font-size: 15px; font-family: inherit;
-  }
-  .field input:focus { outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(124,92,255,.18); }
-  .btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 12px 18px; border-radius: 10px; border: none; cursor: pointer;
-    font-family: inherit; font-size: 14px; font-weight: 600; transition: transform .12s ease, filter .12s ease;
-  }
-  .btn:active { transform: translateY(1px); }
-  .btn-primary { background: linear-gradient(135deg, var(--violet-deep), var(--violet)); color: #fff; width: 100%; }
-  .btn-primary:hover { filter: brightness(1.08); }
-  .btn-ghost { background: transparent; border: 1px solid var(--border-strong); color: var(--text); }
-  .btn-ghost:hover { border-color: var(--violet); color: var(--text-bright); }
-  .auth-toggle { text-align: center; margin-top: 18px; font-size: 13px; color: var(--text-muted); }
-  .auth-toggle b { color: var(--violet); cursor: pointer; }
-  .msg { font-size: 13px; padding: 10px 12px; border-radius: 9px; margin-bottom: 14px; display: none; }
-  .msg.err { background: rgba(251,113,133,.12); border: 1px solid rgba(251,113,133,.3); color: #fda4af; display: block; }
-  .msg.ok { background: rgba(52,211,153,.12); border: 1px solid rgba(52,211,153,.3); color: #6ee7b7; display: block; }
+  /* Auth */
+  .auth-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .auth-card { width:100%; max-width:420px; background:var(--surface-strong); border:1px solid var(--border-strong); border-radius:20px; padding:40px 36px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .brand { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+  .brand-mark { width:42px; height:42px; border-radius:11px; background:linear-gradient(135deg,var(--violet-deep),var(--violet)); display:grid; place-items:center; font-size:22px; box-shadow:0 8px 24px rgba(124,92,255,.4); }
+  .brand-name { font-family:'Instrument Serif',serif; font-size:28px; color:var(--text-bright); line-height:1; }
+  .badge-admin { font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--amber); border:1px solid rgba(251,191,36,.3); border-radius:999px; padding:2px 8px; margin-left:8px; }
+  .auth-sub { color:var(--text-muted); font-size:14px; margin:14px 0 28px; }
+  .field { margin-bottom:16px; }
+  .field label { display:block; font-size:12px; color:var(--text-muted); margin-bottom:7px; text-transform:uppercase; letter-spacing:.08em; }
+  .field input, .field select, .field textarea { width:100%; padding:11px 13px; border-radius:10px; background:rgba(255,255,255,.04); border:1px solid var(--border-strong); color:var(--text-bright); font-size:14.5px; font-family:inherit; }
+  .field textarea { min-height:120px; resize:vertical; line-height:1.6; }
+  .field input:focus, .field select:focus, .field textarea:focus { outline:none; border-color:var(--violet); box-shadow:0 0 0 3px rgba(124,92,255,.18); }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:11px 17px; border-radius:10px; border:none; cursor:pointer; font-family:inherit; font-size:14px; font-weight:600; transition:transform .12s, filter .12s; }
+  .btn:active { transform:translateY(1px); }
+  .btn-primary { background:linear-gradient(135deg,var(--violet-deep),var(--violet)); color:#fff; }
+  .btn-primary:hover { filter:brightness(1.08); }
+  .btn-ghost { background:transparent; border:1px solid var(--border-strong); color:var(--text); }
+  .btn-ghost:hover { border-color:var(--violet); color:var(--text-bright); }
+  .btn-sm { padding:7px 11px; font-size:12.5px; }
+  .btn-danger { background:rgba(251,113,133,.14); border:1px solid rgba(251,113,133,.3); color:#fda4af; }
+  .auth-toggle { text-align:center; margin-top:18px; font-size:13px; color:var(--text-muted); }
+  .auth-toggle b { color:var(--violet); cursor:pointer; }
+  .msg { font-size:13px; padding:10px 12px; border-radius:9px; margin-bottom:14px; display:none; }
+  .msg.err { background:rgba(251,113,133,.12); border:1px solid rgba(251,113,133,.3); color:#fda4af; display:block; }
+  .msg.ok { background:rgba(52,211,153,.12); border:1px solid rgba(52,211,153,.3); color:#6ee7b7; display:block; }
 
-  /* ---- App layout ---- */
-  .app { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
-  .sidebar {
-    background: rgba(10,8,24,.6); backdrop-filter: blur(20px);
-    border-right: 1px solid var(--border); padding: 22px 0; position: sticky; top: 0; height: 100vh;
-    display: flex; flex-direction: column; overflow-y: auto;
-  }
-  .side-brand { padding: 0 22px 18px; display: flex; align-items: center; gap: 11px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
-  .side-brand .brand-mark { width: 34px; height: 34px; font-size: 18px; border-radius: 9px; }
-  .side-brand .brand-name { font-size: 23px; }
-  .nav-group { padding: 10px 14px 4px; }
-  .nav-group-label { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: var(--text-subtle); padding: 8px 10px 6px; }
-  .nav-item {
-    display: flex; align-items: center; gap: 11px; padding: 9px 12px; border-radius: 9px;
-    color: var(--text-muted); font-size: 14px; cursor: pointer; transition: background .12s, color .12s;
-  }
-  .nav-item:hover { background: var(--surface); color: var(--text-bright); }
-  .nav-item.active { background: rgba(124,92,255,.14); color: var(--text-bright); }
-  .nav-item .ico { width: 18px; text-align: center; }
-  .side-foot { margin-top: auto; padding: 14px 18px 4px; border-top: 1px solid var(--border); }
-  .side-user { font-size: 12.5px; color: var(--text-muted); margin-bottom: 10px; word-break: break-all; }
-  .main { padding: 34px 40px 80px; overflow-y: auto; height: 100vh; }
-  .page-title { font-size: 34px; margin-bottom: 4px; }
-  .page-sub { color: var(--text-muted); font-size: 14.5px; margin-bottom: 26px; }
-  .hidden { display: none !important; }
+  /* App layout */
+  .app { display:grid; grid-template-columns:268px 1fr; min-height:100vh; }
+  .sidebar { background:rgba(10,8,24,.6); backdrop-filter:blur(20px); border-right:1px solid var(--border); padding:22px 0; position:sticky; top:0; height:100vh; display:flex; flex-direction:column; overflow-y:auto; }
+  .side-brand { padding:0 22px 18px; display:flex; align-items:center; gap:11px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+  .side-brand .brand-mark { width:34px; height:34px; font-size:18px; border-radius:9px; }
+  .side-brand .brand-name { font-size:21px; }
+  .nav-group { padding:8px 14px 4px; }
+  .nav-group-label { font-size:10px; text-transform:uppercase; letter-spacing:.14em; color:var(--text-subtle); padding:8px 10px 6px; }
+  .nav-item { display:flex; align-items:center; gap:11px; padding:9px 12px; border-radius:9px; color:var(--text-muted); font-size:14px; cursor:pointer; transition:background .12s,color .12s; }
+  .nav-item:hover { background:var(--surface); color:var(--text-bright); }
+  .nav-item.active { background:rgba(124,92,255,.14); color:var(--text-bright); }
+  .nav-item .ico { width:18px; text-align:center; }
+  .side-foot { margin-top:auto; padding:14px 18px 4px; border-top:1px solid var(--border); }
+  .side-user { font-size:12.5px; color:var(--text-muted); margin-bottom:4px; word-break:break-all; }
+  .side-role { font-size:11px; color:var(--violet); margin-bottom:10px; }
+  .main { padding:30px 38px 80px; overflow-y:auto; height:100vh; }
+  .topbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
+  .page-title { font-size:32px; margin-bottom:2px; }
+  .page-sub { color:var(--text-muted); font-size:14px; }
+  .course-pick { display:flex; align-items:center; gap:10px; }
+  .course-pick select { padding:9px 13px; border-radius:10px; background:rgba(255,255,255,.04); border:1px solid var(--border-strong); color:var(--text-bright); font-family:inherit; font-size:13.5px; min-width:220px; }
+
+  .grid { display:grid; gap:14px; }
+  .grid-3 { grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); }
+  .card { background:var(--surface-strong); border:1px solid var(--border); border-radius:14px; padding:18px; }
+  .card h3 { font-size:19px; margin-bottom:4px; }
+  .stat-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:24px; }
+  .stat { background:var(--surface-strong); border:1px solid var(--border); border-radius:14px; padding:16px 18px; }
+  .stat .s-num { font-family:'JetBrains Mono',monospace; font-size:27px; color:var(--text-bright); font-weight:600; }
+  .stat .s-label { font-size:12px; color:var(--text-muted); margin-top:3px; }
+
+  table.tbl { width:100%; border-collapse:collapse; font-size:13px; }
+  table.tbl th, table.tbl td { text-align:left; padding:9px 11px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  table.tbl th { color:var(--text-subtle); font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:.07em; position:sticky; top:0; background:var(--bg-deep); }
+  table.tbl tbody tr:hover { background:var(--surface); }
+  .tbl-wrap { overflow-x:auto; border:1px solid var(--border); border-radius:12px; }
+  .tag { font-size:11px; padding:2px 9px; border-radius:999px; display:inline-block; }
+  .tag.green { background:rgba(52,211,153,.16); color:#6ee7b7; }
+  .tag.amber { background:rgba(251,191,36,.16); color:var(--amber); }
+  .tag.rose  { background:rgba(251,113,133,.16); color:#fda4af; }
+  .tag.dim   { background:rgba(255,255,255,.06); color:var(--text-muted); }
+  .tag.violet{ background:rgba(124,92,255,.16); color:var(--violet); }
+
+  .modal-bg { position:fixed; inset:0; background:rgba(5,4,12,.7); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; }
+  .modal { background:#16132c; border:1px solid var(--border-strong); border-radius:18px; padding:28px; width:100%; max-width:560px; max-height:88vh; overflow-y:auto; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+  .modal h2 { font-size:24px; margin-bottom:16px; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .inline-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+  .heat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; }
+  .heat-cell { border-radius:10px; padding:12px; border:1px solid var(--border); }
+  .heat-cell .hc-tag { font-size:11px; color:var(--text-bright); margin-bottom:6px; word-break:break-word; }
+  .heat-cell .hc-val { font-family:'JetBrains Mono',monospace; font-size:18px; font-weight:600; }
+  .heat-cell .hc-n { font-size:10px; color:var(--text-subtle); }
+
+  .item-pick { display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-bottom:1px solid var(--border); font-size:13px; }
+  .item-pick input { margin-top:3px; }
+  .item-pick .ip-prompt { color:var(--text); }
+  .item-pick .ip-meta { font-size:11px; color:var(--text-subtle); margin-top:2px; }
+  .assembler-wrap { display:grid; grid-template-columns:1.4fr 1fr; gap:18px; }
+  .pick-list { max-height:440px; overflow-y:auto; border:1px solid var(--border); border-radius:12px; }
+  .spinner { display:inline-block; width:15px; height:15px; border:2px solid rgba(255,255,255,.2); border-top-color:var(--violet); border-radius:50%; animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .empty { color:var(--text-subtle); font-size:13.5px; padding:18px; text-align:center; }
+  .pill-code { font-family:'JetBrains Mono',monospace; background:rgba(124,92,255,.14); color:var(--violet); padding:3px 10px; border-radius:8px; font-size:13px; }
 
   /* ---- Cards / grids ---- */
   .grid { display: grid; gap: 14px; }
@@ -177,64 +175,86 @@
   .spinner { display: inline-block; width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.2); border-top-color: var(--violet); border-radius: 50%; animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  @media (max-width: 820px) {
-    .app { grid-template-columns: 1fr; }
-    .sidebar { position: static; height: auto; }
-    .main { height: auto; padding: 24px 18px 60px; }
+
+  @media (max-width:880px) {
+    .app { grid-template-columns:1fr; }
+    .sidebar { position:static; height:auto; }
+    .main { height:auto; padding:22px 16px 60px; }
+    .assembler-wrap { grid-template-columns:1fr; }
+    .row2 { grid-template-columns:1fr; }
   }
 </style>
 </head>
 <body>
 
-<!-- ====================== AUTH SCREEN ====================== -->
+<!-- ===================== AUTH ===================== -->
 <div id="authScreen" class="auth-wrap">
   <div class="auth-card">
-    <div class="brand">
-      <div class="brand-mark">♟</div>
-      <div class="brand-name">StrategyArena</div>
-    </div>
-    <div class="auth-sub" id="authSub">Sign in to your game-theory workspace.</div>
+    <div class="brand"><div class="brand-mark">&#9823;</div><div class="brand-name">StrategyArena</div></div>
+    <div class="auth-sub">Instructor &amp; Administrator Console</div>
     <div id="authMsg" class="msg"></div>
-    <div class="field">
-      <label>Email</label>
-      <input id="authEmail" type="email" autocomplete="email" placeholder="you@university.edu">
-    </div>
-    <div class="field">
-      <label>Password</label>
-      <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••">
-    </div>
-    <button class="btn btn-primary" id="authSubmit">Sign in</button>
-    <div class="auth-toggle" id="authToggle">New here? <b>Create an account</b></div>
+    <div class="field"><label>Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@university.edu"></div>
+    <div class="field"><label>Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="********"></div>
+    <button class="btn btn-primary" id="authSubmit" style="width:100%;">Sign in</button>
+    <div class="auth-toggle" id="authToggle">No account yet? <b>Create one</b></div>
   </div>
 </div>
 
-<!-- ====================== APP ====================== -->
+<!-- ===================== APP ===================== -->
 <div id="appScreen" class="app hidden">
   <aside class="sidebar">
-    <div class="side-brand">
-      <div class="brand-mark">♟</div>
-      <div class="brand-name">StrategyArena</div>
-    </div>
+    <div class="side-brand"><div class="brand-mark">&#9823;</div><div class="brand-name">Console</div></div>
     <div class="nav-group">
       <div class="nav-group-label">Learn</div>
-      <div class="nav-item active" data-view="home"><span class="ico">⌂</span> Home</div>
-      <div class="nav-item" data-view="chapters"><span class="ico">📖</span> Chapters</div>
-      <div class="nav-item" data-view="arenas"><span class="ico">🎮</span> Arenas</div>
-      <div class="nav-item" data-view="practice"><span class="ico">✍️</span> Practice</div>
+      <div class="nav-item active" data-view="home"><span class="ico">&#8962;</span> Home</div>
+      <div class="nav-item" data-view="chapters"><span class="ico">&#128214;</span> Chapters</div>
+      <div class="nav-item" data-view="arenas"><span class="ico">&#127918;</span> Arenas</div>
+      <div class="nav-item" data-view="practice"><span class="ico">&#9997;</span> Practice</div>
     </div>
     <div class="nav-group">
       <div class="nav-group-label">Track</div>
-      <div class="nav-item" data-view="progress"><span class="ico">📊</span> My Progress</div>
-      <div class="nav-item" data-view="diagnostics"><span class="ico">🔒</span> Diagnostics</div>
+      <div class="nav-item" data-view="progress"><span class="ico">&#128202;</span> My Progress</div>
+      <div class="nav-item" data-view="diagnostics"><span class="ico">&#128274;</span> Diagnostics</div>
+    </div>
+    <div class="nav-group hidden" id="teachGroup">
+      <div class="nav-group-label">Teach</div>
+      <div class="nav-item" data-view="dashboard"><span class="ico">&#9632;</span> Dashboard</div>
+      <div class="nav-item" data-view="courses"><span class="ico">&#128218;</span> Courses</div>
+      <div class="nav-item" data-view="roster"><span class="ico">&#128101;</span> Roster</div>
+      <div class="nav-item" data-view="gradebook"><span class="ico">&#128202;</span> Gradebook</div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-label">Analyze &amp; Assess</div>
+      <div class="nav-item" data-view="analytics"><span class="ico">&#128293;</span> Analytics</div>
+      <div class="nav-item" data-view="exams"><span class="ico">&#128221;</span> Exams</div>
+      <div class="nav-item" data-view="subscriptions"><span class="ico">&#128179;</span> Subscriptions</div>
+    </div>
+    <div class="nav-group" id="adminGroup">
+      <div class="nav-group-label">Administer</div>
+      <div class="nav-item" data-view="platform"><span class="ico">&#9881;</span> Platform &amp; Pricing</div>
+      <div class="nav-item" data-view="people"><span class="ico">&#128081;</span> Instructors</div>
     </div>
     <div class="side-foot">
-      <div class="side-user" id="sideUser">—</div>
-      <button class="btn btn-ghost" id="signOutBtn" style="width:100%;">Sign out</button>
+      <div class="side-user" id="sideUser">-</div>
+      <div class="side-role" id="sideRole">-</div>
+      <button class="btn btn-ghost btn-sm" id="signOutBtn" style="width:100%;">Sign out</button>
     </div>
   </aside>
 
   <main class="main">
-    <!-- HOME -->
+    <div class="topbar">
+      <div>
+        <h1 class="page-title" id="pageTitle">Dashboard</h1>
+        <div class="page-sub" id="pageSub">Your teaching overview.</div>
+      </div>
+      <div class="course-pick" id="coursePickWrap">
+        <span style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.08em;">Course</span>
+        <select id="coursePick"></select>
+      </div>
+    </div>
+
+    <div id="studentViews">
+<!-- HOME -->
     <section id="view-home">
       <h1 class="page-title" id="welcomeTitle">Welcome back</h1>
       <div class="page-sub">Your strategic-thinking workspace. Pick up where you left off.</div>
@@ -285,167 +305,772 @@
       <button class="btn btn-primary" id="runDiagBtn" style="width:auto;margin-bottom:18px;">Run checks</button>
       <div class="diag" id="diagOut">Click “Run checks” to test the connection, RLS, and the grading function.</div>
     </section>
+  
+    </div>
+    <div id="viewHost"></div>
   </main>
 </div>
 
-<!-- Supabase JS client (UMD build exposes window.supabase) -->
+<div id="modalHost"></div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-/* ======================================================================
-   CONFIG — your live StrategyArena project. The anon key is meant to be
-   public; Row-Level Security is what protects the data.
-   ====================================================================== */
+/* ====================================================================
+   CONFIG
+   ==================================================================== */
 var SUPABASE_URL = 'https://qgelvmefyexyzpwqupev.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZWx2bWVmeWV4eXpwd3F1cGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDY5ODAsImV4cCI6MjA5NjAyMjk4MH0.AR55GBLefKHfs9ncWWzEFks_VISPjJtbW8SezyjM3lc';
-
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-/* ---- Static reference: chapter titles, read times, arena slugs (mirrors DB) ---- */
 var CHAPTERS = [
-  { n:1,  title:'Strategic Thinking',       mins:18, slug:'prisoners-dilemma' },
-  { n:2,  title:"Prisoner's Dilemma",       mins:24, slug:'prisoners-dilemma' },
-  { n:3,  title:'Repeated Games',           mins:28, slug:'ipd-tournament' },
-  { n:4,  title:'Sequential Games',         mins:30, slug:'centipede' },
-  { n:5,  title:'Auctions',                 mins:30, slug:'auction' },
-  { n:6,  title:'Bargaining',               mins:30, slug:'nash-bargaining' },
-  { n:7,  title:'Signaling',                mins:30, slug:'signaling' },
-  { n:8,  title:'Bayesian Games',           mins:30, slug:'bayesian-game' },
-  { n:9,  title:'Perfect Bayesian Eq.',     mins:32, slug:'pbe' },
-  { n:10, title:'Mixed Strategies',         mins:30, slug:'mixed-strategy' },
-  { n:11, title:'Evolutionary Game Theory', mins:30, slug:'evolutionary' },
-  { n:12, title:'Cooperative Games',        mins:32, slug:'cooperative' },
-  { n:13, title:'Behavioral Game Theory',   mins:30, slug:'behavioral' },
-  { n:14, title:'Calculus Applications',    mins:62, slug:'calculus-applications' }
+  {n:1,title:'Strategic Thinking'},{n:2,title:"Prisoner's Dilemma"},{n:3,title:'Repeated Games'},
+  {n:4,title:'Sequential Games'},{n:5,title:'Auctions'},{n:6,title:'Bargaining'},
+  {n:7,title:'Signaling'},{n:8,title:'Bayesian Games'},{n:9,title:'Perfect Bayesian Eq.'},
+  {n:10,title:'Mixed Strategies'},{n:11,title:'Evolutionary Game Theory'},{n:12,title:'Cooperative Games'},
+  {n:13,title:'Behavioral Game Theory'},{n:14,title:'Calculus Applications'}
+];
+
+var STUDENT_CHAPTERS = [
+  {n:1,title:'Strategic Thinking',mins:18,slug:'prisoners-dilemma'},
+  {n:2,title:"Prisoner's Dilemma",mins:24,slug:'prisoners-dilemma'},
+  {n:3,title:'Repeated Games',mins:28,slug:'ipd-tournament'},
+  {n:4,title:'Sequential Games',mins:30,slug:'centipede'},
+  {n:5,title:'Auctions',mins:30,slug:'auction'},
+  {n:6,title:'Bargaining',mins:30,slug:'nash-bargaining'},
+  {n:7,title:'Signaling',mins:30,slug:'signaling'},
+  {n:8,title:'Bayesian Games',mins:30,slug:'bayesian-game'},
+  {n:9,title:'Perfect Bayesian Eq.',mins:32,slug:'pbe'},
+  {n:10,title:'Mixed Strategies',mins:30,slug:'mixed-strategy'},
+  {n:11,title:'Evolutionary Game Theory',mins:30,slug:'evolutionary'},
+  {n:12,title:'Cooperative Games',mins:32,slug:'cooperative'},
+  {n:13,title:'Behavioral Game Theory',mins:30,slug:'behavioral'},
+  {n:14,title:'Calculus Applications',mins:62,slug:'calculus-applications'}
 ];
 var ARENA_FILE = {
-  'prisoners-dilemma':'strategyarena-prisoners-dilemma.html',
-  'ipd-tournament':'strategyarena-ipd-tournament.html',
-  'centipede':'strategyarena-centipede.html',
-  'auction':'strategyarena-auction.html',
-  'nash-bargaining':'strategyarena-nash-bargaining.html',
-  'signaling':'strategyarena-signaling.html',
-  'bayesian-game':'strategyarena-bayesian-game.html',
-  'pbe':'strategyarena-pbe.html',
-  'mixed-strategy':'strategyarena-mixed-strategy.html',
-  'evolutionary':'strategyarena-evolutionary.html',
-  'cooperative':'strategyarena-cooperative.html',
-  'behavioral':'strategyarena-ultimatum-trust.html',
+  'prisoners-dilemma':'strategyarena-prisoners-dilemma.html','ipd-tournament':'strategyarena-ipd-tournament.html',
+  'centipede':'strategyarena-centipede.html','auction':'strategyarena-auction.html',
+  'nash-bargaining':'strategyarena-nash-bargaining.html','signaling':'strategyarena-signaling.html',
+  'bayesian-game':'strategyarena-bayesian-game.html','pbe':'strategyarena-pbe.html',
+  'mixed-strategy':'strategyarena-mixed-strategy.html','evolutionary':'strategyarena-evolutionary.html',
+  'cooperative':'strategyarena-cooperative.html','behavioral':'strategyarena-ultimatum-trust.html',
   'calculus-applications':null
 };
 var ARENA_TITLE = {
-  'prisoners-dilemma':"Prisoner's Dilemma", 'ipd-tournament':'Repeated PD Tournament',
-  'centipede':'Centipede / Sequential', 'auction':'Auction House',
-  'nash-bargaining':'Bargaining Table', 'signaling':'Signaling Game',
-  'bayesian-game':'Bayesian Game', 'pbe':'Beliefs & PBE',
-  'mixed-strategy':'Mixed Strategies', 'evolutionary':'Evolution Simulator',
-  'cooperative':'Coalition Game', 'behavioral':'Behavioral Lab',
+  'prisoners-dilemma':"Prisoner's Dilemma",'ipd-tournament':'Repeated PD Tournament','centipede':'Centipede / Sequential',
+  'auction':'Auction House','nash-bargaining':'Bargaining Table','signaling':'Signaling Game',
+  'bayesian-game':'Bayesian Game','pbe':'Beliefs & PBE','mixed-strategy':'Mixed Strategies',
+  'evolutionary':'Evolution Simulator','cooperative':'Coalition Game','behavioral':'Behavioral Lab',
   'calculus-applications':'Oligopoly Lab'
 };
+var State = { user:null, profile:null, role:'student', courses:[], currentCourseId:null, settings:null, signup:false, selfCourseId:null, currentItem:null, selectedOption:null };
 
-/* ======================================================================
-   STATE
-   ====================================================================== */
-var State = {
-  user: null,
-  courseId: null,           // self-study course
-  signupMode: false,
-  currentItem: null,        // { attempt_id, item_type, prompt, options, points }
-  selectedOption: null
-};
+/* ---- helpers (no optional chaining / nullish) ---- */
+function $(id){ return document.getElementById(id); }
+function esc(s){ if(s===null||s===undefined){return '';} return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function pct(x){ if(x===null||x===undefined||isNaN(x)){return '0%';} return Math.round(x*100)+'%'; }
+function money(cents,cur){ var c=(cents?cents:0)/100; var sym=(cur==='usd'||!cur)?'$':''; return sym+c.toFixed(2)+(sym?'':' '+(cur?cur.toUpperCase():'')); }
+function show(el){ if(el){el.classList.remove('hidden');} }
+function hide(el){ if(el){el.classList.add('hidden');} }
 
-/* ---- small DOM helpers (no optional chaining for Safari safety) ---- */
-function $(id) { return document.getElementById(id); }
-function show(el) { if (el) { el.classList.remove('hidden'); } }
-function hide(el) { if (el) { el.classList.add('hidden'); } }
-function esc(s) {
-  if (s === null || s === undefined) { return ''; }
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-/* ======================================================================
+/* ====================================================================
    AUTH
-   ====================================================================== */
-function setAuthMsg(text, kind) {
-  var m = $('authMsg');
-  m.textContent = text;
-  m.className = 'msg ' + (kind ? kind : '');
-  if (!text) { m.className = 'msg'; }
-}
-
-function renderAuthMode() {
-  if (State.signupMode) {
-    $('authSub').textContent = 'Create your StrategyArena account.';
-    $('authSubmit').textContent = 'Create account';
-    $('authToggle').innerHTML = 'Already have an account? <b>Sign in</b>';
-    $('authPassword').setAttribute('autocomplete','new-password');
-  } else {
-    $('authSub').textContent = 'Sign in to your game-theory workspace.';
-    $('authSubmit').textContent = 'Sign in';
-    $('authToggle').innerHTML = 'New here? <b>Create an account</b>';
-    $('authPassword').setAttribute('autocomplete','current-password');
-  }
-  setAuthMsg('', '');
-}
-
-$('authToggle').addEventListener('click', function() {
-  State.signupMode = !State.signupMode;
-  renderAuthMode();
-});
-
+   ==================================================================== */
+function setAuthMsg(t,k){ var m=$('authMsg'); m.textContent=t||''; m.className='msg '+(k?k:''); if(!t){m.className='msg';} }
+$('authToggle').addEventListener('click', function(){ State.signup=!State.signup; $('authSubmit').textContent=State.signup?'Create account':'Sign in'; $('authToggle').innerHTML=State.signup?'Already registered? <b>Sign in</b>':'No account yet? <b>Create one</b>'; setAuthMsg('',''); });
 $('authSubmit').addEventListener('click', doAuth);
-$('authPassword').addEventListener('keydown', function(e){ if (e.key === 'Enter') { doAuth(); } });
-
-function doAuth() {
-  var email = $('authEmail').value.trim();
-  var password = $('authPassword').value;
-  if (!email || !password) { setAuthMsg('Enter your email and password.', 'err'); return; }
-  $('authSubmit').disabled = true;
-  setAuthMsg('Working…', '');
-
-  if (State.signupMode) {
-    sb.auth.signUp({ email: email, password: password }).then(function(res) {
-      $('authSubmit').disabled = false;
-      if (res.error) { setAuthMsg(res.error.message, 'err'); return; }
-      // If email confirmation is ON, there is no session yet.
-      if (res.data && res.data.session) {
-        onSignedIn(res.data.session.user);
-      } else {
-        setAuthMsg('Account created. Check your email to confirm, then sign in.', 'ok');
-        State.signupMode = false; renderAuthMode();
-      }
+$('authPassword').addEventListener('keydown', function(e){ if(e.key==='Enter'){ doAuth(); } });
+function doAuth(){
+  var email=$('authEmail').value.trim(), pw=$('authPassword').value;
+  if(!email||!pw){ setAuthMsg('Enter email and password.','err'); return; }
+  $('authSubmit').disabled=true; setAuthMsg('Working...','');
+  if(State.signup){
+    sb.auth.signUp({email:email,password:pw}).then(function(res){
+      $('authSubmit').disabled=false;
+      if(res.error){ setAuthMsg(res.error.message,'err'); return; }
+      if(res.data && res.data.session){ onSignedIn(res.data.session.user); }
+      else { setAuthMsg('Account created. Confirm via email, then sign in. Ask the admin to grant instructor access.','ok'); State.signup=false; }
     });
   } else {
-    sb.auth.signInWithPassword({ email: email, password: password }).then(function(res) {
-      $('authSubmit').disabled = false;
-      if (res.error) { setAuthMsg(res.error.message, 'err'); return; }
+    sb.auth.signInWithPassword({email:email,password:pw}).then(function(res){
+      $('authSubmit').disabled=false;
+      if(res.error){ setAuthMsg(res.error.message,'err'); return; }
       onSignedIn(res.data.session.user);
     });
   }
 }
+$('signOutBtn').addEventListener('click', signOut);
+function signOut(){ sb.auth.signOut().then(function(){ State.user=null; hide($('appScreen')); hide($('denyScreen')); show($('authScreen')); }); }
 
-$('signOutBtn').addEventListener('click', function() {
-  sb.auth.signOut().then(function() {
-    State.user = null; State.courseId = null;
-    hide($('appScreen')); show($('authScreen'));
+/* ====================================================================
+   BOOTSTRAP
+   ==================================================================== */
+function onSignedIn(user){
+  State.user=user;
+  hide($('authScreen'));
+  // upsert a profile so the row exists, then read role.
+  sb.from('sa_profiles').upsert({id:user.id, email:user.email},{onConflict:'id'}).then(function(){
+    return sb.from('sa_profiles').select('id,email,full_name,role,display_title').eq('id', user.id).maybeSingle();
+  }).then(function(res){
+    var prof = res.data ? res.data : { role:'student' };
+    State.profile=prof; State.role = prof.role ? prof.role : 'student';
+    enterApp(user);
+  });
+}
+// Everyone enters as a student. Instructors/admins get extra nav groups.
+function enterApp(user){
+  show($('appScreen'));
+  $('sideUser').textContent=user.email;
+  var role=State.role;
+  $('sideRole').textContent = (role==='admin') ? 'Super Administrator' : (role==='instructor' ? 'Instructor' : 'Student');
+  if(role==='instructor' || role==='admin'){ show($('teachGroup')); } else { hide($('teachGroup')); }
+  if(role==='admin'){ show($('adminGroup')); } else { hide($('adminGroup')); }
+  // student self-study provisioning (own course for practice/progress)
+  ensureProfileAndCourse().then(function(){
+    renderChapters(); renderArenas(); fillPracticeChapters();
+  });
+  // teaching data (only matters if they teach, but harmless otherwise)
+  if(role==='instructor' || role==='admin'){
+    loadPlatformSettings();
+    loadCourses().then(function(){ switchView('home'); });
+  } else {
+    switchView('home');
+  }
+}
+function loadPlatformSettings(){
+  return sb.from('sa_platform_settings').select('*').eq('id',1).maybeSingle().then(function(res){
+    State.settings = res.data ? res.data : null;
+  });
+}
+function loadCourses(){
+  return sb.from('sa_courses').select('*').eq('owner_id', State.user.id).order('created_at',{ascending:false}).then(function(res){
+    State.courses = res.data ? res.data : [];
+    var sel=$('coursePick'); sel.innerHTML='';
+    if(State.courses.length===0){
+      var o=document.createElement('option'); o.value=''; o.textContent='(no courses yet)'; sel.appendChild(o);
+      State.teachCourseId=null;
+    } else {
+      State.courses.forEach(function(c){ var o=document.createElement('option'); o.value=c.id; o.textContent=c.title+(c.term?(' · '+c.term):''); sel.appendChild(o); });
+      if(!State.teachCourseId || !findCourse(State.teachCourseId)){ State.teachCourseId=State.courses[0].id; }
+      sel.value=State.teachCourseId;
+    }
+  });
+}
+function findCourse(id){ for(var i=0;i<State.courses.length;i++){ if(State.courses[i].id===id){ return State.courses[i]; } } return null; }
+$('coursePick').addEventListener('change', function(){ State.teachCourseId=$('coursePick').value; rerenderCurrentView(); });
+
+/* ====================================================================
+   NAV
+   ==================================================================== */
+var STUDENT_VIEWS = ['home','chapters','arenas','practice','progress','diagnostics'];
+var VIEW_META = {
+  home:['Home','Your strategic-thinking workspace.',false],
+  chapters:['Chapters','Read the textbook.',false],
+  arenas:['Arenas','Play the games against AI opponents.',false],
+  practice:['Practice','Server-graded questions, generated just for you.',false],
+  progress:['My Progress','Pulled live from your account.',false],
+  diagnostics:['Diagnostics','Backend connection checks.',false],
+  dashboard:['Teaching Dashboard','Your teaching overview.',false],
+  courses:['Courses','Create and configure your courses.',false],
+  roster:['Roster','Students enrolled in this course.',true],
+  gradebook:['Gradebook','Weighted grades across all components.',true],
+  analytics:['Analytics','Concept mastery and cohort engagement.',true],
+  exams:['Exams','Assemble and publish midterms and finals.',true],
+  subscriptions:['Subscriptions','Manage paid access for this course.',true],
+  platform:['Platform & Pricing','Global price, Stripe link, and author bio.',false],
+  people:['Instructors','Grant or revoke instructor access.',false]
+};
+var currentView='home';
+Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(it){
+  it.addEventListener('click', function(){
+    Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(x){ x.classList.remove('active'); });
+    it.classList.add('active');
+    switchView(it.getAttribute('data-view'));
   });
 });
+function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_VIEWS[i]===v){ return true; } } return false; }
+function switchView(view){
+  currentView=view;
+  var meta=VIEW_META[view];
+  if(meta){ $('pageTitle').textContent=meta[0]; $('pageSub').textContent=meta[1]; if(meta[2]){ show($('coursePickWrap')); } else { hide($('coursePickWrap')); } }
+  var stu=isStudentView(view);
+  // toggle the two content regions
+  if(stu){ show($('studentViews')); hide($('viewHost')); } else { hide($('studentViews')); show($('viewHost')); }
+  // student fixed sections
+  STUDENT_VIEWS.forEach(function(v){ var el=$('view-'+v); if(el){ if(v===view){ show(el); } else { hide(el); } } });
+  if(stu){
+    if(view==='progress'){ loadProgress(); }
+    if(view==='home'){ loadHome(); }
+    return;
+  }
+  rerenderCurrentView();
+}
+function rerenderCurrentView(){
+  if(isStudentView(currentView)){ return; }
+  var host=$('viewHost'); host.innerHTML='';
+  if(currentView==='dashboard'){ renderDashboard(host); }
+  else if(currentView==='courses'){ renderCourses(host); }
+  else if(currentView==='roster'){ renderRoster(host); }
+  else if(currentView==='gradebook'){ renderGradebook(host); }
+  else if(currentView==='analytics'){ renderAnalytics(host); }
+  else if(currentView==='exams'){ renderExams(host); }
+  else if(currentView==='subscriptions'){ renderSubscriptions(host); }
+  else if(currentView==='platform'){ renderPlatform(host); }
+  else if(currentView==='people'){ renderPeople(host); }
+}
+function needCourse(host){
+  if(!State.teachCourseId){ host.innerHTML='<div class="card empty">Create a course first (Courses tab).</div>'; return false; }
+  return true;
+}
+function loadingCard(){ return '<div class="card"><span class="spinner"></span> &nbsp;Loading...</div>'; }
 
-/* ======================================================================
-   SESSION BOOTSTRAP
-   ====================================================================== */
-function onSignedIn(user) {
-  State.user = user;
-  hide($('authScreen')); show($('appScreen'));
-  $('sideUser').textContent = user.email;
-  var nm = user.email.split('@')[0];
-  $('welcomeTitle').textContent = 'Welcome back, ' + nm;
-  ensureProfileAndCourse().then(function() {
-    renderChapters(); renderArenas(); fillPracticeChapters();
-    loadHome();
+/* ====================================================================
+   DASHBOARD
+   ==================================================================== */
+function renderDashboard(host){
+  host.innerHTML=loadingCard();
+  var nCourses=State.courses.length;
+  // count students across all my courses + subscription stats
+  var courseIds=State.courses.map(function(c){return c.id;});
+  if(courseIds.length===0){
+    host.innerHTML='<div class="card"><h3>Welcome</h3><p style="color:var(--text-muted);margin-top:8px;">You have no courses yet. Head to <b>Courses</b> to create your first one, set its term and access window, and share the join code with students.</p></div>';
+    return;
+  }
+  Promise.all([
+    sb.from('sa_enrollments').select('id',{count:'exact'}).in('course_id',courseIds).eq('status','active'),
+    sb.from('sa_subscriptions').select('status').in('course_id',courseIds),
+    sb.from('sa_exams').select('id',{count:'exact'}).in('course_id',courseIds)
+  ]).then(function(r){
+    var nStudents=(r[0].count!==null&&r[0].count!==undefined)?r[0].count:0;
+    var subs=r[1].data?r[1].data:[];
+    var active=subs.filter(function(s){return s.status==='active';}).length;
+    var pending=subs.filter(function(s){return s.status==='pending';}).length;
+    var nExams=(r[2].count!==null&&r[2].count!==undefined)?r[2].count:0;
+    var html='<div class="stat-row">'+
+      stat(nCourses,'courses')+stat(nStudents,'enrolled students')+
+      stat(active,'active subscriptions')+stat(pending,'pending payment')+stat(nExams,'exams')+'</div>';
+    html+='<div class="grid grid-3">';
+    State.courses.forEach(function(c){
+      html+='<div class="card"><div style="font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.08em;">'+esc(c.term||'Course')+'</div>'+
+        '<h3 style="margin:4px 0 8px;">'+esc(c.title)+'</h3>'+
+        '<div style="font-size:12.5px;color:var(--text-muted);">Join code: <span class="pill-code">'+esc(c.join_code)+'</span></div>'+
+        '<div style="font-size:12px;color:var(--text-subtle);margin-top:8px;">'+(c.requires_payment?'Paid access':'Free pilot')+(c.access_ends?(' · ends '+esc(c.access_ends)):'')+'</div></div>';
+    });
+    html+='</div>';
+    host.innerHTML=html;
+  });
+}
+function stat(num,label){ return '<div class="stat"><div class="s-num">'+esc(num)+'</div><div class="s-label">'+esc(label)+'</div></div>'; }
+
+/* ====================================================================
+   COURSES
+   ==================================================================== */
+function renderCourses(host){
+  var html='<div style="margin-bottom:18px;"><button class="btn btn-primary" id="newCourseBtn">+ New course</button></div>';
+  if(State.courses.length===0){ html+='<div class="card empty">No courses yet. Create one to get started.</div>'; }
+  else {
+    html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Title</th><th>Term</th><th>Join code</th><th>Access</th><th>Weights (R/Q/A/M/F)</th><th></th></tr></thead><tbody>';
+    State.courses.forEach(function(c){
+      var w=[c.weight_reading,c.weight_quizzes,c.weight_arenas,c.weight_midterm,c.weight_final].map(function(x){return Math.round((x?x:0)*100);}).join('/');
+      html+='<tr><td>'+esc(c.title)+'</td><td>'+esc(c.term||'-')+'</td><td><span class="pill-code">'+esc(c.join_code)+'</span></td>'+
+        '<td>'+(c.requires_payment?'<span class="tag amber">Paid</span>':'<span class="tag green">Free</span>')+'</td>'+
+        '<td class="mono">'+w+'</td>'+
+        '<td><button class="btn btn-ghost btn-sm" data-edit="'+c.id+'">Edit</button></td></tr>';
+    });
+    html+='</tbody></table></div>';
+  }
+  host.innerHTML=html;
+  $('newCourseBtn').addEventListener('click', function(){ openCourseModal(null); });
+  Array.prototype.forEach.call(host.querySelectorAll('[data-edit]'), function(b){ b.addEventListener('click', function(){ openCourseModal(b.getAttribute('data-edit')); }); });
+}
+function randomCode(){ var s='strat-'; var a='abcdefghijklmnopqrstuvwxyz0123456789'; for(var i=0;i<5;i++){ s+=a[Math.floor(Math.random()*a.length)]; } return s; }
+function openCourseModal(courseId){
+  var c = courseId?findCourse(courseId):null;
+  var isNew=!c;
+  var v={ title:c?c.title:'', term:c?c.term:'', description:c?(c.description||''):'',
+    join_code:c?c.join_code:randomCode(), requires_payment:c?c.requires_payment:true,
+    access_starts:c?(c.access_starts||''):'', access_ends:c?(c.access_ends||''):'',
+    wr:c?c.weight_reading:0.10, wq:c?c.weight_quizzes:0.20, wa:c?c.weight_arenas:0.20, wm:c?c.weight_midterm:0.20, wf:c?c.weight_final:0.30 };
+  var m=document.createElement('div'); m.className='modal-bg';
+  m.innerHTML='<div class="modal"><h2>'+(isNew?'New course':'Edit course')+'</h2>'+
+    '<div id="cmMsg" class="msg"></div>'+
+    '<div class="field"><label>Course title</label><input id="cmTitle" value="'+esc(v.title)+'" placeholder="Game Theory — Fall 2026"></div>'+
+    '<div class="row2"><div class="field"><label>Term</label><input id="cmTerm" value="'+esc(v.term)+'" placeholder="Fall 2026"></div>'+
+    '<div class="field"><label>Join code</label><input id="cmCode" value="'+esc(v.join_code)+'"></div></div>'+
+    '<div class="field"><label>Description</label><textarea id="cmDesc" style="min-height:70px;">'+esc(v.description)+'</textarea></div>'+
+    '<div class="row2"><div class="field"><label>Access starts</label><input id="cmStart" type="date" value="'+esc(v.access_starts)+'"></div>'+
+    '<div class="field"><label>Access ends</label><input id="cmEnd" type="date" value="'+esc(v.access_ends)+'"></div></div>'+
+    '<div class="field"><label><input type="checkbox" id="cmPay" '+(v.requires_payment?'checked':'')+'> Requires paid subscription (uncheck for a free pilot)</label></div>'+
+    '<div class="field"><label>Grade weights — must sum to 100%</label>'+
+    '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">'+
+      wInput('cmWr','Reading',v.wr)+wInput('cmWq','Quizzes',v.wq)+wInput('cmWa','Arenas',v.wa)+wInput('cmWm','Midterm',v.wm)+wInput('cmWf','Final',v.wf)+
+    '</div><div id="cmWsum" style="font-size:11.5px;color:var(--text-subtle);margin-top:6px;"></div></div>'+
+    '<div class="inline-actions" style="margin-top:18px;justify-content:flex-end;">'+
+      (isNew?'':'<button class="btn btn-danger btn-sm" id="cmArchive">Archive</button>')+
+      '<button class="btn btn-ghost" id="cmCancel">Cancel</button>'+
+      '<button class="btn btn-primary" id="cmSave">'+(isNew?'Create course':'Save changes')+'</button>'+
+    '</div></div>';
+  $('modalHost').appendChild(m);
+  function closeM(){ $('modalHost').innerHTML=''; }
+  function sumW(){ var s=num('cmWr')+num('cmWq')+num('cmWa')+num('cmWm')+num('cmWf'); $('cmWsum').textContent='Current sum: '+Math.round(s*100)+'%'; $('cmWsum').style.color=(Math.abs(s-1)<0.001)?'var(--green)':'var(--rose)'; }
+  function num(id){ var x=parseFloat($(id).value); return isNaN(x)?0:x/100; }
+  ['cmWr','cmWq','cmWa','cmWm','cmWf'].forEach(function(id){ $(id).addEventListener('input',sumW); }); sumW();
+  $('cmCancel').addEventListener('click', closeM);
+  m.addEventListener('click', function(e){ if(e.target===m){ closeM(); } });
+  if(!isNew){ $('cmArchive').addEventListener('click', function(){
+    sb.from('sa_courses').update({is_active:false}).eq('id',courseId).then(function(){ closeM(); loadCourses().then(function(){ rerenderCurrentView(); }); });
+  }); }
+  $('cmSave').addEventListener('click', function(){
+    var title=$('cmTitle').value.trim();
+    if(!title){ cmErr('Title is required.'); return; }
+    var sumv=num('cmWr')+num('cmWq')+num('cmWa')+num('cmWm')+num('cmWf');
+    if(Math.abs(sumv-1)>0.001){ cmErr('Weights must sum to 100%.'); return; }
+    var payload={ title:title, term:$('cmTerm').value.trim(), description:$('cmDesc').value.trim(),
+      join_code:$('cmCode').value.trim(), requires_payment:$('cmPay').checked,
+      access_starts:$('cmStart').value||null, access_ends:$('cmEnd').value||null,
+      weight_reading:num('cmWr'), weight_quizzes:num('cmWq'), weight_arenas:num('cmWa'), weight_midterm:num('cmWm'), weight_final:num('cmWf') };
+    $('cmSave').disabled=true;
+    var op;
+    if(isNew){ payload.owner_id=State.user.id; op=sb.from('sa_courses').insert(payload); }
+    else { op=sb.from('sa_courses').update(payload).eq('id',courseId); }
+    op.then(function(res){
+      $('cmSave').disabled=false;
+      if(res.error){ cmErr(res.error.message); return; }
+      closeM(); loadCourses().then(function(){ rerenderCurrentView(); });
+    });
+  });
+  function cmErr(t){ var e=$('cmMsg'); e.textContent=t; e.className='msg err'; }
+}
+function wInput(id,label,val){ return '<div><label style="font-size:10px;color:var(--text-subtle);display:block;margin-bottom:3px;">'+label+'</label><input id="'+id+'" type="number" min="0" max="100" value="'+Math.round((val?val:0)*100)+'" style="padding:7px;"></div>'; }
+
+/* ====================================================================
+   ROSTER
+   ==================================================================== */
+function renderRoster(host){
+  if(!needCourse(host)){ return; }
+  var c=findCourse(State.teachCourseId);
+  host.innerHTML='<div class="card" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">'+
+    '<div>Students join with code <span class="pill-code">'+esc(c.join_code)+'</span> in the student app.</div>'+
+    '<button class="btn btn-ghost btn-sm" id="addStudentBtn">+ Add student by email</button></div>'+
+    '<div id="rosterBody">'+loadingCard()+'</div>';
+  $('addStudentBtn').addEventListener('click', openAddStudent);
+  loadRoster();
+}
+function loadRoster(){
+  sb.from('sa_enrollments').select('id,student_id,status,enrolled_at,sa_profiles(email,full_name)').eq('course_id',State.teachCourseId).then(function(res){
+    var rows=res.data?res.data:[];
+    if(rows.length===0){ $('rosterBody').innerHTML='<div class="card empty">No students enrolled yet.</div>'; return; }
+    var html='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Email</th><th>Name</th><th>Status</th><th>Enrolled</th><th></th></tr></thead><tbody>';
+    rows.forEach(function(r){
+      var p=r.sa_profiles?r.sa_profiles:{};
+      var st=r.status==='active'?'<span class="tag green">active</span>':(r.status==='dropped'?'<span class="tag rose">dropped</span>':'<span class="tag dim">'+esc(r.status)+'</span>');
+      html+='<tr><td>'+esc(p.email||r.student_id)+'</td><td>'+esc(p.full_name||'-')+'</td><td>'+st+'</td>'+
+        '<td>'+esc(r.enrolled_at?new Date(r.enrolled_at).toLocaleDateString():'-')+'</td>'+
+        '<td><button class="btn btn-ghost btn-sm" data-drop="'+r.id+'" data-st="'+esc(r.status)+'">'+(r.status==='active'?'Drop':'Reactivate')+'</button></td></tr>';
+    });
+    html+='</tbody></table></div>';
+    $('rosterBody').innerHTML=html;
+    Array.prototype.forEach.call($('rosterBody').querySelectorAll('[data-drop]'), function(b){
+      b.addEventListener('click', function(){
+        var ns=b.getAttribute('data-st')==='active'?'dropped':'active';
+        sb.from('sa_enrollments').update({status:ns}).eq('id',b.getAttribute('data-drop')).then(function(){ loadRoster(); });
+      });
+    });
+  });
+}
+function openAddStudent(){
+  var m=document.createElement('div'); m.className='modal-bg';
+  m.innerHTML='<div class="modal"><h2>Add student</h2><div id="asMsg" class="msg"></div>'+
+    '<div class="field"><label>Student email (they must already have a StrategyArena account)</label><input id="asEmail" type="email" placeholder="student@university.edu"></div>'+
+    '<div class="inline-actions" style="justify-content:flex-end;"><button class="btn btn-ghost" id="asCancel">Cancel</button><button class="btn btn-primary" id="asAdd">Enroll</button></div></div>';
+  $('modalHost').appendChild(m);
+  function close(){ $('modalHost').innerHTML=''; }
+  $('asCancel').addEventListener('click', close);
+  m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
+  $('asAdd').addEventListener('click', function(){
+    var email=$('asEmail').value.trim().toLowerCase();
+    if(!email){ return; }
+    $('asAdd').disabled=true;
+    sb.from('sa_profiles').select('id').eq('email',email).maybeSingle().then(function(res){
+      if(res.error || !res.data){ asErr('No account found with that email. The student must sign up first.'); $('asAdd').disabled=false; return; }
+      var sid=res.data.id;
+      sb.from('sa_enrollments').insert({course_id:State.teachCourseId, student_id:sid, status:'active'}).then(function(ins){
+        $('asAdd').disabled=false;
+        if(ins.error){ asErr(ins.error.message); return; }
+        close(); loadRoster();
+      });
+    });
+  });
+  function asErr(t){ var e=$('asMsg'); e.textContent=t; e.className='msg err'; }
+}
+
+/* ====================================================================
+   GRADEBOOK  (weighted; renormalizes over available components)
+   ==================================================================== */
+function renderGradebook(host){
+  if(!needCourse(host)){ return; }
+  host.innerHTML=loadingCard();
+  var c=findCourse(State.teachCourseId);
+  var weights={reading:c.weight_reading,quizzes:c.weight_quizzes,arenas:c.weight_arenas,midterm:c.weight_midterm,final:c.weight_final};
+  // 1) gradebook view rows, 2) published exams, 3) exam attempts
+  Promise.all([
+    sb.from('sa_gradebook_v').select('*').eq('course_id',State.teachCourseId),
+    sb.from('sa_exams').select('id,kind,total_points,is_published').eq('course_id',State.teachCourseId).eq('is_published',true)
+  ]).then(function(r){
+    var rows=r[0].data?r[0].data:[];
+    var exams=r[1].data?r[1].data:[];
+    var midterm=exams.filter(function(e){return e.kind==='midterm';})[0];
+    var fin=exams.filter(function(e){return e.kind==='final';})[0];
+    var examIds=[]; if(midterm){examIds.push(midterm.id);} if(fin){examIds.push(fin.id);}
+    var examAttemptsP = examIds.length? sb.from('sa_attempts').select('student_id,exam_id,points_earned').in('exam_id',examIds).not('graded_at','is',null) : Promise.resolve({data:[]});
+    examAttemptsP.then(function(ea){
+      var attempts=ea.data?ea.data:[];
+      var examScore={}; // student -> {midterm: pts, final: pts}
+      attempts.forEach(function(a){
+        if(!examScore[a.student_id]){ examScore[a.student_id]={}; }
+        var key=(midterm&&a.exam_id===midterm.id)?'midterm':((fin&&a.exam_id===fin.id)?'final':null);
+        if(key){ examScore[a.student_id][key]=(examScore[a.student_id][key]||0)+(a.points_earned?a.points_earned:0); }
+      });
+      buildGradebook(host,c,weights,rows,midterm,fin,examScore);
+    });
+  });
+}
+function buildGradebook(host,c,weights,rows,midterm,fin,examScore){
+  if(rows.length===0){ host.innerHTML='<div class="card empty">No enrolled students yet. Share the join code <span class="pill-code">'+esc(c.join_code)+'</span> so students can join.</div>'; return; }
+  var computed=rows.map(function(r){
+    var reading=r.chapters_read/14;
+    var quizzes=(r.avg_quiz_score!==null&&r.avg_quiz_score!==undefined&&r.avg_quiz_score>0)?Number(r.avg_quiz_score):(r.quizzes_passed/14);
+    var arenas=Math.min(r.arena_sessions/13,1);
+    var midScore=(midterm&&midterm.total_points)?((examScore[r.student_id]&&examScore[r.student_id].midterm?examScore[r.student_id].midterm:0)/midterm.total_points):null;
+    var finScore=(fin&&fin.total_points)?((examScore[r.student_id]&&examScore[r.student_id].final?examScore[r.student_id].final:0)/fin.total_points):null;
+    // renormalize weights over available components
+    var comps=[['reading',reading,weights.reading],['quizzes',quizzes,weights.quizzes],['arenas',arenas,weights.arenas]];
+    if(midScore!==null){ comps.push(['midterm',midScore,weights.midterm]); }
+    if(finScore!==null){ comps.push(['final',finScore,weights.final]); }
+    var wsum=comps.reduce(function(s,x){return s+x[2];},0);
+    var total=wsum>0?comps.reduce(function(s,x){return s+x[1]*x[2];},0)/wsum:0;
+    return { email:r.email, name:r.full_name, sub:r.sub_status, reading:reading, quizzes:quizzes, arenas:arenas,
+      practice:(r.practice_attempts>0?r.practice_correct/r.practice_attempts:null),
+      midterm:midScore, final:finScore, total:total };
+  });
+  var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
+    '<div style="font-size:12.5px;color:var(--text-muted);">Weighted total renormalizes over components with data. Unpublished exams are excluded until you publish them.</div>'+
+    '<button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div>';
+  html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Student</th><th>Sub</th><th>Reading</th><th>Quizzes</th><th>Arenas</th><th>Practice</th><th>Midterm</th><th>Final</th><th>Weighted</th></tr></thead><tbody>';
+  computed.forEach(function(g){
+    html+='<tr><td>'+esc(g.name||g.email)+'</td><td>'+subTag(g.sub)+'</td>'+
+      '<td>'+pct(g.reading)+'</td><td>'+pct(g.quizzes)+'</td><td>'+pct(g.arenas)+'</td>'+
+      '<td>'+(g.practice===null?'<span class="tag dim">--</span>':pct(g.practice))+'</td>'+
+      '<td>'+(g.midterm===null?'<span class="tag dim">--</span>':pct(g.midterm))+'</td>'+
+      '<td>'+(g.final===null?'<span class="tag dim">--</span>':pct(g.final))+'</td>'+
+      '<td style="font-weight:600;color:var(--text-bright);">'+pct(g.total)+'</td></tr>';
+  });
+  html+='</tbody></table></div>';
+  host.innerHTML=html;
+  $('csvBtn').addEventListener('click', function(){ exportCSV(c,computed); });
+}
+function subTag(s){ if(s==='active'){return '<span class="tag green">active</span>';} if(s==='pending'){return '<span class="tag amber">pending</span>';} if(s==='expired'){return '<span class="tag rose">expired</span>';} if(s==='comped'){return '<span class="tag violet">comped</span>';} return '<span class="tag dim">'+esc(s)+'</span>'; }
+function exportCSV(c,rows){
+  var head=['Student','Email','Subscription','Reading%','Quizzes%','Arenas%','Practice%','Midterm%','Final%','Weighted%'];
+  var lines=[head.join(',')];
+  rows.forEach(function(g){
+    function p(x){ return x===null?'':Math.round(x*100); }
+    var line=[ '"'+(g.name||'').replace(/"/g,'""')+'"', '"'+(g.email||'')+'"', g.sub, p(g.reading),p(g.quizzes),p(g.arenas),p(g.practice),p(g.midterm),p(g.final),p(g.total) ];
+    lines.push(line.join(','));
+  });
+  var blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a'); a.href=url; a.download='gradebook-'+(c.join_code||'course')+'.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ====================================================================
+   ANALYTICS — concept-mastery heatmap + chapter engagement
+   ==================================================================== */
+function renderAnalytics(host){
+  if(!needCourse(host)){ return; }
+  host.innerHTML=loadingCard();
+  Promise.all([
+    sb.from('sa_attempts').select('is_correct,sa_assessment_items(concept_tag,chapter)').eq('course_id',State.teachCourseId).not('graded_at','is',null),
+    sb.from('sa_gradebook_v').select('chapters_read,quizzes_passed').eq('course_id',State.teachCourseId)
+  ]).then(function(r){
+    var att=r[0].data?r[0].data:[];
+    var gb=r[1].data?r[1].data:[];
+    // concept mastery
+    var byTag={};
+    att.forEach(function(a){
+      var it=a.sa_assessment_items; if(!it){ return; }
+      var tag=it.concept_tag?it.concept_tag:'(untagged)';
+      if(!byTag[tag]){ byTag[tag]={correct:0,total:0}; }
+      byTag[tag].total++; if(a.is_correct){ byTag[tag].correct++; }
+    });
+    var tags=Object.keys(byTag).sort();
+    var html='<div class="card" style="margin-bottom:18px;"><h3 style="margin-bottom:4px;">Concept mastery</h3>'+
+      '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">Accuracy on graded practice items, by concept. Red = struggling, green = mastered.</div>';
+    if(tags.length===0){ html+='<div class="empty">No graded practice attempts in this course yet.</div>'; }
+    else {
+      html+='<div class="heat-grid">';
+      tags.forEach(function(t){
+        var acc=byTag[t].correct/byTag[t].total;
+        var col=heatColor(acc);
+        html+='<div class="heat-cell" style="background:'+col.bg+';border-color:'+col.bd+';">'+
+          '<div class="hc-tag">'+esc(t)+'</div><div class="hc-val" style="color:'+col.fg+';">'+Math.round(acc*100)+'%</div>'+
+          '<div class="hc-n">'+byTag[t].total+' attempts</div></div>';
+      });
+      html+='</div>';
+    }
+    html+='</div>';
+    // chapter engagement (cohort)
+    var nStu=gb.length;
+    var avgRead = nStu? gb.reduce(function(s,x){return s+x.chapters_read;},0)/nStu : 0;
+    var avgQuiz = nStu? gb.reduce(function(s,x){return s+x.quizzes_passed;},0)/nStu : 0;
+    html+='<div class="stat-row">'+stat(nStu,'students')+stat(avgRead.toFixed(1)+' / 14','avg chapters read')+stat(avgQuiz.toFixed(1)+' / 14','avg quizzes passed')+stat(att.length,'practice attempts')+'</div>';
+    host.innerHTML=html;
+  });
+}
+function heatColor(acc){
+  if(acc>=0.8){ return {bg:'rgba(52,211,153,.14)',bd:'rgba(52,211,153,.3)',fg:'#6ee7b7'}; }
+  if(acc>=0.6){ return {bg:'rgba(124,92,255,.14)',bd:'rgba(124,92,255,.3)',fg:'var(--violet)'}; }
+  if(acc>=0.4){ return {bg:'rgba(251,191,36,.14)',bd:'rgba(251,191,36,.3)',fg:'var(--amber)'}; }
+  return {bg:'rgba(251,113,133,.14)',bd:'rgba(251,113,133,.3)',fg:'#fda4af'};
+}
+
+/* ====================================================================
+   EXAMS — list + assembler
+   ==================================================================== */
+function renderExams(host){
+  if(!needCourse(host)){ return; }
+  host.innerHTML='<div style="margin-bottom:16px;"><button class="btn btn-primary" id="newExamBtn">+ Assemble exam</button></div><div id="examList">'+loadingCard()+'</div>';
+  $('newExamBtn').addEventListener('click', function(){ openAssembler(); });
+  loadExams();
+}
+function loadExams(){
+  sb.from('sa_exams').select('*').eq('course_id',State.teachCourseId).order('created_at',{ascending:false}).then(function(res){
+    var rows=res.data?res.data:[];
+    if(rows.length===0){ $('examList').innerHTML='<div class="card empty">No exams yet. Use “Assemble exam” to build a midterm or final from the item bank.</div>'; return; }
+    var html='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Title</th><th>Kind</th><th>Items</th><th>Points</th><th>Status</th><th></th></tr></thead><tbody>';
+    rows.forEach(function(e){
+      var nItems=e.item_ids?e.item_ids.length:0;
+      html+='<tr><td>'+esc(e.title)+'</td><td><span class="tag violet">'+esc(e.kind)+'</span></td><td>'+nItems+'</td><td>'+esc(e.total_points||0)+'</td>'+
+        '<td>'+(e.is_published?'<span class="tag green">published</span>':'<span class="tag dim">draft</span>')+'</td>'+
+        '<td class="inline-actions"><button class="btn btn-ghost btn-sm" data-pub="'+e.id+'" data-on="'+(e.is_published?'1':'0')+'">'+(e.is_published?'Unpublish':'Publish')+'</button>'+
+        '<button class="btn btn-danger btn-sm" data-del="'+e.id+'">Delete</button></td></tr>';
+    });
+    html+='</tbody></table></div>';
+    $('examList').innerHTML=html;
+    Array.prototype.forEach.call($('examList').querySelectorAll('[data-pub]'), function(b){ b.addEventListener('click', function(){
+      sb.from('sa_exams').update({is_published:b.getAttribute('data-on')!=='1'}).eq('id',b.getAttribute('data-pub')).then(loadExams);
+    }); });
+    Array.prototype.forEach.call($('examList').querySelectorAll('[data-del]'), function(b){ b.addEventListener('click', function(){
+      sb.from('sa_exams').delete().eq('id',b.getAttribute('data-del')).then(loadExams);
+    }); });
+  });
+}
+var assemblerSel={};
+function openAssembler(){
+  assemblerSel={};
+  var m=document.createElement('div'); m.className='modal-bg';
+  m.innerHTML='<div class="modal" style="max-width:860px;"><h2>Assemble exam</h2><div id="axMsg" class="msg"></div>'+
+    '<div class="row2"><div class="field"><label>Title</label><input id="axTitle" placeholder="Midterm Exam"></div>'+
+    '<div class="field"><label>Kind</label><select id="axKind"><option value="midterm">Midterm</option><option value="final">Final</option><option value="practice">Practice</option></select></div></div>'+
+    '<div class="row2"><div class="field"><label>Time limit (minutes, optional)</label><input id="axTime" type="number" min="0" placeholder="90"></div>'+
+    '<div class="field"><label>Filter by chapter</label><select id="axChapter"><option value="">All chapters</option></select></div></div>'+
+    '<div class="field"><label>Instructions (optional)</label><textarea id="axInstr" style="min-height:50px;"></textarea></div>'+
+    '<div class="assembler-wrap"><div><div style="font-size:12px;color:var(--text-subtle);margin-bottom:6px;">Item bank</div><div class="pick-list" id="axBank">'+loadingCard()+'</div></div>'+
+    '<div><div style="font-size:12px;color:var(--text-subtle);margin-bottom:6px;">Selected</div><div class="card" id="axSelected" style="min-height:120px;"><div class="empty">No items selected.</div></div>'+
+    '<div id="axTotal" style="font-size:13px;color:var(--text-muted);margin-top:10px;"></div></div></div>'+
+    '<div class="inline-actions" style="justify-content:flex-end;margin-top:18px;"><button class="btn btn-ghost" id="axCancel">Cancel</button><button class="btn btn-primary" id="axSave">Save exam</button></div></div>';
+  $('modalHost').appendChild(m);
+  var chSel=$('axChapter'); CHAPTERS.forEach(function(c){ var o=document.createElement('option'); o.value=c.n; o.textContent='Ch '+c.n+' · '+c.title; chSel.appendChild(o); });
+  function close(){ $('modalHost').innerHTML=''; }
+  $('axCancel').addEventListener('click', close);
+  m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
+  $('axChapter').addEventListener('change', loadBank);
+  loadBank();
+  function loadBank(){
+    var q=sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt').eq('is_active',true).order('id');
+    var ch=$('axChapter').value; if(ch){ q=q.eq('chapter',parseInt(ch,10)); }
+    $('axBank').innerHTML=loadingCard();
+    q.then(function(res){
+      var items=res.data?res.data:[];
+      if(items.length===0){ $('axBank').innerHTML='<div class="empty">No items.</div>'; return; }
+      var html='';
+      items.forEach(function(it){
+        var checked=assemblerSel[it.id]?'checked':'';
+        html+='<label class="item-pick"><input type="checkbox" data-id="'+it.id+'" '+checked+'>'+
+          '<div><div class="ip-prompt">'+esc((it.prompt||'').slice(0,90))+((it.prompt&&it.prompt.length>90)?'…':'')+'</div>'+
+          '<div class="ip-meta">'+esc(it.id)+' · Ch'+it.chapter+' · '+esc(it.concept_tag)+' · '+esc(it.difficulty)+' · '+(it.points||1)+'pt</div></div></label>';
+      });
+      $('axBank').innerHTML=html;
+      Array.prototype.forEach.call($('axBank').querySelectorAll('input[type=checkbox]'), function(cb){
+        cb.addEventListener('change', function(){
+          var id=cb.getAttribute('data-id');
+          if(cb.checked){ var it2=items.filter(function(x){return x.id===id;})[0]; assemblerSel[id]={id:id,points:it2.points||1,chapter:it2.chapter}; }
+          else { delete assemblerSel[id]; }
+          renderSelected();
+        });
+      });
+      renderSelected();
+    });
+  }
+  function renderSelected(){
+    var ids=Object.keys(assemblerSel);
+    if(ids.length===0){ $('axSelected').innerHTML='<div class="empty">No items selected.</div>'; $('axTotal').textContent=''; return; }
+    var pts=ids.reduce(function(s,id){return s+(assemblerSel[id].points?assemblerSel[id].points:1);},0);
+    var html='';
+    ids.forEach(function(id){ html+='<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);" class="mono">'+esc(id)+' <span style="float:right;color:var(--text-subtle);">'+assemblerSel[id].points+'pt</span></div>'; });
+    $('axSelected').innerHTML=html;
+    $('axTotal').textContent=ids.length+' items · '+pts+' points total';
+  }
+  $('axSave').addEventListener('click', function(){
+    var title=$('axTitle').value.trim();
+    var ids=Object.keys(assemblerSel);
+    if(!title){ axErr('Title is required.'); return; }
+    if(ids.length===0){ axErr('Select at least one item.'); return; }
+    var pts=ids.reduce(function(s,id){return s+(assemblerSel[id].points?assemblerSel[id].points:1);},0);
+    var tl=$('axTime').value?parseInt($('axTime').value,10):null;
+    var payload={ course_id:State.teachCourseId, kind:$('axKind').value, title:title, item_ids:ids,
+      total_points:pts, time_limit_minutes:tl, instructions:$('axInstr').value.trim(), is_published:false };
+    $('axSave').disabled=true;
+    sb.from('sa_exams').insert(payload).then(function(res){
+      $('axSave').disabled=false;
+      if(res.error){ axErr(res.error.message); return; }
+      close(); loadExams();
+    });
+  });
+  function axErr(t){ var e=$('axMsg'); e.textContent=t; e.className='msg err'; }
+}
+
+/* ====================================================================
+   SUBSCRIPTIONS — payment / seat management
+   ==================================================================== */
+function renderSubscriptions(host){
+  if(!needCourse(host)){ return; }
+  var c=findCourse(State.teachCourseId);
+  var price=State.settings?State.settings.price_cents:0;
+  var link=State.settings?State.settings.stripe_link:'';
+  host.innerHTML='<div class="card" style="margin-bottom:16px;">'+
+    '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:center;">'+
+    '<div><div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.08em;">Platform price (set by admin)</div>'+
+    '<div style="font-size:22px;color:var(--text-bright);font-family:JetBrains Mono,monospace;">'+money(price,State.settings?State.settings.currency:'usd')+' <span style="font-size:13px;color:var(--text-muted);">per student / course</span></div></div>'+
+    (link?('<a class="btn btn-ghost btn-sm" href="'+esc(link)+'" target="_blank">Open Stripe payment link</a>'):'<span style="font-size:12.5px;color:var(--text-subtle);">No Stripe link set yet (admin → Platform).</span>')+
+    '</div></div>'+
+    '<div id="subBody">'+loadingCard()+'</div>';
+  loadSubs(c);
+}
+function loadSubs(c){
+  // build from roster joined to subscriptions
+  Promise.all([
+    sb.from('sa_enrollments').select('student_id,sa_profiles(email,full_name)').eq('course_id',State.teachCourseId).eq('status','active'),
+    sb.from('sa_subscriptions').select('*').eq('course_id',State.teachCourseId)
+  ]).then(function(r){
+    var roster=r[0].data?r[0].data:[];
+    var subs=r[1].data?r[1].data:[];
+    var subByStudent={}; subs.forEach(function(s){ subByStudent[s.student_id]=s; });
+    if(roster.length===0){ $('subBody').innerHTML='<div class="card empty">No active students to manage yet.</div>'; return; }
+    var html='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Student</th><th>Status</th><th>Source</th><th>Expires</th><th>Set access</th></tr></thead><tbody>';
+    roster.forEach(function(e){
+      var p=e.sa_profiles?e.sa_profiles:{};
+      var s=subByStudent[e.student_id];
+      var status=s?s.status:'none';
+      html+='<tr><td>'+esc(p.email||e.student_id)+'</td><td>'+subTag(status)+'</td>'+
+        '<td>'+esc(s&&s.source?s.source:'-')+'</td><td>'+esc(s&&s.expires_at?new Date(s.expires_at).toLocaleDateString():'-')+'</td>'+
+        '<td class="inline-actions">'+
+        '<button class="btn btn-ghost btn-sm" data-act="active" data-sid="'+e.student_id+'">Activate</button>'+
+        '<button class="btn btn-ghost btn-sm" data-act="comped" data-sid="'+e.student_id+'">Comp</button>'+
+        '<button class="btn btn-danger btn-sm" data-act="expired" data-sid="'+e.student_id+'">Revoke</button>'+
+        '</td></tr>';
+    });
+    html+='</tbody></table></div>';
+    $('subBody').innerHTML=html;
+    Array.prototype.forEach.call($('subBody').querySelectorAll('[data-act]'), function(b){
+      b.addEventListener('click', function(){ setSub(c, b.getAttribute('data-sid'), b.getAttribute('data-act')); });
+    });
+  });
+}
+function setSub(c, studentId, status){
+  var expires = c.access_ends ? (c.access_ends+'T23:59:59Z') : null;
+  var payload={ student_id:studentId, course_id:State.teachCourseId, status:status,
+    source:'manual', set_by:State.user.id, started_at:new Date().toISOString(), expires_at:expires };
+  // upsert on (student_id, course_id)
+  sb.from('sa_subscriptions').upsert(payload,{onConflict:'student_id,course_id'}).then(function(res){
+    loadSubs(c);
   });
 }
 
-/* Make sure a profile row + a personal self-study course exist. */
+/* ====================================================================
+   PLATFORM (admin only) — price, stripe link, author bio/photo
+   ==================================================================== */
+function renderPlatform(host){
+  if(State.role!=='admin'){ host.innerHTML='<div class="card empty">Administrator access required.</div>'; return; }
+  var s=State.settings?State.settings:{price_cents:0,currency:'usd',stripe_link:'',author_name:'',author_subtitle:'',author_bio_html:'',author_photo_url:''};
+  host.innerHTML='<div class="card" style="max-width:680px;margin-bottom:18px;"><h3>Pricing</h3><div id="pfMsg" class="msg"></div>'+
+    '<div class="row2"><div class="field"><label>Price per student / course</label><input id="pfPrice" type="number" min="0" step="0.01" value="'+((s.price_cents?s.price_cents:0)/100).toFixed(2)+'"></div>'+
+    '<div class="field"><label>Currency</label><input id="pfCur" value="'+esc(s.currency||'usd')+'"></div></div>'+
+    '<div class="field"><label>Stripe payment link</label><input id="pfStripe" value="'+esc(s.stripe_link||'')+'" placeholder="https://buy.stripe.com/..."></div>'+
+    '<button class="btn btn-primary" id="pfSavePricing">Save pricing</button></div>'+
+    '<div class="card" style="max-width:680px;"><h3>Author bio &amp; photo</h3><div style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">Shown on the textbook’s “About the Author” page.</div>'+
+    '<div class="field"><label>Author name</label><input id="pfName" value="'+esc(s.author_name||'')+'"></div>'+
+    '<div class="field"><label>Subtitle (optional — leave blank to keep the founder line)</label><input id="pfSub" value="'+esc(s.author_subtitle||'')+'"></div>'+
+    '<div class="field"><label>Photo URL (optional)</label><input id="pfPhoto" value="'+esc(s.author_photo_url||'')+'" placeholder="https://..."></div>'+
+    '<div class="field"><label>Bio (HTML allowed; leave blank to use the built-in bio)</label><textarea id="pfBio">'+esc(s.author_bio_html||'')+'</textarea></div>'+
+    '<button class="btn btn-primary" id="pfSaveBio">Save bio</button></div>';
+  $('pfSavePricing').addEventListener('click', function(){
+    var cents=Math.round(parseFloat($('pfPrice').value||'0')*100);
+    savePlatform({ price_cents:cents, currency:$('pfCur').value.trim()||'usd', stripe_link:$('pfStripe').value.trim() }, 'Pricing saved.');
+  });
+  $('pfSaveBio').addEventListener('click', function(){
+    savePlatform({ author_name:$('pfName').value.trim(), author_subtitle:$('pfSub').value.trim(), author_photo_url:$('pfPhoto').value.trim(), author_bio_html:$('pfBio').value.trim() }, 'Bio saved.');
+  });
+}
+function savePlatform(patch, okMsg){
+  patch.id=1; patch.updated_by=State.user.id;
+  sb.from('sa_platform_settings').upsert(patch,{onConflict:'id'}).then(function(res){
+    var e=$('pfMsg');
+    if(res.error){ if(e){ e.textContent=res.error.message; e.className='msg err'; } return; }
+    if(e){ e.textContent=okMsg; e.className='msg ok'; }
+    loadPlatformSettings();
+  });
+}
+
+/* ====================================================================
+   PEOPLE (admin only) — grant / revoke instructor access
+   ==================================================================== */
+function renderPeople(host){
+  if(State.role!=='admin'){ host.innerHTML='<div class="card empty">Administrator access required.</div>'; return; }
+  host.innerHTML='<div class="card" style="max-width:680px;margin-bottom:16px;"><h3>Grant instructor access</h3><div id="pplMsg" class="msg"></div>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Enter the email of an existing account to promote it. They must have signed up first.</div>'+
+    '<div class="field"><label>Email</label><input id="pplEmail" type="email" placeholder="professor@university.edu"></div>'+
+    '<div class="inline-actions"><button class="btn btn-primary" id="pplGrant">Make instructor</button><button class="btn btn-ghost" id="pplAdmin">Make admin</button><button class="btn btn-danger" id="pplRevoke">Revoke to student</button></div></div>'+
+    '<div id="pplList">'+loadingCard()+'</div>';
+  $('pplGrant').addEventListener('click', function(){ setRole('instructor'); });
+  $('pplAdmin').addEventListener('click', function(){ setRole('admin'); });
+  $('pplRevoke').addEventListener('click', function(){ setRole('student'); });
+  loadStaff();
+}
+function setRole(role){
+  var email=$('pplEmail').value.trim().toLowerCase();
+  if(!email){ return; }
+  sb.from('sa_profiles').select('id').eq('email',email).maybeSingle().then(function(res){
+    var e=$('pplMsg');
+    if(res.error||!res.data){ e.textContent='No account with that email.'; e.className='msg err'; return; }
+    sb.from('sa_profiles').update({role:role}).eq('id',res.data.id).then(function(u){
+      if(u.error){ e.textContent=u.error.message; e.className='msg err'; return; }
+      e.textContent='Updated '+email+' to '+role+'.'; e.className='msg ok'; loadStaff();
+    });
+  });
+}
+function loadStaff(){
+  sb.from('sa_profiles').select('email,full_name,role').in('role',['instructor','admin']).order('role').then(function(res){
+    var rows=res.data?res.data:[];
+    if(rows.length===0){ $('pplList').innerHTML='<div class="card empty">No instructors yet.</div>'; return; }
+    var html='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Email</th><th>Name</th><th>Role</th></tr></thead><tbody>';
+    rows.forEach(function(p){ html+='<tr><td>'+esc(p.email)+'</td><td>'+esc(p.full_name||'-')+'</td><td>'+(p.role==='admin'?'<span class="tag amber">admin</span>':'<span class="tag violet">instructor</span>')+'</td></tr>'; });
+    html+='</tbody></table></div>';
+    $('pplList').innerHTML=html;
+  });
+}
+
+/* ============ STUDENT-SIDE VIEWS (merged from the student app) ============ */
 function ensureProfileAndCourse() {
   var uid = State.user.id;
   // upsert profile (RLS: id must equal auth.uid())
@@ -456,7 +1081,7 @@ function ensureProfileAndCourse() {
     return sb.from('sa_enrollments').select('course_id').eq('student_id', uid).limit(1);
   }).then(function(enr) {
     if (enr.data && enr.data.length > 0) {
-      State.courseId = enr.data[0].course_id;
+      State.selfCourseId = enr.data[0].course_id;
       return null;
     }
     // create a personal self-study course (student owns it) + enroll
@@ -465,38 +1090,15 @@ function ensureProfileAndCourse() {
       owner_id: uid, title: 'Self-Study', term: 'Personal', join_code: code
     }).select('id').single().then(function(c) {
       if (c.error || !c.data) { return null; }
-      State.courseId = c.data.id;
-      return sb.from('sa_enrollments').insert({ course_id: State.courseId, student_id: uid });
+      State.selfCourseId = c.data.id;
+      return sb.from('sa_enrollments').insert({ course_id: State.selfCourseId, student_id: uid });
     });
   });
 }
 
-/* ======================================================================
-   NAVIGATION
-   ====================================================================== */
-var navItems = document.querySelectorAll('.nav-item');
-navItems.forEach(function(it) {
-  it.addEventListener('click', function() {
-    navItems.forEach(function(x){ x.classList.remove('active'); });
-    it.classList.add('active');
-    switchView(it.getAttribute('data-view'));
-  });
-});
-function switchView(view) {
-  ['home','chapters','arenas','practice','progress','diagnostics'].forEach(function(v){
-    var el = $('view-' + v);
-    if (v === view) { show(el); } else { hide(el); }
-  });
-  if (view === 'progress') { loadProgress(); }
-  if (view === 'home') { loadHome(); }
-}
-
-/* ======================================================================
-   CHAPTERS + ARENAS
-   ====================================================================== */
 function renderChapters() {
   var g = $('chapterGrid'); g.innerHTML = '';
-  CHAPTERS.forEach(function(c) {
+  STUDENT_CHAPTERS.forEach(function(c) {
     var div = document.createElement('div');
     div.className = 'card launch';
     div.innerHTML =
@@ -511,6 +1113,7 @@ function renderChapters() {
     g.appendChild(div);
   });
 }
+
 function renderArenas() {
   var g = $('arenaGrid'); g.innerHTML = '';
   Object.keys(ARENA_TITLE).forEach(function(slug) {
@@ -531,9 +1134,6 @@ function renderArenas() {
   });
 }
 
-/* ======================================================================
-   HOME
-   ====================================================================== */
 function loadHome() {
   if (!State.user) { return; }
   var uid = State.user.id;
@@ -568,26 +1168,24 @@ function loadHome() {
     });
   });
 }
+
 function statCard(num, label) {
   return '<div class="stat"><div class="s-num">' + esc(num) + '</div><div class="s-label">' + esc(label) + '</div></div>';
 }
+
 function quickCard(icon, title, sub, go) {
   return '<div class="card launch" data-go="' + go + '"><div style="font-size:24px;margin-bottom:8px;">' + icon +
     '</div><div class="c-title" style="font-size:18px;">' + esc(title) + '</div><div class="c-meta">' + esc(sub) + '</div></div>';
 }
 
-/* ======================================================================
-   PRACTICE — the real issue/grade flow against the Edge Function
-   ====================================================================== */
 function fillPracticeChapters() {
   var s = $('practiceChapter'); s.innerHTML = '';
-  CHAPTERS.forEach(function(c) {
+  STUDENT_CHAPTERS.forEach(function(c) {
     var o = document.createElement('option');
     o.value = c.n; o.textContent = 'Ch ' + c.n + ' · ' + c.title;
     s.appendChild(o);
   });
 }
-$('newQuestionBtn').addEventListener('click', loadNewQuestion);
 
 function loadNewQuestion() {
   var chapter = parseInt($('practiceChapter').value, 10);
@@ -605,7 +1203,7 @@ function loadNewQuestion() {
       var pick = res.data[Math.floor(Math.random() * res.data.length)];
       // 2) ask the Edge Function to ISSUE a per-student instance
       sb.functions.invoke('grade-attempt', {
-        body: { action: 'issue', item_id: pick.id, course_id: State.courseId }
+        body: { action: 'issue', item_id: pick.id, course_id: State.selfCourseId }
       }).then(function(fn) {
         if (fn.error) { area.innerHTML = errCard('issue failed: ' + fn.error.message); return; }
         var data = fn.data;
@@ -692,9 +1290,6 @@ function errCard(msg) {
   return '<div class="q-card"><div class="feedback wrong" style="display:block;">' + esc(msg) + '</div></div>';
 }
 
-/* ======================================================================
-   PROGRESS
-   ====================================================================== */
 function loadProgress() {
   if (!State.user) { return; }
   var uid = State.user.id;
@@ -736,10 +1331,6 @@ function loadProgress() {
     });
 }
 
-/* ======================================================================
-   DIAGNOSTICS — includes the live vault test
-   ====================================================================== */
-$('runDiagBtn').addEventListener('click', runDiagnostics);
 function runDiagnostics() {
   var out = $('diagOut');
   var lines = [];
@@ -749,7 +1340,7 @@ function runDiagnostics() {
 
   p('1. Session', 'dim');
   p('   signed in as ' + esc(State.user.email) + '  ✓', 'pass');
-  p('   self-study course: ' + (State.courseId ? esc(State.courseId) : 'none') );
+  p('   self-study course: ' + (State.selfCourseId ? esc(State.selfCourseId) : 'none') );
 
   // 2) read reference (should succeed)
   sb.from('sa_chapters').select('number', { count: 'exact' }).then(function(r) {
@@ -781,7 +1372,7 @@ function runDiagnostics() {
     if (r.error || !r.data || r.data.length === 0) { p('5. Grader test — skipped (no numeric item found)', 'dim'); return null; }
     var itemId = r.data[0].id;
     p('5. Grader — issuing item ' + esc(itemId) + ' …', 'dim');
-    return sb.functions.invoke('grade-attempt', { body: { action:'issue', item_id: itemId, course_id: State.courseId } })
+    return sb.functions.invoke('grade-attempt', { body: { action:'issue', item_id: itemId, course_id: State.selfCourseId } })
       .then(function(fn) {
         if (fn.error || !fn.data || fn.data.error) {
           p('   issue FAILED: ' + esc(fn.error ? fn.error.message : (fn.data ? fn.data.error : '?')), 'fail'); return;
@@ -799,19 +1390,11 @@ function runDiagnostics() {
   });
 }
 
-/* ======================================================================
-   BOOT — restore an existing session if present
-   ====================================================================== */
-renderAuthMode();
-sb.auth.getSession().then(function(res) {
-  if (res.data && res.data.session && res.data.session.user) {
-    onSignedIn(res.data.session.user);
-  }
-});
-sb.auth.onAuthStateChange(function(event, session) {
-  if (event === 'SIGNED_OUT') {
-    hide($('appScreen')); show($('authScreen'));
-  }
+/* ====================================================================
+   BOOT
+   ==================================================================== */
+sb.auth.getSession().then(function(res){
+  if(res.data && res.data.session && res.data.session.user){ onSignedIn(res.data.session.user); }
 });
 </script>
 </body>
