@@ -446,6 +446,14 @@
     40% { opacity: 1; transform: scale(1.3); }
   }
 </style>
+
+<style id="sa-fit">
+  /* StrategyArena viewport-fit tweaks (added by integration) */
+  main.max-w-7xl, main { padding-top: 1rem !important; padding-bottom: 2rem !important; }
+  header.sticky { padding-top: .6rem !important; padding-bottom: .6rem !important; }
+  @media (min-height: 800px) { main { padding-top: 1.5rem !important; } }
+  .sa-back-btn:hover { background: rgba(155,123,255,.12) !important; }
+</style>
 </head>
 
 <body class="grain min-h-screen">
@@ -458,6 +466,7 @@
      ============================================================ -->
 <header class="px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5 glass-subtle sticky top-0 z-30">
   <div class="flex items-center gap-3">
+    <a href="index.html" class="sa-back-btn" title="Back to menu" style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;margin-right:6px;border-radius:9px;border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.75);font-size:13px;text-decoration:none;background:rgba(255,255,255,.03);transition:all .12s;" onmouseover="this.style.borderColor='rgba(155,123,255,.6)';this.style.color='#fff';" onmouseout="this.style.borderColor='rgba(255,255,255,.14)';this.style.color='rgba(255,255,255,.75)';"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>Menu</a>
     <div class="logo-mark"></div>
     <div>
       <div class="text-[11px] text-white/40 leading-none mb-1">StrategyArena · Game arena</div>
