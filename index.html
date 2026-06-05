@@ -191,7 +191,7 @@
 <div id="authScreen" class="auth-wrap">
   <div class="auth-card">
     <div class="brand"><div class="brand-mark">&#9823;</div><div class="brand-name">StrategyArena</div></div>
-    <div class="auth-sub">Instructor &amp; Administrator Console</div>
+    <div class="auth-sub">Sign in to your game-theory workspace — or create an account to get started.</div>
     <div id="authMsg" class="msg"></div>
     <div class="field"><label>Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@university.edu"></div>
     <div class="field"><label>Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="********"></div>
@@ -389,7 +389,7 @@ function doAuth(){
       $('authSubmit').disabled=false;
       if(res.error){ setAuthMsg(res.error.message,'err'); return; }
       if(res.data && res.data.session){ onSignedIn(res.data.session.user); }
-      else { setAuthMsg('Account created. Confirm via email, then sign in. Ask the admin to grant instructor access.','ok'); State.signup=false; }
+      else { setAuthMsg('Account created. Please confirm via the email we sent, then sign in.','ok'); State.signup=false; }
     });
   } else {
     sb.auth.signInWithPassword({email:email,password:pw}).then(function(res){
