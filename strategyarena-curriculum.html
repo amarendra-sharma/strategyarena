@@ -2070,7 +2070,7 @@
             </div>
           </div>
           <div class="quiz-meta">
-            5 questions · pass threshold 70% · earn the chapter completion badge
+            5 questions · pass threshold 70% · earn the chapter badge (see “My Progress”)
           </div>
 
           <div class="quiz-questions" id="quiz-1-body">
@@ -9156,6 +9156,12 @@ const $$ = s => Array.from(document.querySelectorAll(s));
    NAVIGATION
    ============================================================ */
 function navigateTo(chapterNum) {
+  // Access gating: front matter (0,-1) and Chapters 1-2 are free; 3-14 require
+  // an active subscription (or staff). SA_ACCESS is resolved on load below.
+  if (chapterNum >= 3 && SA_ACCESS.resolved && !SA_ACCESS.hasAccess) {
+    showCurriculumLock(chapterNum);
+    return;
+  }
   State.currentChapter = chapterNum;
 
   // Show/hide chapters
@@ -9571,6 +9577,75 @@ document.addEventListener('DOMContentLoaded', () => {
   updateSidebarProgress();
   renderMath();
 });
+</script>
+
+<!-- Access gating: lock Chapters 3-14 unless the reader has an active subscription -->
+<script>
+var SA_ACCESS = { resolved:false, hasAccess:false };
+(function () {
+  function lockSidebar() {
+    // add a small lock glyph to chapters 3-14 nav links when no access
+    var links = document.querySelectorAll('.nav-link');
+    Array.prototype.forEach.call(links, function (lk) {
+      var ch = parseInt(lk.dataset.chapter, 10);
+      if (ch >= 3 && !SA_ACCESS.hasAccess) {
+        if (lk.querySelector('.sa-lock')) { return; }
+        var s = document.createElement('span');
+        s.className = 'sa-lock';
+        s.textContent = ' \uD83D\uDD12';
+        s.style.cssText = 'margin-left:6px;opacity:.6;font-size:11px;';
+        var t = lk.querySelector('.nav-title');
+        if (t) { t.appendChild(s); }
+      }
+    });
+  }
+  function resolve() {
+    if (!window.SAProgress || !window.SAProgress._client) { SA_ACCESS.resolved = true; lockSidebar(); return; }
+    var sb = window.SAProgress._client;
+    sb.auth.getSession().then(function (res) {
+      var session = (res && res.data) ? res.data.session : null;
+      if (!session || !session.user) { SA_ACCESS.resolved = true; SA_ACCESS.hasAccess = false; lockSidebar(); return; }
+      var uid = session.user.id;
+      // staff bypass
+      sb.from('sa_profiles').select('role').eq('id', uid).maybeSingle().then(function (pr) {
+        var role = (pr && pr.data && pr.data.role) ? pr.data.role : 'student';
+        if (role === 'admin' || role === 'instructor') { SA_ACCESS.hasAccess = true; SA_ACCESS.resolved = true; lockSidebar(); return; }
+        sb.from('sa_subscriptions').select('status,expires_at').eq('student_id', uid).eq('status', 'active').then(function (sr) {
+          var rows = sr.data ? sr.data : [];
+          var now = Date.now(); var ok = false, i;
+          for (i = 0; i < rows.length; i++) {
+            var exp = rows[i].expires_at ? new Date(rows[i].expires_at).getTime() : null;
+            if (exp === null || exp > now) { ok = true; break; }
+          }
+          SA_ACCESS.hasAccess = ok; SA_ACCESS.resolved = true; lockSidebar();
+          // if the reader is currently viewing a locked chapter (e.g. via #hash), bounce to Ch1
+          if (!ok && State && State.currentChapter >= 3) { navigateTo(1); }
+        });
+      });
+    }).catch(function () { SA_ACCESS.resolved = true; lockSidebar(); });
+  }
+  if (document.readyState === 'complete' || document.readyState === 'interactive') { setTimeout(resolve, 350); }
+  else { window.addEventListener('DOMContentLoaded', function () { setTimeout(resolve, 350); }); }
+})();
+function showCurriculumLock(chapterNum) {
+  var wrap = document.querySelector('.reading-content') || document.body;
+  var existing = document.getElementById('saLockNotice');
+  if (existing) { existing.remove(); }
+  var div = document.createElement('div');
+  div.id = 'saLockNotice';
+  div.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9999;background:#16132c;border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:30px 34px;max-width:420px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.6);';
+  div.innerHTML = '<div style="font-size:30px;margin-bottom:8px;">\uD83D\uDD12</div>' +
+    '<div style="font-family:Instrument Serif,serif;font-size:24px;color:#F0EEFA;margin-bottom:8px;">Subscribe to unlock</div>' +
+    '<div style="font-size:14px;color:rgba(212,209,232,.7);margin-bottom:18px;">Chapters 1\u20132 are free to preview. Chapter ' + chapterNum + ' is part of the full course \u2014 subscribe from the StrategyArena app to read it.</div>' +
+    '<a href="index.html" style="display:inline-block;padding:10px 18px;border-radius:10px;background:linear-gradient(135deg,#7C5CFF,#9B7BFF);color:#fff;text-decoration:none;font-weight:600;font-size:14px;">Back to app</a>' +
+    '<div style="margin-top:12px;"><button onclick="document.getElementById(\'saLockNotice\').remove();document.getElementById(\'saLockBackdrop\').remove();" style="background:none;border:none;color:rgba(212,209,232,.5);cursor:pointer;font-size:13px;">Keep reading free chapters</button></div>';
+  var backdrop = document.createElement('div');
+  backdrop.id = 'saLockBackdrop';
+  backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(5,4,12,.7);z-index:9998;';
+  backdrop.onclick = function () { div.remove(); backdrop.remove(); };
+  document.body.appendChild(backdrop);
+  document.body.appendChild(div);
+}
 </script>
 
 <!-- Author bio loader: pulls custom bio/photo from platform settings (admin-editable) -->
