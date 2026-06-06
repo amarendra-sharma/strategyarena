@@ -186,6 +186,7 @@
   .badge .b-sub { font-size:10px; color:var(--text-subtle); margin-top:3px; }
   .badge.earned .b-sub { color:var(--amber); }
   .badge.milestone { grid-column:span 1; }
+  .role-opt.active { border-color:var(--violet); background:rgba(124,92,255,.14); color:var(--text-bright); }
   @media (max-width:880px) {
     .app { grid-template-columns:1fr; }
     .sidebar { position:static; height:auto; }
@@ -205,6 +206,19 @@
     <div id="authMsg" class="msg"></div>
     <div class="field"><label>Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@university.edu"></div>
     <div class="field"><label>Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="********"></div>
+    <div id="signupRole" class="hidden">
+      <div class="field"><label>I am signing up as</label>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn btn-ghost role-opt active" data-role="student" style="flex:1;">Student</button>
+          <button type="button" class="btn btn-ghost role-opt" data-role="professor" style="flex:1;">Professor</button>
+        </div>
+      </div>
+      <div id="profFields" class="hidden">
+        <div class="field"><label>Institution</label><input id="authInstitution" placeholder="Binghamton University"></div>
+        <div class="field"><label>What & where do you teach? (a short note)</label><textarea id="authNote" style="min-height:64px;" placeholder="e.g. I teach intermediate microeconomics and want to use StrategyArena in my Fall course."></textarea></div>
+        <div style="font-size:11.5px;color:var(--text-subtle);margin:-6px 0 14px;">Professor accounts need an academic email and admin approval. You'll get student access right away; teaching tools unlock once approved.</div>
+      </div>
+    </div>
     <button class="btn btn-primary" id="authSubmit" style="width:100%;">Sign in</button>
     <div class="auth-toggle" id="authToggle">No account yet? <b>Create one</b></div>
   </div>
@@ -386,19 +400,46 @@ function hide(el){ if(el){el.classList.add('hidden');} }
    AUTH
    ==================================================================== */
 function setAuthMsg(t,k){ var m=$('authMsg'); m.textContent=t||''; m.className='msg '+(k?k:''); if(!t){m.className='msg';} }
-$('authToggle').addEventListener('click', function(){ State.signup=!State.signup; $('authSubmit').textContent=State.signup?'Create account':'Sign in'; $('authToggle').innerHTML=State.signup?'Already registered? <b>Sign in</b>':'No account yet? <b>Create one</b>'; setAuthMsg('',''); });
+$('authToggle').addEventListener('click', function(){ State.signup=!State.signup; $('authSubmit').textContent=State.signup?'Create account':'Sign in'; $('authToggle').innerHTML=State.signup?'Already registered? <b>Sign in</b>':'No account yet? <b>Create one</b>'; setAuthMsg('',''); if(State.signup){ show($('signupRole')); } else { hide($('signupRole')); } });
 $('authSubmit').addEventListener('click', doAuth);
 $('authPassword').addEventListener('keydown', function(e){ if(e.key==='Enter'){ doAuth(); } });
+
+// signup role choice (student vs professor)
+var SIGNUP_ROLE = 'student';
+Array.prototype.forEach.call(document.querySelectorAll('.role-opt'), function(b){
+  b.addEventListener('click', function(){
+    Array.prototype.forEach.call(document.querySelectorAll('.role-opt'), function(x){ x.classList.remove('active'); });
+    b.classList.add('active');
+    SIGNUP_ROLE = b.getAttribute('data-role');
+    if(SIGNUP_ROLE==='professor'){ show($('profFields')); } else { hide($('profFields')); }
+  });
+});
+function isAcademicEmail(email){
+  var e = email.toLowerCase();
+  return /\.edu$/.test(e) || /\.edu\.[a-z]{2,}$/.test(e) || /\.ac\.[a-z]{2,}$/.test(e);
+}
+
 function doAuth(){
   var email=$('authEmail').value.trim(), pw=$('authPassword').value;
   if(!email||!pw){ setAuthMsg('Enter email and password.','err'); return; }
+  if(State.signup && SIGNUP_ROLE==='professor'){
+    if(!isAcademicEmail(email)){ setAuthMsg('Professor accounts require an academic email (e.g. ending in .edu, .ac.uk, .edu.au). You can still sign up as a student.','err'); return; }
+    if(!$('authInstitution').value.trim()){ setAuthMsg('Please enter your institution.','err'); return; }
+  }
   $('authSubmit').disabled=true; setAuthMsg('Working...','');
   if(State.signup){
-    sb.auth.signUp({email:email,password:pw}).then(function(res){
+    var meta = {};
+    if(SIGNUP_ROLE==='professor'){
+      meta = { role_request:'professor', institution:$('authInstitution').value.trim(), request_note:$('authNote').value.trim() };
+    }
+    sb.auth.signUp({email:email,password:pw,options:{data:meta}}).then(function(res){
       $('authSubmit').disabled=false;
       if(res.error){ setAuthMsg(res.error.message,'err'); return; }
       if(res.data && res.data.session){ onSignedIn(res.data.session.user); }
-      else { setAuthMsg('Account created. Please confirm via the email we sent, then sign in.','ok'); State.signup=false; }
+      else {
+        var extra = (SIGNUP_ROLE==='professor') ? ' Your professor request will be reviewed after you confirm and sign in.' : '';
+        setAuthMsg('Account created. Please confirm via the email we sent, then sign in.'+extra,'ok'); State.signup=false; hide($('signupRole'));
+      }
     });
   } else {
     sb.auth.signInWithPassword({email:email,password:pw}).then(function(res){
@@ -437,6 +478,7 @@ function enterApp(user){
   // student self-study provisioning (own course for practice/progress)
   // platform settings (needed by the subscribe prompt for everyone) + access
   loadPlatformSettings();
+  maybeCreateProfRequest();
   resolveAccess().then(function(){
     // student self-study provisioning (own course for practice/progress)
     return ensureProfileAndCourse();
@@ -1032,6 +1074,7 @@ function renderPlatform(host){
     '<div class="row2"><div class="field"><label>Price per student / course</label><input id="pfPrice" type="number" min="0" step="0.01" value="'+((s.price_cents?s.price_cents:0)/100).toFixed(2)+'"></div>'+
     '<div class="field"><label>Currency</label><input id="pfCur" value="'+esc(s.currency||'usd')+'"></div></div>'+
     '<div class="field"><label>Stripe payment link</label><input id="pfStripe" value="'+esc(s.stripe_link||'')+'" placeholder="https://buy.stripe.com/..."></div>'+
+    '<div class="field"><label>Notify email (where new professor requests are sent)</label><input id="pfNotify" value="'+esc(s.notify_email||'')+'" placeholder="you@macronations.com"></div>'+
     '<button class="btn btn-primary" id="pfSavePricing">Save pricing</button></div>'+
     '<div class="card" style="max-width:680px;"><h3>Author bio &amp; photo</h3><div style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">Shown on the textbook’s “About the Author” page.</div>'+
     '<div class="field"><label>Author name</label><input id="pfName" value="'+esc(s.author_name||'')+'"></div>'+
@@ -1041,7 +1084,7 @@ function renderPlatform(host){
     '<button class="btn btn-primary" id="pfSaveBio">Save bio</button></div>';
   $('pfSavePricing').addEventListener('click', function(){
     var cents=Math.round(parseFloat($('pfPrice').value||'0')*100);
-    savePlatform({ price_cents:cents, currency:$('pfCur').value.trim()||'usd', stripe_link:$('pfStripe').value.trim() }, 'Pricing saved.');
+    savePlatform({ price_cents:cents, currency:$('pfCur').value.trim()||'usd', stripe_link:$('pfStripe').value.trim(), notify_email:$('pfNotify').value.trim() }, 'Pricing saved.');
   });
   $('pfSaveBio').addEventListener('click', function(){
     savePlatform({ author_name:$('pfName').value.trim(), author_subtitle:$('pfSub').value.trim(), author_photo_url:$('pfPhoto').value.trim(), author_bio_html:$('pfBio').value.trim() }, 'Bio saved.');
@@ -1062,15 +1105,52 @@ function savePlatform(patch, okMsg){
    ==================================================================== */
 function renderPeople(host){
   if(State.role!=='admin'){ host.innerHTML='<div class="card empty">Administrator access required.</div>'; return; }
-  host.innerHTML='<div class="card" style="max-width:680px;margin-bottom:16px;"><h3>Grant instructor access</h3><div id="pplMsg" class="msg"></div>'+
-    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Enter the email of an existing account to promote it. They must have signed up first.</div>'+
+  host.innerHTML='<div id="reqQueue">'+loadingCard()+'</div>'+
+    '<div class="card" style="max-width:680px;margin:18px 0 16px;"><h3>Grant access manually</h3><div id="pplMsg" class="msg"></div>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Promote an existing account directly (it must have signed up first).</div>'+
     '<div class="field"><label>Email</label><input id="pplEmail" type="email" placeholder="professor@university.edu"></div>'+
     '<div class="inline-actions"><button class="btn btn-primary" id="pplGrant">Make instructor</button><button class="btn btn-ghost" id="pplAdmin">Make admin</button><button class="btn btn-danger" id="pplRevoke">Revoke to student</button></div></div>'+
     '<div id="pplList">'+loadingCard()+'</div>';
   $('pplGrant').addEventListener('click', function(){ setRole('instructor'); });
   $('pplAdmin').addEventListener('click', function(){ setRole('admin'); });
   $('pplRevoke').addEventListener('click', function(){ setRole('student'); });
+  loadRequests();
   loadStaff();
+}
+function loadRequests(){
+  sb.from('sa_access_requests').select('*').eq('status','pending').order('created_at',{ascending:true}).then(function(res){
+    var rows = res.data ? res.data : [];
+    var html = '<div class="card"><h3 style="margin-bottom:4px;">Pending professor requests</h3>';
+    if(rows.length===0){ html += '<div class="empty">No pending requests.</div></div>'; $('reqQueue').innerHTML=html; return; }
+    html += '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">'+rows.length+' awaiting review.</div>';
+    html += '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Email</th><th>Institution</th><th>Note</th><th>Requested</th><th>Decision</th></tr></thead><tbody>';
+    rows.forEach(function(r){
+      html += '<tr><td>'+esc(r.email)+'</td><td>'+esc(r.institution||'-')+'</td><td style="white-space:normal;max-width:280px;">'+esc(r.note||'-')+'</td>'+
+        '<td>'+esc(r.created_at?new Date(r.created_at).toLocaleDateString():'-')+'</td>'+
+        '<td class="inline-actions"><button class="btn btn-primary btn-sm" data-approve="'+r.user_id+'" data-rid="'+r.id+'">Approve</button>'+
+        '<button class="btn btn-danger btn-sm" data-deny="'+r.id+'">Deny</button></td></tr>';
+    });
+    html += '</tbody></table></div></div>';
+    $('reqQueue').innerHTML=html;
+    Array.prototype.forEach.call($('reqQueue').querySelectorAll('[data-approve]'), function(b){
+      b.addEventListener('click', function(){ approveRequest(b.getAttribute('data-approve'), b.getAttribute('data-rid')); });
+    });
+    Array.prototype.forEach.call($('reqQueue').querySelectorAll('[data-deny]'), function(b){
+      b.addEventListener('click', function(){ denyRequest(b.getAttribute('data-deny')); });
+    });
+  });
+}
+function approveRequest(userId, reqId){
+  // 1) promote the profile to instructor, 2) mark the request approved
+  sb.from('sa_profiles').update({ role:'instructor' }).eq('id', userId).then(function(u){
+    if(u.error){ return; }
+    sb.from('sa_access_requests').update({ status:'approved', decided_at:new Date().toISOString(), decided_by:State.user.id }).eq('id', reqId).then(function(){
+      loadRequests(); loadStaff();
+    });
+  });
+}
+function denyRequest(reqId){
+  sb.from('sa_access_requests').update({ status:'denied', decided_at:new Date().toISOString(), decided_by:State.user.id }).eq('id', reqId).then(function(){ loadRequests(); });
 }
 function setRole(role){
   var email=$('pplEmail').value.trim().toLowerCase();
@@ -1137,6 +1217,29 @@ function openSubscribePrompt(whatLabel) {
 }
 
 /* ============ STUDENT-SIDE VIEWS (merged from the student app) ============ */
+
+/* ---- If the user signed up requesting professor access, queue it (once) ---- */
+function maybeCreateProfRequest() {
+  var u = State.user;
+  if (!u || !u.user_metadata) { return; }
+  if (u.user_metadata.role_request !== 'professor') { return; }
+  // Already an instructor/admin? nothing to request.
+  if (State.role === 'instructor' || State.role === 'admin') { return; }
+  var uid = u.id;
+  // create the request only if one doesn't already exist
+  sb.from('sa_access_requests').select('id,status').eq('user_id', uid).maybeSingle().then(function(res){
+    if (res.data) { return; } // already requested
+    var inst = u.user_metadata.institution ? u.user_metadata.institution : '';
+    var note = u.user_metadata.request_note ? u.user_metadata.request_note : '';
+    sb.from('sa_access_requests').insert({
+      user_id: uid, email: u.email, institution: inst, note: note, status: 'pending'
+    }).then(function(ins){
+      if (ins.error) { return; }
+      // best-effort email notification (works only if the Edge Function + key are set up)
+      sb.functions.invoke('notify-prof-request', { body: { email: u.email, institution: inst, note: note } }).then(function(){}, function(){});
+    });
+  });
+}
 
 /* ---- Join a professor's course by code, with optional ?course=CODE URL param ---- */
 function joinCourseByCode(code, cb) {
