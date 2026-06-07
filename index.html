@@ -386,7 +386,7 @@ var ARENA_TITLE = {
   'evolutionary':'Evolution Simulator','cooperative':'Coalition Game','behavioral':'Behavioral Lab',
   'calculus-applications':'Oligopoly Lab'
 };
-var State = { user:null, profile:null, role:'student', courses:[], currentCourseId:null, settings:null, signup:false, selfCourseId:null, currentItem:null, selectedOption:null };
+var State = { user:null, profile:null, role:'student', courses:[], currentCourseId:null, settings:null, signup:false, selfCourseId:null, payCourseId:null, hasAccess:false, currentItem:null, selectedOption:null };
 
 /* ---- helpers (no optional chaining / nullish) ---- */
 function $(id){ return document.getElementById(id); }
@@ -1198,9 +1198,17 @@ function resolveAccess() {
 function chapterLocked(n) { if (State.hasAccess) { return false; } return !FREE_CHAPTERS[n]; }
 function arenaLocked(slug) { if (State.hasAccess) { return false; } return !FREE_ARENAS[slug]; }
 function openSubscribePrompt(whatLabel) {
-  var link = State.settings ? State.settings.stripe_link : '';
+  var baseLink = State.settings ? State.settings.stripe_link : '';
   var price = State.settings ? State.settings.price_cents : 0;
   var cur = State.settings ? State.settings.currency : 'usd';
+  // Attach who is paying + which course, so the webhook can auto-activate the
+  // right subscription. (Stripe Payment Links echo client_reference_id back.)
+  var link = baseLink;
+  if (baseLink && State.user && State.payCourseId) {
+    var ref = encodeURIComponent(State.user.id + '__' + State.payCourseId);
+    var sep = (baseLink.indexOf('?') >= 0) ? '&' : '?';
+    link = baseLink + sep + 'client_reference_id=' + ref + '&prefilled_email=' + encodeURIComponent(State.user.email);
+  }
   var m = document.createElement('div'); m.className = 'modal-bg';
   var priceStr = (price ? money(price, cur) : '');
   m.innerHTML = '<div class="modal" style="max-width:460px;text-align:center;">' +
@@ -1284,14 +1292,17 @@ function ensureProfileAndCourse() {
   return sb.from('sa_enrollments').select('course_id, sa_courses(owner_id)').eq('student_id', uid).then(function(enr) {
     var rows = enr.data ? enr.data : [];
     // Prefer a self-study course (one the student owns); else any enrollment.
-    var selfRow = null, anyRow = null, i;
+    var selfRow = null, anyRow = null, profRow = null, i;
     for (i = 0; i < rows.length; i++) {
       anyRow = rows[i];
       var oc = rows[i].sa_courses ? rows[i].sa_courses.owner_id : null;
-      if (oc === uid) { selfRow = rows[i]; break; }
+      if (oc === uid) { selfRow = rows[i]; }
+      else if (oc) { if (!profRow) { profRow = rows[i]; } }   // a professor's course
     }
-    if (selfRow) { State.selfCourseId = selfRow.course_id; return null; }
-    if (anyRow) { State.selfCourseId = anyRow.course_id; return null; }
+    // The course a payment should be attributed to: a professor course if joined, else self-study.
+    State.payCourseId = profRow ? profRow.course_id : (selfRow ? selfRow.course_id : null);
+    if (selfRow) { State.selfCourseId = selfRow.course_id; if(!State.payCourseId){ State.payCourseId = selfRow.course_id; } return null; }
+    if (anyRow) { State.selfCourseId = anyRow.course_id; if(!State.payCourseId){ State.payCourseId = anyRow.course_id; } return null; }
     // create a personal self-study course (student owns it) + enroll
     var code = 'self-' + uid.slice(0, 8);
     return sb.from('sa_courses').insert({
