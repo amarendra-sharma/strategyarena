@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Oligopoly Lab · Calculus Applications — StrategyArena</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Instrument+Serif&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+
+<style>
+  :root{
+    --bg:#0E0C20; --bg2:#0A0818; --surface:rgba(255,255,255,.025); --surface2:rgba(255,255,255,.045);
+    --border:rgba(255,255,255,.08); --border2:rgba(255,255,255,.14);
+    --text:#D4D1E8; --bright:#F0EEFA; --muted:rgba(212,209,232,.6); --subtle:rgba(212,209,232,.4);
+    --violet:#9B7BFF; --violet2:#7C5CFF; --amber:#FBBF24; --green:#34D399; --rose:#FB7185; --sky:#38BDF8;
+  }
+  *{box-sizing:border-box;}
+  html,body{background:var(--bg);}
+  body{font-family:'Inter',system-ui,sans-serif;color:var(--text);-webkit-font-smoothing:antialiased;margin:0;min-height:100vh;}
+  body::before{content:'';position:fixed;inset:0;z-index:-2;
+    background:radial-gradient(circle at 18% 18%,rgba(91,61,204,.16) 0%,transparent 45%),
+               radial-gradient(circle at 84% 82%,rgba(245,158,11,.05) 0%,transparent 55%),var(--bg2);}
+  h1,h2,h3{font-family:'Instrument Serif',serif;font-weight:400;color:var(--bright);letter-spacing:.3px;margin:0;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .logo-mark{
+    width:28px;height:28px;border-radius:8px;
+    background:linear-gradient(135deg,#7C5CFF 0%,#5B3DCC 60%,#10B981 140%);
+    position:relative;box-shadow:0 4px 12px -2px rgba(124,92,255,.4),inset 0 1px 0 rgba(255,255,255,.25);}
+  .logo-mark::before{content:'';position:absolute;inset:6px;
+    background:linear-gradient(45deg,transparent 45%,white 45%,white 55%,transparent 55%),
+              linear-gradient(-45deg,transparent 45%,white 45%,white 55%,transparent 55%);
+    border-radius:3px;opacity:.95;}
+  .card{background:var(--surface2);border:1px solid var(--border);border-radius:16px;}
+  .tabbtn{padding:9px 16px;border-radius:10px;border:1px solid var(--border2);background:transparent;color:var(--muted);
+    font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .12s;}
+  .tabbtn:hover{color:var(--bright);}
+  .tabbtn.on{background:rgba(124,92,255,.16);border-color:var(--violet);color:var(--bright);}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:5px;border-radius:5px;
+    background:rgba(255,255,255,.12);outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:17px;height:17px;border-radius:50%;
+    background:linear-gradient(135deg,var(--violet2),var(--violet));cursor:pointer;box-shadow:0 2px 6px rgba(124,92,255,.5);}
+  input[type=range]::-moz-range-thumb{width:17px;height:17px;border:none;border-radius:50%;
+    background:var(--violet);cursor:pointer;}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 13px;}
+  .stat .v{font-family:'JetBrains Mono',monospace;font-size:19px;color:var(--bright);font-weight:600;}
+  .stat .k{font-size:10.5px;color:var(--subtle);text-transform:uppercase;letter-spacing:.07em;margin-top:2px;}
+  .pill{display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;}
+  .pill.v{background:rgba(124,92,255,.18);color:var(--violet);}
+  .pill.g{background:rgba(52,211,153,.16);color:#6ee7b7;}
+  .pill.a{background:rgba(251,191,36,.16);color:var(--amber);}
+  .calc-box{background:rgba(10,8,24,.55);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
+  .calc-line{margin:8px 0;font-size:15px;color:var(--text);}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 15px;border-radius:10px;
+    border:none;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;transition:filter .12s,transform .1s;}
+  .btn:active{transform:translateY(1px);}
+  .btn-p{background:linear-gradient(135deg,var(--violet2),var(--violet));color:#fff;}
+  .btn-p:hover{filter:brightness(1.08);}
+  .btn-g{background:transparent;border:1px solid var(--border2);color:var(--text);}
+  .btn-g:hover{border-color:var(--violet);color:var(--bright);}
+  .feedback{border-radius:12px;padding:12px 15px;font-size:14px;margin-top:12px;}
+  .feedback.win{background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.3);color:#6ee7b7;}
+  .feedback.near{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);color:var(--amber);}
+  .feedback.info{background:rgba(124,92,255,.10);border:1px solid rgba(124,92,255,.25);color:var(--text);}
+  canvas{display:block;width:100%;height:auto;border-radius:12px;background:rgba(10,8,24,.5);border:1px solid var(--border);}
+  .legend-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle;}
+</style>
+<style id="sa-fit">
+  main, main.max-w-7xl { padding-top: 1rem !important; padding-bottom: 2rem !important; }
+  header.sticky { padding-top:.6rem !important; padding-bottom:.6rem !important; }
+  .sa-back-btn:hover { background: rgba(155,123,255,.12) !important; }
+</style>
+</head>
+<body>
+
+<header class="sticky top-0 z-20" style="background:rgba(10,8,24,.7);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);">
+  <div class="max-w-7xl mx-auto px-5 flex items-center gap-3" style="height:58px;">
+    <a href="index.html" class="sa-back-btn" title="Back to menu" style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;margin-right:2px;border-radius:9px;border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.75);font-size:13px;text-decoration:none;background:rgba(255,255,255,.03);transition:all .12s;" onmouseover="this.style.borderColor='rgba(155,123,255,.6)';this.style.color='#fff';" onmouseout="this.style.borderColor='rgba(255,255,255,.14)';this.style.color='rgba(255,255,255,.75)';"><svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>Menu</a>
+    <div class="logo-mark"></div>
+    <div class="leading-tight">
+      <div style="font-family:'Instrument Serif',serif;font-size:21px;color:var(--bright);">Oligopoly Lab</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-top:-2px;">Calculus applications · the firm's first-order condition</div>
+    </div>
+    <div class="ml-auto"><span class="pill v">Chapter 14</span></div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto px-5">
+  <!-- mode tabs -->
+  <div class="flex flex-wrap gap-2 my-4" id="tabs">
+    <button class="tabbtn on" data-mode="cournot">Cournot Arena</button>
+    <button class="tabbtn" data-mode="stackelberg">Stackelberg</button>
+    <button class="tabbtn" data-mode="compare">Market Structures</button>
+  </div>
+
+  <div class="grid gap-4" style="grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);" id="layout">
+    <!-- LEFT: controls + calculus -->
+    <div class="flex flex-col gap-4">
+      <div class="card p-4">
+        <div class="flex items-center justify-between mb-1">
+          <h3 style="font-size:18px;">The market</h3>
+          <span class="mono" style="font-size:12px;color:var(--subtle);">P = a − b·Q</span>
+        </div>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">Linear inverse demand, constant marginal cost <span class="mono">c</span>. Adjust the market, then play below.</p>
+        <div class="grid gap-3" style="grid-template-columns:1fr 1fr;">
+          <div><div class="flex justify-between"><label style="font-size:12px;color:var(--muted);">a (demand intercept)</label><span class="mono" id="aV" style="font-size:12px;color:var(--bright);">120</span></div><input type="range" id="aR" min="60" max="200" step="2" value="120"></div>
+          <div><div class="flex justify-between"><label style="font-size:12px;color:var(--muted);">b (slope)</label><span class="mono" id="bV" style="font-size:12px;color:var(--bright);">1.0</span></div><input type="range" id="bR" min="0.4" max="2.5" step="0.1" value="1"></div>
+          <div><div class="flex justify-between"><label style="font-size:12px;color:var(--muted);">c (marginal cost)</label><span class="mono" id="cV" style="font-size:12px;color:var(--bright);">20</span></div><input type="range" id="cR" min="0" max="80" step="2" value="20"></div>
+          <div id="nWrap" style="display:none;"><div class="flex justify-between"><label style="font-size:12px;color:var(--muted);">n (firms)</label><span class="mono" id="nV" style="font-size:12px;color:var(--bright);">3</span></div><input type="range" id="nR" min="1" max="12" step="1" value="3"></div>
+        </div>
+      </div>
+
+      <!-- play panel (cournot/stackelberg) -->
+      <div class="card p-4" id="playCard">
+        <h3 style="font-size:18px;margin-bottom:2px;" id="playTitle">You are Firm 1</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;" id="playHint"></p>
+        <div class="flex justify-between"><label style="font-size:12.5px;color:var(--text);">Your output q₁</label><span class="mono" id="q1V" style="font-size:13px;color:var(--violet);">—</span></div>
+        <input type="range" id="q1R" min="0" max="100" step="0.5" value="20" class="mt-1">
+        <div class="grid gap-2 mt-3" style="grid-template-columns:1fr 1fr 1fr;">
+          <div class="stat"><div class="v" id="oppQ" style="color:var(--sky);">—</div><div class="k">Firm 2 responds q₂</div></div>
+          <div class="stat"><div class="v" id="myProfit" style="color:var(--green);">—</div><div class="k">Your profit π₁</div></div>
+          <div class="stat"><div class="v" id="mktPrice">—</div><div class="k">Market price P</div></div>
+        </div>
+        <div class="flex gap-2 mt-3 flex-wrap">
+          <button class="btn btn-g" id="snapBtn">Snap to my best response</button>
+          <button class="btn btn-p" id="checkBtn">Lock in &amp; check</button>
+        </div>
+        <div id="feedback"></div>
+      </div>
+
+      <!-- compare panel -->
+      <div class="card p-4" id="compareCard" style="display:none;">
+        <h3 style="font-size:18px;margin-bottom:2px;">From monopoly to competition</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">Same demand and cost — only the number of competing firms changes. Watch price fall toward marginal cost as competition intensifies.</p>
+        <div id="cmpBars"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: diagram + calculus -->
+    <div class="flex flex-col gap-4">
+      <div class="card p-4" id="diagramCard">
+        <div class="flex items-center justify-between mb-2">
+          <h3 style="font-size:18px;">Best-response diagram</h3>
+          <div style="font-size:11px;color:var(--muted);">
+            <span><span class="legend-dot" style="background:var(--violet);"></span>BR₁</span>&nbsp;&nbsp;
+            <span><span class="legend-dot" style="background:var(--sky);"></span>BR₂</span>&nbsp;&nbsp;
+            <span><span class="legend-dot" style="background:var(--green);"></span>Nash</span>
+          </div>
+        </div>
+        <canvas id="cv" width="560" height="420"></canvas>
+        <p style="font-size:11.5px;color:var(--subtle);margin:8px 0 0;">Your point rides Firm 2's reaction curve (BR₂). Nash equilibrium is where the two reaction curves cross — set q₁ so your point lands there.</p>
+      </div>
+
+      <div class="card p-4" id="calcCard">
+        <h3 style="font-size:18px;margin-bottom:8px;">The calculus, live</h3>
+        <div class="calc-box">
+          <div class="calc-line" id="cl_profit"></div>
+          <div class="calc-line" id="cl_deriv"></div>
+          <div class="calc-line" id="cl_foc"></div>
+          <div class="calc-line" id="cl_br"></div>
+        </div>
+        <p style="font-size:11.5px;color:var(--subtle);margin:10px 0 0;" id="calcNote"></p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- StrategyArena progress reporting -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sa-progress.js"></script>
+<script>
+/* ============================ Oligopoly Lab ============================ */
+var State = {
+  mode: 'cournot',
+  a: 120, b: 1.0, c: 20, n: 3,
+  q1: 20,
+  engaged: false,        // did the student actually interact?
+  bestOutcome: 'completed',
+  bestScore: null,
+  foundNash: false,
+  foundStack: false
+};
+
+function $(id){ return document.getElementById(id); }
+function clamp(x,lo,hi){ return x<lo?lo:(x>hi?hi:x); }
+function r2(x){ return Math.round(x*100)/100; }
+function r0(x){ return Math.round(x); }
+
+/* ---- economics ---- */
+function brOf(qOther){ // a firm's best response to the other's quantity (symmetric c)
+  var v = (State.a - State.c - State.b*qOther) / (2*State.b);
+  return v>0 ? v : 0;
+}
+function cournotQ(){ return (State.a - State.c) / (3*State.b); }            // per firm
+function stackLeaderQ(){ return (State.a - State.c) / (2*State.b); }
+function stackFollowerQ(){ return (State.a - State.c) / (4*State.b); }
+function price(Q){ var p = State.a - State.b*Q; return p>0?p:0; }
+function profitFirm(qi, qOther){ return (price(qi+qOther) - State.c) * qi; }
+function qMax(){ var m=(State.a-State.c)/State.b; return m>0?m:1; }          // competitive output
+
+/* ---- structure comparison ---- */
+function monopoly(){ var Q=(State.a-State.c)/(2*State.b); return {Q:Q,P:price(Q)}; }
+function nfirm(n){ var qi=(State.a-State.c)/((n+1)*State.b); return {qi:qi,Q:n*qi,P:price(n*qi)}; }
+function competitive(){ var Q=(State.a-State.c)/State.b; return {Q:Q,P:State.c}; }
+
+/* ===================== rendering ===================== */
+function readControls(){
+  State.a=parseFloat($('aR').value); State.b=parseFloat($('bR').value);
+  State.c=parseFloat($('cR').value); State.n=parseInt($('nR').value,10);
+  $('aV').textContent=r0(State.a); $('bV').textContent=State.b.toFixed(1);
+  $('cV').textContent=r0(State.c); $('nV').textContent=State.n;
+  // keep q1 slider range sensible
+  $('q1R').max = (qMax()).toFixed(1);
+}
+
+function refresh(){
+  readControls();
+  if(State.mode==='compare'){ renderCompare(); drawCompareInfo(); renderCalc(); return; }
+  State.q1 = clamp(parseFloat($('q1R').value),0,qMax());
+  var q2 = brOf(State.q1);                       // firm 2 always best-responds
+  var P = price(State.q1+q2);
+  var pi1 = profitFirm(State.q1,q2);
+  $('q1V').textContent=r2(State.q1);
+  $('oppQ').textContent=r2(q2);
+  $('myProfit').textContent=r0(pi1);
+  $('mktPrice').textContent=r2(P);
+  draw(q2);
+  renderCalc();
+}
+
+/* ---- live calculus panel (KaTeX) ---- */
+function tex(el, latex){ if(window.katex){ try{ katex.render(latex,$(el),{throwOnError:false}); }catch(e){ $(el).textContent=latex; } } else { $(el).textContent=latex; } }
+function renderCalc(){
+  var a=State.a,b=State.b,c=State.c;
+  if(State.mode==='stackelberg'){
+    // leader substitutes BR2 into its profit, then maximizes
+    tex('cl_profit', '\\pi_1 = \\big(a - b(q_1+q_2) - c\\big)\\,q_1,\\quad q_2 = \\tfrac{a-c-bq_1}{2b}');
+    tex('cl_deriv',  '\\Rightarrow\\ \\pi_1(q_1) = \\tfrac{1}{2}\\big((a-c)q_1 - b q_1^{2}\\big)');
+    tex('cl_foc',    '\\frac{d\\pi_1}{dq_1} = \\tfrac{1}{2}\\big((a-c) - 2b q_1\\big) = 0');
+    tex('cl_br',     'q_1^{\\,\\text{lead}} = \\frac{a-c}{2b} = ' + r2(stackLeaderQ()));
+    $('calcNote').textContent = 'As leader you internalise the rival\u2019s reaction. The first-order condition gives exactly twice the Cournot output \u2014 the first-mover advantage.';
+  } else if(State.mode==='cournot'){
+    var q2=brOf(State.q1);
+    tex('cl_profit', '\\pi_1 = \\big(a - b(q_1+q_2) - c\\big)\\,q_1');
+    tex('cl_deriv',  '\\frac{\\partial \\pi_1}{\\partial q_1} = a - 2b q_1 - b q_2 - c');
+    tex('cl_foc',    'a - 2b q_1 - b\\,(' + r2(q2) + ') - c = 0');
+    tex('cl_br',     'q_1^{*} = \\frac{a-c-bq_2}{2b} = ' + r2(brOf(q2)) + '\\quad(\\text{Nash: }' + r2(cournotQ()) + ')');
+    $('calcNote').textContent = 'Each firm sets marginal revenue = marginal cost, taking the rival\u2019s output as given. Solving both first-order conditions together gives the Cournot\u2013Nash equilibrium.';
+  } else {
+    tex('cl_profit', '\\max_{Q}\\ (a - bQ - c)\\,Q \\;\\Rightarrow\\; a - 2bQ - c = 0');
+    tex('cl_deriv',  'Q^{\\text{mon}} = \\tfrac{a-c}{2b},\\quad Q^{\\text{comp}} = \\tfrac{a-c}{b}');
+    tex('cl_foc',    'n\\text{-firm Cournot: } q_i = \\tfrac{a-c}{(n+1)b}');
+    tex('cl_br',     'P = \\frac{a + nc}{\\,n+1\\,}\\ \\xrightarrow[n\\to\\infty]{}\\ c');
+    $('calcNote').textContent = 'One monopolist restricts output most; adding firms pushes total output up and price down toward marginal cost.';
+  }
+}
+
+/* ===================== canvas diagram ===================== */
+function draw(q2){
+  var cv=$('cv'), ctx=cv.getContext('2d');
+  var W=cv.width, H=cv.height, pad=46;
+  ctx.clearRect(0,0,W,H);
+  var M=qMax();
+  function X(q){ return pad + (q/M)*(W-pad-14); }
+  function Y(q){ return (H-pad) - (q/M)*(H-pad-14); }
+  // axes
+  ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad,14); ctx.lineTo(pad,H-pad); ctx.lineTo(W-14,H-pad); ctx.stroke();
+  ctx.fillStyle='rgba(212,209,232,.55)'; ctx.font='12px Inter';
+  ctx.fillText('q\u2081 (your output)', W/2-30, H-12);
+  ctx.save(); ctx.translate(14,H/2+34); ctx.rotate(-Math.PI/2); ctx.fillText('q\u2082 (rival output)',0,0); ctx.restore();
+  // BR1: q1 = (a-c-b q2)/(2b)  -> as q2 varies. Endpoints q2=0 -> q1=(a-c)/2b ; q1=0 -> q2=(a-c)/b
+  var a=State.a,b=State.b,c=State.c;
+  ctx.lineWidth=2.5;
+  ctx.strokeStyle='#9B7BFF';
+  ctx.beginPath(); ctx.moveTo(X((a-c)/(2*b)),Y(0)); ctx.lineTo(X(0),Y((a-c)/b)); ctx.stroke();
+  // BR2: q2 = (a-c-b q1)/(2b) -> q1=0 -> q2=(a-c)/2b ; q2=0 -> q1=(a-c)/b
+  ctx.strokeStyle='#38BDF8';
+  ctx.beginPath(); ctx.moveTo(X(0),Y((a-c)/(2*b))); ctx.lineTo(X((a-c)/b),Y(0)); ctx.stroke();
+  // Nash point
+  var qn=cournotQ();
+  ctx.fillStyle='#34D399';
+  ctx.beginPath(); ctx.arc(X(qn),Y(qn),6,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(52,211,153,.4)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(X(qn),Y(0)); ctx.lineTo(X(qn),Y(qn)); ctx.lineTo(X(0),Y(qn)); ctx.stroke(); ctx.setLineDash([]);
+  // Stackelberg marker (in stackelberg mode)
+  if(State.mode==='stackelberg'){
+    var sl=stackLeaderQ(), sf=stackFollowerQ();
+    ctx.fillStyle='#FBBF24';
+    ctx.beginPath(); ctx.arc(X(sl),Y(sf),5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(251,191,36,.85)'; ctx.font='11px Inter';
+    ctx.fillText('Stackelberg', X(sl)-26, Y(sf)-10);
+  }
+  // student point (rides BR2)
+  ctx.fillStyle='#F0EEFA';
+  ctx.beginPath(); ctx.arc(X(State.q1),Y(q2),6.5,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(124,92,255,.85)'; ctx.lineWidth=2; ctx.stroke();
+}
+
+function drawCompareInfo(){
+  var cv=$('cv'), ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  // price vs n curve
+  var W=cv.width,H=cv.height,pad=46;
+  var a=State.a,c=State.c;
+  function X(n){ return pad + ((n-1)/(12-1))*(W-pad-16); }
+  function Yp(p){ var top=a, bot=c-2; return (H-pad) - ((p-bot)/(top-bot))*(H-pad-16); }
+  ctx.strokeStyle='rgba(255,255,255,.18)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad,14); ctx.lineTo(pad,H-pad); ctx.lineTo(W-14,H-pad); ctx.stroke();
+  ctx.fillStyle='rgba(212,209,232,.55)'; ctx.font='12px Inter';
+  ctx.fillText('number of firms  n  \u2192', W/2-46, H-12);
+  ctx.save(); ctx.translate(14,H/2+24); ctx.rotate(-Math.PI/2); ctx.fillText('market price  P',0,0); ctx.restore();
+  // MC line
+  ctx.strokeStyle='rgba(251,113,133,.55)'; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(pad,Yp(c)); ctx.lineTo(W-14,Yp(c)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='rgba(251,113,133,.8)'; ctx.fillText('P = MC = '+r0(c), W-120, Yp(c)-6);
+  // price points
+  ctx.strokeStyle='#9B7BFF'; ctx.lineWidth=2.5; ctx.beginPath();
+  for(var n=1;n<=12;n++){ var P=nfirm(n).P; var x=X(n),y=Yp(P); if(n===1){ctx.moveTo(x,y);} else {ctx.lineTo(x,y);} }
+  ctx.stroke();
+  for(var k=1;k<=12;k++){ var Pp=nfirm(k).P; ctx.fillStyle=(k===State.n)?'#FBBF24':'#9B7BFF';
+    ctx.beginPath(); ctx.arc(X(k),Yp(Pp),(k===State.n)?6:3.5,0,Math.PI*2); ctx.fill(); }
+}
+
+/* ---- compare bars ---- */
+function renderCompare(){
+  var mon=monopoly(), nf=nfirm(State.n), comp=competitive(), duo=nfirm(2);
+  var rows=[
+    {label:'Monopoly', P:mon.P, Q:mon.Q, cls:'rose'},
+    {label:'Duopoly (Cournot)', P:duo.P, Q:duo.Q, cls:'amber'},
+    {label:State.n+'-firm Cournot', P:nf.P, Q:nf.Q, cls:'violet'},
+    {label:'Perfect competition', P:comp.P, Q:comp.Q, cls:'green'}
+  ];
+  var maxQ=comp.Q>0?comp.Q:1;
+  var html='';
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i]; var w=Math.max(3,(r.Q/maxQ)*100);
+    var col = r.cls==='rose'?'var(--rose)':(r.cls==='amber'?'var(--amber)':(r.cls==='violet'?'var(--violet)':'var(--green)'));
+    html+='<div style="margin:10px 0;">'+
+      '<div class="flex justify-between" style="font-size:12.5px;margin-bottom:4px;"><span style="color:var(--text);">'+r.label+'</span>'+
+      '<span class="mono" style="color:var(--muted);">Q='+r2(r.Q)+' &nbsp; P='+r2(r.P)+'</span></div>'+
+      '<div style="height:14px;border-radius:7px;background:rgba(255,255,255,.06);overflow:hidden;">'+
+      '<div style="height:100%;width:'+w+'%;border-radius:7px;background:'+col+';transition:width .25s;"></div></div></div>';
+  }
+  $('cmpBars').innerHTML=html;
+}
+
+/* ===================== interactions ===================== */
+function setMode(m){
+  State.mode=m;
+  var tabs=document.querySelectorAll('.tabbtn');
+  for(var i=0;i<tabs.length;i++){ tabs[i].classList.toggle('on', tabs[i].getAttribute('data-mode')===m); }
+  $('playCard').style.display = (m==='compare')?'none':'block';
+  $('compareCard').style.display = (m==='compare')?'block':'none';
+  $('diagramCard').style.display = 'block';
+  $('nWrap').style.display = (m==='compare')?'block':'none';
+  $('feedback').innerHTML='';
+  if(m==='cournot'){ $('playTitle').textContent='You are Firm 1 — find the Nash equilibrium';
+    $('playHint').textContent='Firm 2 best-responds to whatever you pick. Adjust q\u2081 until you are also best-responding to Firm 2 — that mutual point is Nash.'; }
+  if(m==='stackelberg'){ $('playTitle').textContent='You move first — be the Stackelberg leader';
+    $('playHint').textContent='Firm 2 sees your output, then best-responds. Commit to the output that maximises your profit given that reaction.'; }
+  refresh();
+}
+
+function checkAnswer(){
+  State.engaged=true;
+  var q1=State.q1, target, label, tol;
+  if(State.mode==='cournot'){ target=cournotQ(); label='Cournot\u2013Nash'; }
+  else { target=stackLeaderQ(); label='Stackelberg leader'; }
+  tol=Math.max(0.6, qMax()*0.03);
+  var q2=brOf(q1), pi1=profitFirm(q1,q2);
+  var diff=Math.abs(q1-target);
+  var fb=$('feedback');
+  if(diff<=tol){
+    var score=clamp(1 - diff/(tol*3), 0, 1);
+    State.bestScore = (State.bestScore===null)?score:Math.max(State.bestScore,score);
+    State.bestOutcome='win';
+    if(State.mode==='cournot'){ State.foundNash=true; } else { State.foundStack=true; }
+    var extra='';
+    if(State.mode==='stackelberg'){
+      var pc=profitFirm(cournotQ(),cournotQ());
+      extra=' Your leader profit ('+r0(pi1)+') beats the symmetric Cournot profit ('+r0(pc)+') — that\u2019s the first-mover advantage.';
+    }
+    fb.className='feedback win';
+    fb.innerHTML='<b>Solved.</b> q\u2081 = '+r2(q1)+' \u2248 '+label+' = '+r2(target)+'.'+extra;
+  } else {
+    State.bestOutcome = State.bestOutcome==='win'?'win':'attempted';
+    var hint = (q1<target) ? 'produce a bit more' : 'pull back a little';
+    fb.className='feedback near';
+    fb.innerHTML='Not yet \u2014 the '+label+' output is the point where your reaction curve (BR\u2081) meets Firm 2\u2019s. Try to '+hint+'. (You\u2019re '+r2(diff)+' away.)';
+  }
+}
+
+function init(){
+  ['aR','bR','cR','nR'].forEach(function(id){ $(id).addEventListener('input', function(){ State.engaged=true; refresh(); }); });
+  $('q1R').addEventListener('input', function(){ State.engaged=true; refresh(); $('feedback').innerHTML=''; });
+  $('snapBtn').addEventListener('click', function(){
+    State.engaged=true;
+    var q2=brOf(State.q1); var br1=brOf(q2);           // my best response to firm 2's current output
+    $('q1R').value=clamp(br1,0,qMax()); refresh();
+    var fb=$('feedback'); fb.className='feedback info';
+    fb.innerHTML='Snapped q\u2081 to your best response ('+r2(br1)+') given Firm 2\u2019s current output. Repeat a few times and you spiral into Nash \u2014 that\u2019s best-response dynamics.';
+  });
+  $('checkBtn').addEventListener('click', checkAnswer);
+  var tabs=document.querySelectorAll('.tabbtn');
+  for(var i=0;i<tabs.length;i++){ tabs[i].addEventListener('click', function(){ setMode(this.getAttribute('data-mode')); }); }
+  setMode('cournot');
+}
+if(document.readyState!=='loading'){ init(); } else { document.addEventListener('DOMContentLoaded', init); }
+
+/* ---- backend reporting (matches the other 12 arenas) ---- */
+if (window.SAProgress) {
+  window.SAProgress.initArena({
+    slug: 'calculus-applications',
+    getSession: function () {
+      if (typeof State === 'undefined' || !State.engaged) { return null; }
+      return {
+        score: State.bestScore,
+        outcome: State.bestOutcome,
+        detail: { foundNash: State.foundNash, foundStackelberg: State.foundStack, a: State.a, b: State.b, c: State.c }
+      };
+    }
+  });
+}
+</script>
+
+</body>
+</html>
