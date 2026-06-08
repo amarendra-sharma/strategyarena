@@ -237,6 +237,7 @@
     </div>
     <div class="nav-group">
       <div class="nav-group-label">Track</div>
+      <div class="nav-item" data-view="myexams"><span class="ico">&#128221;</span> Exams</div>
       <div class="nav-item" data-view="progress"><span class="ico">&#128202;</span> My Progress</div>
     </div>
     <div class="nav-group hidden" id="teachGroup">
@@ -307,6 +308,13 @@
         <button class="btn btn-primary" id="newQuestionBtn" style="width:auto;">New question</button>
       </div>
       <div id="practiceArea"></div>
+    </section>
+
+    <!-- MY EXAMS -->
+    <section id="view-myexams" class="hidden">
+      <h1 class="page-title">Exams</h1>
+      <div class="page-sub">Exams your instructor has assigned. Each is server-graded; you can take a published exam once.</div>
+      <div id="myExamsBody" style="margin-top:16px;"></div>
     </section>
 
     <!-- PROGRESS -->
@@ -518,12 +526,13 @@ $('coursePick').addEventListener('change', function(){ State.teachCourseId=$('co
 /* ====================================================================
    NAV
    ==================================================================== */
-var STUDENT_VIEWS = ['home','chapters','arenas','practice','progress','diagnostics'];
+var STUDENT_VIEWS = ['home','chapters','arenas','practice','myexams','progress','diagnostics'];
 var VIEW_META = {
   home:['Home','Your strategic-thinking workspace.',false],
   chapters:['Chapters','Read the textbook.',false],
   arenas:['Arenas','Play the games against AI opponents.',false],
   practice:['Practice','Server-graded questions, generated just for you.',false],
+  myexams:['Exams','Take exams assigned by your instructor.',false],
   progress:['My Progress','Pulled live from your account.',false],
   diagnostics:['Diagnostics','Backend connection checks.',false],
   dashboard:['Teaching Dashboard','Your teaching overview.',false],
@@ -556,6 +565,8 @@ function viewAllowed(view){
 function switchView(view){
   // Enforce role access at the view level (not just by hiding tabs).
   if(!viewAllowed(view)){ view='home'; }
+  // stop any running exam timer when leaving the exam view
+  if(typeof ExamState!=='undefined' && ExamState.timer && view!=='myexams'){ clearInterval(ExamState.timer); ExamState.timer=null; }
   currentView=view;
   var meta=VIEW_META[view];
   if(meta){ $('pageTitle').textContent=meta[0]; $('pageSub').textContent=meta[1]; if(meta[2]){ show($('coursePickWrap')); } else { hide($('coursePickWrap')); } }
@@ -567,6 +578,7 @@ function switchView(view){
   if(stu){
     if(view==='progress'){ loadProgress(); }
     if(view==='home'){ loadHome(); }
+    if(view==='myexams'){ loadMyExams(); }
     return;
   }
   rerenderCurrentView();
@@ -723,19 +735,35 @@ function renderRoster(host){
   loadRoster();
 }
 function loadRoster(){
-  sb.from('sa_enrollments').select('id,student_id,status,enrolled_at,sa_profiles(email,full_name)').eq('course_id',State.teachCourseId).then(function(res){
+  Promise.all([
+    sb.from('sa_enrollments').select('id,student_id,status,enrolled_at,sa_profiles(email,full_name)').eq('course_id',State.teachCourseId),
+    sb.from('sa_accommodations').select('student_id,time_multiplier,extra_attempts,note').eq('course_id',State.teachCourseId)
+  ]).then(function(rr){
+    var res={data:rr[0].data}; 
+    var accoms=rr[1].data?rr[1].data:[];
+    var accomBy={}; accoms.forEach(function(a){ accomBy[a.student_id]=a; });
     var rows=res.data?res.data:[];
     if(rows.length===0){ $('rosterBody').innerHTML='<div class="card empty">No students enrolled yet.</div>'; return; }
-    var html='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Email</th><th>Name</th><th>Status</th><th>Enrolled</th><th></th></tr></thead><tbody>';
+    var html='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Email</th><th>Name</th><th>Status</th><th>Accommodation</th><th>Enrolled</th><th></th></tr></thead><tbody>';
     rows.forEach(function(r){
       var p=r.sa_profiles?r.sa_profiles:{};
       var st=r.status==='active'?'<span class="tag green">active</span>':(r.status==='dropped'?'<span class="tag rose">dropped</span>':'<span class="tag dim">'+esc(r.status)+'</span>');
+      var ac=accomBy[r.student_id];
+      var acLabel='—';
+      if(ac && (Number(ac.time_multiplier)!==1 || Number(ac.extra_attempts)!==0)){
+        acLabel='<span class="tag violet">'+(Number(ac.time_multiplier)!==1?(ac.time_multiplier+'\u00d7 time'):'')+(Number(ac.extra_attempts)!==0?((Number(ac.time_multiplier)!==1?' · ':'')+'+'+ac.extra_attempts+' att'):'')+'</span>';
+      }
       html+='<tr><td>'+esc(p.email||r.student_id)+'</td><td>'+esc(p.full_name||'-')+'</td><td>'+st+'</td>'+
+        '<td>'+acLabel+'</td>'+
         '<td>'+esc(r.enrolled_at?new Date(r.enrolled_at).toLocaleDateString():'-')+'</td>'+
-        '<td><button class="btn btn-ghost btn-sm" data-drop="'+r.id+'" data-st="'+esc(r.status)+'">'+(r.status==='active'?'Drop':'Reactivate')+'</button></td></tr>';
+        '<td class="inline-actions"><button class="btn btn-ghost btn-sm" data-accom="'+r.student_id+'" data-email="'+esc(p.email||'')+'">Accommodate</button>'+
+        '<button class="btn btn-ghost btn-sm" data-drop="'+r.id+'" data-st="'+esc(r.status)+'">'+(r.status==='active'?'Drop':'Reactivate')+'</button></td></tr>';
     });
     html+='</tbody></table></div>';
     $('rosterBody').innerHTML=html;
+    Array.prototype.forEach.call($('rosterBody').querySelectorAll('[data-accom]'), function(b){
+      b.addEventListener('click', function(){ openAccommodation(b.getAttribute('data-accom'), b.getAttribute('data-email'), accomBy[b.getAttribute('data-accom')]); });
+    });
     Array.prototype.forEach.call($('rosterBody').querySelectorAll('[data-drop]'), function(b){
       b.addEventListener('click', function(){
         var ns=b.getAttribute('data-st')==='active'?'dropped':'active';
@@ -744,6 +772,42 @@ function loadRoster(){
     });
   });
 }
+function openAccommodation(studentId, email, existing){
+  var m=document.createElement('div'); m.className='modal-bg';
+  var tm = existing?existing.time_multiplier:1.0;
+  var ea = existing?existing.extra_attempts:0;
+  var note = existing && existing.note?existing.note:'';
+  m.innerHTML='<div class="modal" style="max-width:440px;"><h2>Accommodations</h2>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">For <b>'+esc(email||studentId)+'</b> in this course. Applies to every exam in the course.</div>'+
+    '<div id="acMsg" class="msg"></div>'+
+    '<div class="row2"><div class="field"><label>Time multiplier</label><select id="acMult">'+
+      '<option value="1">1.0\u00d7 (none)</option><option value="1.25">1.25\u00d7</option><option value="1.5">1.5\u00d7</option><option value="2">2.0\u00d7</option><option value="3">3.0\u00d7</option></select></div>'+
+    '<div class="field"><label>Extra attempts</label><input id="acExtra" type="number" min="0" value="'+ea+'"></div></div>'+
+    '<div class="field"><label>Note (optional)</label><input id="acNote" value="'+esc(note)+'" placeholder="e.g. DSS letter on file"></div>'+
+    '<div class="inline-actions" style="justify-content:flex-end;">'+
+      (existing?'<button class="btn btn-danger btn-sm" id="acClear">Remove</button>':'')+
+      '<button class="btn btn-ghost" id="acCancel">Cancel</button><button class="btn btn-primary" id="acSave">Save</button></div></div>';
+  $('modalHost').appendChild(m);
+  // set current multiplier
+  var sel=$('acMult'); for(var i=0;i<sel.options.length;i++){ if(parseFloat(sel.options[i].value)===Number(tm)){ sel.selectedIndex=i; } }
+  function close(){ $('modalHost').innerHTML=''; }
+  $('acCancel').addEventListener('click', close);
+  m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
+  if(existing && $('acClear')){ $('acClear').addEventListener('click', function(){
+    sb.from('sa_accommodations').delete().eq('course_id',State.teachCourseId).eq('student_id',studentId).then(function(){ close(); loadRoster(); });
+  }); }
+  $('acSave').addEventListener('click', function(){
+    var payload={ course_id:State.teachCourseId, student_id:studentId,
+      time_multiplier:parseFloat($('acMult').value), extra_attempts:parseInt($('acExtra').value,10)||0, note:$('acNote').value.trim() };
+    $('acSave').disabled=true;
+    sb.from('sa_accommodations').upsert(payload,{onConflict:'course_id,student_id'}).then(function(res){
+      $('acSave').disabled=false;
+      if(res.error){ var e=$('acMsg'); e.className='msg err'; e.textContent=res.error.message; return; }
+      close(); loadRoster();
+    });
+  });
+}
+
 function openAddStudent(){
   var m=document.createElement('div'); m.className='modal-bg';
   m.innerHTML='<div class="modal"><h2>Add student</h2><div id="asMsg" class="msg"></div>'+
@@ -781,21 +845,42 @@ function renderGradebook(host){
   // 1) gradebook view rows, 2) published exams, 3) exam attempts
   Promise.all([
     sb.from('sa_gradebook_v').select('*').eq('course_id',State.teachCourseId),
-    sb.from('sa_exams').select('id,kind,total_points,is_published').eq('course_id',State.teachCourseId).eq('is_published',true)
+    sb.from('sa_exams').select('id,kind,total_points,is_published,attempt_scoring').eq('course_id',State.teachCourseId).eq('is_published',true)
   ]).then(function(r){
     var rows=r[0].data?r[0].data:[];
     var exams=r[1].data?r[1].data:[];
     var midterm=exams.filter(function(e){return e.kind==='midterm';})[0];
     var fin=exams.filter(function(e){return e.kind==='final';})[0];
     var examIds=[]; if(midterm){examIds.push(midterm.id);} if(fin){examIds.push(fin.id);}
-    var examAttemptsP = examIds.length? sb.from('sa_attempts').select('student_id,exam_id,points_earned').in('exam_id',examIds).not('graded_at','is',null) : Promise.resolve({data:[]});
+    var examAttemptsP = examIds.length? sb.from('sa_attempts').select('student_id,exam_id,item_id,points_earned,created_at').in('exam_id',examIds).not('graded_at','is',null) : Promise.resolve({data:[]});
     examAttemptsP.then(function(ea){
       var attempts=ea.data?ea.data:[];
-      var examScore={}; // student -> {midterm: pts, final: pts}
+      var scoringOf={}; if(midterm){scoringOf[midterm.id]=midterm.attempt_scoring||'highest';} if(fin){scoringOf[fin.id]=fin.attempt_scoring||'highest';}
+      // group: student -> exam -> item -> [points...] (in time order)
+      var grp={};
+      attempts.sort(function(a,b){ return new Date(a.created_at)-new Date(b.created_at); });
       attempts.forEach(function(a){
-        if(!examScore[a.student_id]){ examScore[a.student_id]={}; }
-        var key=(midterm&&a.exam_id===midterm.id)?'midterm':((fin&&a.exam_id===fin.id)?'final':null);
-        if(key){ examScore[a.student_id][key]=(examScore[a.student_id][key]||0)+(a.points_earned?a.points_earned:0); }
+        if(!grp[a.student_id]){ grp[a.student_id]={}; }
+        if(!grp[a.student_id][a.exam_id]){ grp[a.student_id][a.exam_id]={}; }
+        if(!grp[a.student_id][a.exam_id][a.item_id]){ grp[a.student_id][a.exam_id][a.item_id]=[]; }
+        grp[a.student_id][a.exam_id][a.item_id].push(a.points_earned?Number(a.points_earned):0);
+      });
+      var examScore={}; // student -> {midterm: pts, final: pts}
+      Object.keys(grp).forEach(function(sid){
+        examScore[sid]={};
+        Object.keys(grp[sid]).forEach(function(eid){
+          var policy=scoringOf[eid]||'highest';
+          var perItem=grp[sid][eid]; var total=0;
+          Object.keys(perItem).forEach(function(iid){
+            var arr=perItem[iid]; var v=0;
+            if(policy==='latest'){ v=arr[arr.length-1]; }
+            else if(policy==='average'){ var s=0; for(var k=0;k<arr.length;k++){s+=arr[k];} v=s/arr.length; }
+            else { v=Math.max.apply(null,arr); } // highest
+            total+=v;
+          });
+          var key=(midterm&&eid===midterm.id)?'midterm':((fin&&eid===fin.id)?'final':null);
+          if(key){ examScore[sid][key]=total; }
+        });
       });
       buildGradebook(host,c,weights,rows,midterm,fin,examScore);
     });
@@ -936,15 +1021,39 @@ var assemblerSel={};
 function openAssembler(){
   assemblerSel={};
   var m=document.createElement('div'); m.className='modal-bg';
-  m.innerHTML='<div class="modal" style="max-width:860px;"><h2>Assemble exam</h2><div id="axMsg" class="msg"></div>'+
+  m.innerHTML='<div class="modal" style="max-width:880px;"><h2>Assemble exam</h2><div id="axMsg" class="msg"></div>'+
     '<div class="row2"><div class="field"><label>Title</label><input id="axTitle" placeholder="Midterm Exam"></div>'+
     '<div class="field"><label>Kind</label><select id="axKind"><option value="midterm">Midterm</option><option value="final">Final</option><option value="practice">Practice</option></select></div></div>'+
-    '<div class="row2"><div class="field"><label>Time limit (minutes, optional)</label><input id="axTime" type="number" min="0" placeholder="90"></div>'+
-    '<div class="field"><label>Filter by chapter</label><select id="axChapter"><option value="">All chapters</option></select></div></div>'+
-    '<div class="field"><label>Instructions (optional)</label><textarea id="axInstr" style="min-height:50px;"></textarea></div>'+
-    '<div class="assembler-wrap"><div><div style="font-size:12px;color:var(--text-subtle);margin-bottom:6px;">Item bank</div><div class="pick-list" id="axBank">'+loadingCard()+'</div></div>'+
-    '<div><div style="font-size:12px;color:var(--text-subtle);margin-bottom:6px;">Selected</div><div class="card" id="axSelected" style="min-height:120px;"><div class="empty">No items selected.</div></div>'+
-    '<div id="axTotal" style="font-size:13px;color:var(--text-muted);margin-top:10px;"></div></div></div>'+
+    // ---- options row 1 ----
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">'+
+      '<div class="field"><label>Time limit (min, 0 = none)</label><input id="axTime" type="number" min="0" value="0"></div>'+
+      '<div class="field"><label>Attempts allowed (0 = unlimited)</label><input id="axAttempts" type="number" min="0" value="1"></div>'+
+      '<div class="field"><label>Score across attempts</label><select id="axScoring"><option value="highest">Highest</option><option value="latest">Latest</option><option value="average">Average</option></select></div>'+
+    '</div>'+
+    // ---- options row 2 ----
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">'+
+      '<div class="field"><label>Opens (optional)</label><input id="axOpens" type="datetime-local"></div>'+
+      '<div class="field"><label>Closes (optional)</label><input id="axCloses" type="datetime-local"></div>'+
+      '<div class="field"><label style="display:flex;align-items:center;gap:7px;margin-top:26px;"><input type="checkbox" id="axShuffle"> Shuffle question order</label></div>'+
+    '</div>'+
+    '<div class="field"><label>Instructions (optional)</label><textarea id="axInstr" style="min-height:46px;"></textarea></div>'+
+    // ---- build mode tabs ----
+    '<div style="display:flex;gap:8px;margin:6px 0 12px;">'+
+      '<button type="button" class="btn btn-ghost btn-sm ax-mode on" data-axmode="manual">Pick questions</button>'+
+      '<button type="button" class="btn btn-ghost btn-sm ax-mode" data-axmode="random">Random by topic</button></div>'+
+    // ---- MANUAL builder ----
+    '<div id="axManual">'+
+      '<div class="field" style="max-width:280px;"><label>Filter by chapter</label><select id="axChapter"><option value="">All chapters</option></select></div>'+
+      '<div class="assembler-wrap"><div><div style="font-size:12px;color:var(--text-subtle);margin-bottom:6px;">Item bank — click a question to preview it in full</div><div class="pick-list" id="axBank">'+loadingCard()+'</div></div>'+
+      '<div><div style="font-size:12px;color:var(--text-subtle);margin-bottom:6px;">Selected</div><div class="card" id="axSelected" style="min-height:120px;max-height:300px;overflow-y:auto;"><div class="empty">No items selected.</div></div>'+
+      '<div id="axTotal" style="font-size:13px;color:var(--text-muted);margin-top:10px;"></div></div></div>'+
+    '</div>'+
+    // ---- RANDOM builder ----
+    '<div id="axRandom" style="display:none;">'+
+      '<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px;">Choose topics and how many questions to draw from each. The assembler will randomly select them when you build.</p>'+
+      '<div id="axTopics" class="card" style="max-height:300px;overflow-y:auto;padding:6px 12px;">'+loadingCard()+'</div>'+
+      '<div class="inline-actions" style="margin-top:10px;"><button class="btn btn-ghost btn-sm" id="axBuildRandom">Build random selection</button><span id="axRandTotal" style="font-size:12.5px;color:var(--text-muted);align-self:center;"></span></div>'+
+    '</div>'+
     '<div class="inline-actions" style="justify-content:flex-end;margin-top:18px;"><button class="btn btn-ghost" id="axCancel">Cancel</button><button class="btn btn-primary" id="axSave">Save exam</button></div></div>';
   $('modalHost').appendChild(m);
   var chSel=$('axChapter'); CHAPTERS.forEach(function(c){ var o=document.createElement('option'); o.value=c.n; o.textContent='Ch '+c.n+' · '+c.title; chSel.appendChild(o); });
@@ -952,32 +1061,69 @@ function openAssembler(){
   $('axCancel').addEventListener('click', close);
   m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
   $('axChapter').addEventListener('change', loadBank);
+
+  // build-mode toggle
+  Array.prototype.forEach.call(m.querySelectorAll('.ax-mode'), function(b){
+    b.addEventListener('click', function(){
+      Array.prototype.forEach.call(m.querySelectorAll('.ax-mode'), function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+      var mode=b.getAttribute('data-axmode');
+      $('axManual').style.display = (mode==='manual')?'block':'none';
+      $('axRandom').style.display = (mode==='random')?'block':'none';
+      if(mode==='random'){ loadTopics(); }
+    });
+  });
+
+  var bankCache={};   // id -> full item (for preview + points)
   loadBank();
+
   function loadBank(){
-    var q=sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt').eq('is_active',true).order('id');
+    var q=sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt,options').eq('is_active',true).order('id');
     var ch=$('axChapter').value; if(ch){ q=q.eq('chapter',parseInt(ch,10)); }
     $('axBank').innerHTML=loadingCard();
     q.then(function(res){
       var items=res.data?res.data:[];
-      if(items.length===0){ $('axBank').innerHTML='<div class="empty">No items.</div>'; return; }
+      if(items.length===0){ $('axBank').innerHTML='<div class="empty">No active questions found'+(ch?(' for Chapter '+ch):'')+'. If the bank is empty everywhere, run 02_assessment_seed.sql.</div>'; return; }
       var html='';
       items.forEach(function(it){
+        bankCache[it.id]=it;
         var checked=assemblerSel[it.id]?'checked':'';
-        html+='<label class="item-pick"><input type="checkbox" data-id="'+it.id+'" '+checked+'>'+
-          '<div><div class="ip-prompt">'+esc((it.prompt||'').slice(0,90))+((it.prompt&&it.prompt.length>90)?'…':'')+'</div>'+
-          '<div class="ip-meta">'+esc(it.id)+' · Ch'+it.chapter+' · '+esc(it.concept_tag)+' · '+esc(it.difficulty)+' · '+(it.points||1)+'pt</div></div></label>';
+        html+='<div class="item-pick"><input type="checkbox" data-id="'+it.id+'" '+checked+' style="margin-top:4px;">'+
+          '<div style="flex:1;cursor:pointer;" data-preview="'+it.id+'"><div class="ip-prompt">'+esc(fullOrTrim(it.prompt))+'</div>'+
+          '<div class="ip-meta">'+esc(it.id)+' · Ch'+it.chapter+' · '+esc(it.concept_tag)+' · '+esc(it.difficulty)+' · '+(it.points||1)+'pt · <span style="color:var(--violet);">click to preview</span></div>'+
+          '<div class="ip-full" id="full-'+it.id+'" style="display:none;"></div></div></div>';
       });
       $('axBank').innerHTML=html;
       Array.prototype.forEach.call($('axBank').querySelectorAll('input[type=checkbox]'), function(cb){
         cb.addEventListener('change', function(){
           var id=cb.getAttribute('data-id');
-          if(cb.checked){ var it2=items.filter(function(x){return x.id===id;})[0]; assemblerSel[id]={id:id,points:it2.points||1,chapter:it2.chapter}; }
+          if(cb.checked){ assemblerSel[id]={id:id,points:bankCache[id].points||1,chapter:bankCache[id].chapter}; }
           else { delete assemblerSel[id]; }
           renderSelected();
         });
       });
+      Array.prototype.forEach.call($('axBank').querySelectorAll('[data-preview]'), function(el){
+        el.addEventListener('click', function(){ togglePreview(el.getAttribute('data-preview')); });
+      });
       renderSelected();
     });
+  }
+  function fullOrTrim(p){ return (p||''); }   // show full prompt now (no truncation)
+  function togglePreview(id){
+    var box=$('full-'+id); if(!box){ return; }
+    if(box.style.display==='none'){
+      var it=bankCache[id];
+      var opt='';
+      if(it.options && it.options.length){
+        opt='<div style="margin-top:6px;font-size:12px;color:var(--text-muted);">Options: ';
+        opt+=it.options.map(function(o){ return esc(o); }).join(' · ');
+        opt+='</div>';
+      } else if(it.item_type==='parameterized_numeric'){
+        opt='<div style="margin-top:6px;font-size:12px;color:var(--text-subtle);">Numeric answer · each student gets unique values</div>';
+      }
+      box.innerHTML='<div style="margin-top:8px;padding:10px;border-radius:8px;background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.2);font-size:13px;color:var(--text);">'+esc(it.prompt)+opt+'</div>';
+      box.style.display='block';
+    } else { box.style.display='none'; }
   }
   function renderSelected(){
     var ids=Object.keys(assemblerSel);
@@ -988,15 +1134,80 @@ function openAssembler(){
     $('axSelected').innerHTML=html;
     $('axTotal').textContent=ids.length+' items · '+pts+' points total';
   }
+
+  // ---- random-by-topic ----
+  function loadTopics(){
+    $('axTopics').innerHTML=loadingCard();
+    sb.from('sa_assessment_items').select('concept_tag,chapter').eq('is_active',true).then(function(res){
+      var items=res.data?res.data:[];
+      var byTag={};
+      items.forEach(function(it){ var t=it.concept_tag||'(untagged)'; if(!byTag[t]){ byTag[t]={n:0,ch:it.chapter}; } byTag[t].n++; });
+      var tags=Object.keys(byTag).sort(function(a,b){ return byTag[a].ch-byTag[b].ch; });
+      if(tags.length===0){ $('axTopics').innerHTML='<div class="empty">No topics found.</div>'; return; }
+      var html='';
+      tags.forEach(function(t){
+        html+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);">'+
+          '<label style="font-size:13px;display:flex;align-items:center;gap:8px;"><input type="checkbox" class="ax-topic" data-tag="'+esc(t)+'"> '+esc(t)+' <span style="color:var(--text-subtle);font-size:11px;">(Ch'+byTag[t].ch+' · '+byTag[t].n+' available)</span></label>'+
+          '<input type="number" class="ax-topic-n" data-tag="'+esc(t)+'" min="1" max="'+byTag[t].n+'" value="2" style="width:64px;padding:5px;">'+
+        '</div>';
+      });
+      $('axTopics').innerHTML=html;
+      Array.prototype.forEach.call($('axTopics').querySelectorAll('.ax-topic, .ax-topic-n'), function(el){
+        el.addEventListener('change', updateRandTotal);
+      });
+      updateRandTotal();
+    });
+  }
+  function updateRandTotal(){
+    var total=0;
+    Array.prototype.forEach.call($('axTopics').querySelectorAll('.ax-topic'), function(cb){
+      if(cb.checked){ var nIn=$('axTopics').querySelector('.ax-topic-n[data-tag="'+cb.getAttribute('data-tag').replace(/"/g,'')+'"]'); var n=nIn?parseInt(nIn.value,10):0; total+=isNaN(n)?0:n; }
+    });
+    $('axRandTotal').textContent = total>0 ? (total+' questions will be drawn') : '';
+  }
+  $('axBuildRandom') && $('axBuildRandom').addEventListener('click', function(){
+    var picks=[];
+    Array.prototype.forEach.call($('axTopics').querySelectorAll('.ax-topic'), function(cb){
+      if(cb.checked){ var tag=cb.getAttribute('data-tag'); var nIn=$('axTopics').querySelector('.ax-topic-n[data-tag="'+tag.replace(/"/g,'')+'"]'); picks.push({tag:tag, n:nIn?parseInt(nIn.value,10):1}); }
+    });
+    if(picks.length===0){ axErr('Pick at least one topic.'); return; }
+    // fetch items per topic and randomly select n
+    var chain=Promise.resolve(); assemblerSel={};
+    picks.forEach(function(p){
+      chain=chain.then(function(){
+        return sb.from('sa_assessment_items').select('id,points,chapter').eq('is_active',true).eq('concept_tag',p.tag).then(function(res){
+          var pool=res.data?res.data:[];
+          // shuffle pool
+          for(var i=pool.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var tmp=pool[i]; pool[i]=pool[j]; pool[j]=tmp; }
+          var take=Math.min(p.n, pool.length);
+          for(var k=0;k<take;k++){ assemblerSel[pool[k].id]={id:pool[k].id, points:pool[k].points||1, chapter:pool[k].chapter}; }
+        });
+      });
+    });
+    chain.then(function(){
+      var n=Object.keys(assemblerSel).length;
+      var e=$('axMsg'); e.className='msg ok'; e.textContent='Built a random selection of '+n+' questions. Switch to “Pick questions” to review, then Save.';
+      // also switch to manual to show the result
+      Array.prototype.forEach.call(m.querySelectorAll('.ax-mode'), function(x){ x.classList.toggle('on', x.getAttribute('data-axmode')==='manual'); });
+      $('axManual').style.display='block'; $('axRandom').style.display='none';
+      loadBank();
+    });
+  });
+
   $('axSave').addEventListener('click', function(){
     var title=$('axTitle').value.trim();
     var ids=Object.keys(assemblerSel);
     if(!title){ axErr('Title is required.'); return; }
-    if(ids.length===0){ axErr('Select at least one item.'); return; }
+    if(ids.length===0){ axErr('Select or build at least one question.'); return; }
     var pts=ids.reduce(function(s,id){return s+(assemblerSel[id].points?assemblerSel[id].points:1);},0);
-    var tl=$('axTime').value?parseInt($('axTime').value,10):null;
+    var tl=$('axTime').value?parseInt($('axTime').value,10):0; if(!tl||tl<=0){ tl=null; }
+    var att=$('axAttempts').value!==''?parseInt($('axAttempts').value,10):1; if(isNaN(att)||att<0){ att=1; }
+    var opensV=$('axOpens').value?new Date($('axOpens').value).toISOString():null;
+    var closesV=$('axCloses').value?new Date($('axCloses').value).toISOString():null;
     var payload={ course_id:State.teachCourseId, kind:$('axKind').value, title:title, item_ids:ids,
-      total_points:pts, time_limit_minutes:tl, instructions:$('axInstr').value.trim(), is_published:false };
+      total_points:pts, time_limit_minutes:tl, instructions:$('axInstr').value.trim(), is_published:false,
+      max_attempts:att, shuffle_questions:$('axShuffle').checked, attempt_scoring:$('axScoring').value,
+      opens_at:opensV, closes_at:closesV };
     $('axSave').disabled=true;
     sb.from('sa_exams').insert(payload).then(function(res){
       $('axSave').disabled=false;
@@ -1561,6 +1772,260 @@ function submitAnswer() {
 
 function errCard(msg) {
   return '<div class="q-card"><div class="feedback wrong" style="display:block;">' + esc(msg) + '</div></div>';
+}
+
+/* ===================== STUDENT EXAM-TAKING FLOW ===================== */
+var ExamState = { exam:null, items:[], answers:{}, idx:0, courseId:null, submitting:false, finished:false };
+
+function loadMyExams() {
+  var host = $('myExamsBody'); if (!host) { return; }
+  if (!State.user) { host.innerHTML = '<div class="card empty">Sign in to see your exams.</div>'; return; }
+  host.innerHTML = loadingCard();
+  var uid = State.user.id;
+  sb.from('sa_enrollments').select('course_id, sa_courses(title)').eq('student_id', uid).eq('status','active').then(function(enr) {
+    var rows = enr.data ? enr.data : [];
+    var courseIds = rows.map(function(r){ return r.course_id; });
+    var titleById = {}; rows.forEach(function(r){ titleById[r.course_id] = r.sa_courses ? r.sa_courses.title : 'Course'; });
+    if (courseIds.length === 0) { host.innerHTML = '<div class="card empty">You are not enrolled in a course with exams yet. Join a course from Home.</div>'; return; }
+    Promise.all([
+      sb.from('sa_exams').select('id,course_id,kind,title,total_points,time_limit_minutes,instructions,item_ids,is_published,max_attempts,shuffle_questions,attempt_scoring,opens_at,closes_at').in('course_id', courseIds).eq('is_published', true).order('created_at',{ascending:true}),
+      sb.from('sa_attempts').select('exam_id,item_id,points_earned,graded_at').eq('student_id', uid).not('exam_id','is',null),
+      sb.from('sa_accommodations').select('course_id,time_multiplier,extra_attempts').eq('student_id', uid)
+    ]).then(function(r) {
+      var exams = r[0].data ? r[0].data : [];
+      var attempts = r[1].data ? r[1].data : [];
+      var accoms = r[2].data ? r[2].data : [];
+      var accomByCourse = {}; accoms.forEach(function(a){ accomByCourse[a.course_id]=a; });
+      if (exams.length === 0) { host.innerHTML = '<div class="card empty">No exams have been assigned yet.</div>'; return; }
+      // count graded SITTINGS per exam = graded attempts on that exam's first item
+      var sittingsBy = {}; var lastPts = {};
+      exams.forEach(function(e){ sittingsBy[e.id]=0; });
+      var firstItemOf = {}; exams.forEach(function(e){ firstItemOf[e.id]=(e.item_ids&&e.item_ids.length)?e.item_ids[0]:null; });
+      // best score per exam (for display)
+      var bestPctBy = {};
+      var examPtsAcc = {}; // exam -> {sitting tally}
+      attempts.forEach(function(a){
+        if(a.graded_at && firstItemOf[a.exam_id] && a.item_id===firstItemOf[a.exam_id]){ sittingsBy[a.exam_id]=(sittingsBy[a.exam_id]||0)+1; }
+      });
+      // total earned across all graded attempts of an exam (approx best by summing latest sitting is complex; show simple completed flag + score)
+      var earnedBy = {};
+      attempts.forEach(function(a){ if(a.graded_at){ earnedBy[a.exam_id]=(earnedBy[a.exam_id]||0)+(a.points_earned?Number(a.points_earned):0); } });
+      var html = '';
+      exams.forEach(function(e) {
+        var nItems = e.item_ids ? e.item_ids.length : 0;
+        var sittings = sittingsBy[e.id]||0;
+        var acc = accomByCourse[e.course_id];
+        var baseAtt = (e.max_attempts===null||e.max_attempts===undefined)?1:Number(e.max_attempts);
+        var allowed = baseAtt===0 ? 0 : baseAtt + (acc?Number(acc.extra_attempts):0);
+        var now = Date.now();
+        var notOpen = e.opens_at && now < new Date(e.opens_at).getTime();
+        var closed = e.closes_at && now > new Date(e.closes_at).getTime();
+        var attemptsLeft = (allowed===0) ? 'unlimited' : Math.max(0, allowed - sittings);
+        var tmin = e.time_limit_minutes ? (acc && Number(acc.time_multiplier)!==1 ? Math.round(e.time_limit_minutes*Number(acc.time_multiplier)) : e.time_limit_minutes) : null;
+        var statusHtml, action;
+        if (notOpen) { statusHtml='<span class="tag dim">Opens '+new Date(e.opens_at).toLocaleString()+'</span>'; action='<button class="btn btn-ghost btn-sm" disabled>Not open</button>'; }
+        else if (closed) { statusHtml='<span class="tag rose">Closed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>Closed</button>'; }
+        else if (allowed!==0 && sittings>=allowed) {
+          var pctS = e.total_points && earnedBy[e.id]!==undefined ? Math.round((earnedBy[e.id]/(e.total_points*Math.max(1,sittings)))*100) : null;
+          statusHtml='<span class="tag green">Completed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>No attempts left</button>';
+        }
+        else { statusHtml='<span class="tag amber">'+(sittings>0?('Attempt '+(sittings+1)):'Not taken')+'</span>'; action='<button class="btn btn-primary btn-sm" data-start="'+e.id+'">'+(sittings>0?'Retake':'Start exam')+'</button>'; }
+        var meta = nItems + ' questions · ' + (e.total_points||0) + ' pts';
+        if (tmin) { meta += ' · ' + tmin + ' min' + (acc && Number(acc.time_multiplier)!==1 ? ' (incl. your accommodation)' : ''); }
+        meta += ' · attempts left: ' + attemptsLeft;
+        html += '<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
+          '<div><div style="font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.07em;">' + esc(titleById[e.course_id]||'') + ' · ' + esc(e.kind) + '</div>' +
+          '<div style="font-size:18px;color:var(--text-bright);font-family:Instrument Serif,serif;">' + esc(e.title) + '</div>' +
+          '<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">' + meta + '</div></div>' +
+          '<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">' + statusHtml + action + '</div></div>';
+      });
+      host.innerHTML = html;
+      Array.prototype.forEach.call(host.querySelectorAll('[data-start]'), function(b) {
+        b.addEventListener('click', function() {
+          var eid = b.getAttribute('data-start');
+          var exam = null; for (var i=0;i<exams.length;i++){ if(exams[i].id===eid){ exam=exams[i]; break; } }
+          var acc = exam?accomByCourse[exam.course_id]:null;
+          if (exam) { startExam(exam, acc); }
+        });
+      });
+    });
+  });
+}
+
+function startExam(exam, accom) {
+  if (!exam.item_ids || exam.item_ids.length === 0) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
+  ExamState = { exam:exam, items:[], answers:{}, idx:0, courseId:exam.course_id, submitting:false, finished:false, timer:null, deadline:null };
+  var host = $('myExamsBody');
+  host.innerHTML = '<div class="card"><span class="spinner"></span> &nbsp;Preparing your exam…</div>';
+  // order of items (shuffle if the instructor enabled it)
+  var ids = exam.item_ids.slice();
+  if (exam.shuffle_questions) {
+    for (var s=ids.length-1; s>0; s--){ var j=Math.floor(Math.random()*(s+1)); var t=ids[s]; ids[s]=ids[j]; ids[j]=t; }
+  }
+  // compute time limit incl. accommodation multiplier
+  if (exam.time_limit_minutes && exam.time_limit_minutes > 0) {
+    var mult = (accom && Number(accom.time_multiplier)) ? Number(accom.time_multiplier) : 1;
+    var mins = exam.time_limit_minutes * mult;
+    ExamState.deadline = Date.now() + Math.round(mins * 60000);
+  }
+  var chain = Promise.resolve();
+  var issued = [];
+  var failed = false;
+  ids.forEach(function(itemId) {
+    chain = chain.then(function() {
+      return sb.functions.invoke('grade-attempt', { body: { action:'issue', item_id:itemId, course_id:exam.course_id, exam_id:exam.id } }).then(function(fn) {
+        if (fn.error) { failed = true; return; }
+        if (fn.data && fn.data.error) { failed = true; ExamState.issueError = fn.data.error; return; }
+        if (fn.data && fn.data.attempt_id) {
+          issued.push({ attempt_id:fn.data.attempt_id, item_type:fn.data.item_type, prompt:fn.data.prompt, options:fn.data.options, points:fn.data.points });
+        }
+      });
+    });
+  });
+  chain.then(function() {
+    if (issued.length === 0) {
+      var msg = ExamState.issueError ? ('Could not start exam: ' + ExamState.issueError + '.') : 'Could not load exam questions. The grading service may be unavailable — please tell your instructor.';
+      host.innerHTML = errCard(msg);
+      return;
+    }
+    ExamState.items = issued;
+    startExamTimer();
+    renderExamQuestion();
+  });
+}
+
+function startExamTimer() {
+  if (!ExamState.deadline) { return; }
+  if (ExamState.timer) { clearInterval(ExamState.timer); }
+  ExamState.timer = setInterval(function() {
+    var el = $('examTimer');
+    var remain = ExamState.deadline - Date.now();
+    if (remain <= 0) {
+      clearInterval(ExamState.timer); ExamState.timer = null;
+      if (!ExamState.finished && !ExamState.submitting) {
+        // capture any open numeric answer then auto-submit
+        var ni = $('examNum'); if (ni) { ExamState.answers[ExamState.idx] = ni.value.trim(); }
+        gradeExam(true);
+      }
+      return;
+    }
+    if (el) {
+      var mm = Math.floor(remain/60000), ss = Math.floor((remain%60000)/1000);
+      el.textContent = mm + ':' + (ss<10?'0':'') + ss;
+      if (remain < 60000) { el.style.color = 'var(--rose)'; }
+    }
+  }, 1000);
+}
+
+function examAnsweredCount() {
+  var c = 0; for (var key in ExamState.answers) { if (ExamState.answers.hasOwnProperty(key) && ExamState.answers[key] !== undefined && ExamState.answers[key] !== '') { c++; } }
+  return c;
+}
+
+function renderExamQuestion() {
+  var host = $('myExamsBody');
+  var n = ExamState.items.length;
+  var i = ExamState.idx;
+  var item = ExamState.items[i];
+  var saved = ExamState.answers[i];
+  var html = '<div class="card" style="max-width:720px;margin:0 auto;">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+    '<div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.07em;">' + esc(ExamState.exam.title) + '</div>' +
+    '<div style="display:flex;gap:12px;align-items:center;">' +
+    (ExamState.deadline ? '<div class="mono" style="font-size:13px;color:var(--amber);">⏱ <span id="examTimer">—</span></div>' : '') +
+    '<div style="font-size:12.5px;color:var(--violet);">Question ' + (i+1) + ' of ' + n + '</div></div></div>';
+  html += '<div style="height:5px;border-radius:5px;background:rgba(255,255,255,.08);margin-bottom:16px;overflow:hidden;"><div style="height:100%;width:' + Math.round(((i+1)/n)*100) + '%;background:linear-gradient(90deg,var(--violet2),var(--violet));"></div></div>';
+  html += '<div class="q-card" style="border:none;background:none;padding:0;">';
+  html += '<div class="q-meta">' + esc(item.item_type) + ' · ' + (item.points||1) + ' pt</div>';
+  html += '<div class="q-prompt">' + esc(item.prompt) + '</div>';
+  if (item.item_type === 'multiple_choice' && item.options) {
+    html += '<div class="q-options" id="examOpt">';
+    item.options.forEach(function(opt, k) {
+      var sel = (saved !== undefined && String(saved) === String(k)) ? ' sel' : '';
+      html += '<button class="q-option' + sel + '" data-i="' + k + '">' + esc(opt) + '</button>';
+    });
+    html += '</div>';
+  } else if (item.item_type === 'parameterized_decision') {
+    html += '<div class="q-options" id="examOpt">' +
+      '<button class="q-option' + ((saved==='yes')?' sel':'') + '" data-val="yes">Yes</button>' +
+      '<button class="q-option' + ((saved==='no')?' sel':'') + '" data-val="no">No</button></div>';
+  } else {
+    html += '<div class="field" style="max-width:260px;"><label>Your answer</label>' +
+      '<input id="examNum" type="text" inputmode="decimal" placeholder="e.g. 30 or 0.55" value="' + (saved!==undefined?esc(saved):'') + '"></div>';
+  }
+  html += '</div>';
+  html += '<div style="display:flex;justify-content:space-between;margin-top:18px;gap:10px;">';
+  html += '<button class="btn btn-ghost" id="examPrev"' + (i===0?' disabled':'') + '>← Previous</button>';
+  if (i < n-1) { html += '<button class="btn btn-primary" id="examNext">Next →</button>'; }
+  else { html += '<button class="btn btn-primary" id="examSubmit">Submit exam</button>'; }
+  html += '</div>';
+  html += '<div style="font-size:12px;color:var(--text-subtle);text-align:center;margin-top:10px;">' + examAnsweredCount() + ' of ' + n + ' answered</div>';
+  html += '</div>';
+  host.innerHTML = html;
+
+  var wrap = $('examOpt');
+  if (wrap) {
+    Array.prototype.forEach.call(wrap.querySelectorAll('.q-option'), function(b) {
+      b.addEventListener('click', function() {
+        Array.prototype.forEach.call(wrap.querySelectorAll('.q-option'), function(x){ x.classList.remove('sel'); });
+        b.classList.add('sel');
+        var di = b.getAttribute('data-i');
+        ExamState.answers[i] = (di !== null && di !== undefined) ? di : b.getAttribute('data-val');
+      });
+    });
+  }
+  function captureNum() { var el = $('examNum'); if (el) { ExamState.answers[i] = el.value.trim(); } }
+  if ($('examPrev')) { $('examPrev').addEventListener('click', function(){ captureNum(); ExamState.idx = Math.max(0, i-1); renderExamQuestion(); }); }
+  if ($('examNext')) { $('examNext').addEventListener('click', function(){ captureNum(); ExamState.idx = Math.min(n-1, i+1); renderExamQuestion(); }); }
+  if ($('examSubmit')) { $('examSubmit').addEventListener('click', function(){ captureNum(); confirmSubmitExam(); }); }
+}
+
+function confirmSubmitExam() {
+  var n = ExamState.items.length;
+  var answered = examAnsweredCount();
+  var host = $('myExamsBody');
+  var warnHtml = (answered < n) ? ('<div class="feedback near" style="display:block;margin-bottom:14px;">You answered ' + answered + ' of ' + n + '. Unanswered questions will be marked incorrect.</div>') : '';
+  host.innerHTML = '<div class="card" style="max-width:560px;margin:0 auto;text-align:center;">' +
+    '<h3 style="font-size:22px;margin-bottom:8px;">Submit exam?</h3>' + warnHtml +
+    '<p style="color:var(--text-muted);font-size:14px;margin-bottom:18px;">Once submitted, your answers are graded and locked.</p>' +
+    '<div style="display:flex;gap:10px;justify-content:center;">' +
+    '<button class="btn btn-ghost" id="examBack">Keep working</button>' +
+    '<button class="btn btn-primary" id="examFinal">Submit &amp; grade</button></div></div>';
+  $('examBack').addEventListener('click', function(){ renderExamQuestion(); });
+  $('examFinal').addEventListener('click', gradeExam);
+}
+
+function gradeExam(auto) {
+  if (ExamState.submitting || ExamState.finished) { return; }
+  ExamState.submitting = true;
+  if (ExamState.timer) { clearInterval(ExamState.timer); ExamState.timer = null; }
+  var host = $('myExamsBody');
+  host.innerHTML = '<div class="card" style="text-align:center;"><span class="spinner"></span> &nbsp;' + (auto ? 'Time is up — grading your exam…' : 'Grading your exam…') + '</div>';
+  var items = ExamState.items;
+  var chain = Promise.resolve();
+  var earned = 0, totalPts = 0, correct = 0;
+  items.forEach(function(it, k) {
+    totalPts += (it.points ? Number(it.points) : 1);
+    chain = chain.then(function() {
+      var submitted = ExamState.answers[k];
+      if (submitted === undefined || submitted === '') { submitted = '__BLANK__'; }
+      return sb.functions.invoke('grade-attempt', { body: { action:'grade', attempt_id: it.attempt_id, submitted_value: submitted } }).then(function(fn) {
+        if (fn.data && fn.data.is_correct) { correct++; earned += (fn.data.points_earned ? Number(fn.data.points_earned) : 0); }
+      });
+    });
+  });
+  chain.then(function() {
+    ExamState.finished = true;
+    var pct = totalPts ? Math.round((earned/totalPts)*100) : 0;
+    host.innerHTML = '<div class="card" style="max-width:520px;margin:0 auto;text-align:center;">' +
+      '<div style="font-size:34px;margin-bottom:6px;">' + (pct>=70?'🎉':'✅') + '</div>' +
+      '<h3 style="font-size:26px;margin-bottom:6px;">Exam submitted</h3>' +
+      '<div style="font-family:JetBrains Mono,monospace;font-size:40px;color:var(--text-bright);">' + pct + '%</div>' +
+      '<div style="color:var(--text-muted);font-size:14px;margin:6px 0 18px;">' + correct + ' of ' + items.length + ' correct · ' + earned + ' / ' + totalPts + ' points</div>' +
+      '<p style="font-size:12.5px;color:var(--text-subtle);margin-bottom:16px;">Your score has been recorded in your instructor\u2019s gradebook.</p>' +
+      '<button class="btn btn-primary" id="examDone">Back to exams</button></div>';
+    $('examDone').addEventListener('click', function(){ loadMyExams(); });
+  });
 }
 
 function loadProgress() {
