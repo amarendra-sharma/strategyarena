@@ -213,6 +213,9 @@
           <button type="button" class="btn btn-ghost role-opt" data-role="professor" style="flex:1;">Professor</button>
         </div>
       </div>
+      <div id="studentJoin">
+        <div class="field"><label>Course join code <span style="color:var(--text-subtle);text-transform:none;letter-spacing:0;">(optional — leave blank to study independently)</span></label><input id="authJoinCode" placeholder="strat-xxxxx"></div>
+      </div>
       <div id="profFields" class="hidden">
         <div class="field"><label>Institution</label><input id="authInstitution" placeholder="Binghamton University"></div>
         <div class="field"><label>What & where do you teach? (a short note)</label><textarea id="authNote" style="min-height:64px;" placeholder="e.g. I teach intermediate microeconomics and want to use StrategyArena in my Fall course."></textarea></div>
@@ -419,7 +422,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.role-opt'), function(b)
     Array.prototype.forEach.call(document.querySelectorAll('.role-opt'), function(x){ x.classList.remove('active'); });
     b.classList.add('active');
     SIGNUP_ROLE = b.getAttribute('data-role');
-    if(SIGNUP_ROLE==='professor'){ show($('profFields')); } else { hide($('profFields')); }
+    if(SIGNUP_ROLE==='professor'){ show($('profFields')); hide($('studentJoin')); } else { hide($('profFields')); show($('studentJoin')); }
   });
 });
 function isAcademicEmail(email){
@@ -439,6 +442,9 @@ function doAuth(){
     var meta = {};
     if(SIGNUP_ROLE==='professor'){
       meta = { role_request:'professor', institution:$('authInstitution').value.trim(), request_note:$('authNote').value.trim() };
+    } else {
+      var jc = $('authJoinCode') ? $('authJoinCode').value.trim() : '';
+      if(jc){ meta = { join_code: jc }; }
     }
     sb.auth.signUp({email:email,password:pw,options:{data:meta}}).then(function(res){
       $('authSubmit').disabled=false;
@@ -487,6 +493,7 @@ function enterApp(user){
   // platform settings (needed by the subscribe prompt for everyone) + access
   loadPlatformSettings();
   maybeCreateProfRequest();
+  maybeJoinFromSignup();
   resolveAccess().then(function(){
     // student self-study provisioning (own course for practice/progress)
     return ensureProfileAndCourse();
@@ -579,6 +586,7 @@ function switchView(view){
     if(view==='progress'){ loadProgress(); }
     if(view==='home'){ loadHome(); }
     if(view==='myexams'){ loadMyExams(); }
+    if(view==='practice'){ var pa=$('practiceArea'); if(pa && pa.innerHTML.trim()===''){ loadNewQuestion(); } }
     return;
   }
   rerenderCurrentView();
@@ -1023,7 +1031,7 @@ function openAssembler(){
   var m=document.createElement('div'); m.className='modal-bg';
   m.innerHTML='<div class="modal" style="max-width:880px;"><h2>Assemble exam</h2><div id="axMsg" class="msg"></div>'+
     '<div class="row2"><div class="field"><label>Title</label><input id="axTitle" placeholder="Midterm Exam"></div>'+
-    '<div class="field"><label>Kind</label><select id="axKind"><option value="midterm">Midterm</option><option value="final">Final</option><option value="practice">Practice</option></select></div></div>'+
+    '<div class="field"><label>Kind</label><select id="axKind"><option value="midterm">Midterm</option><option value="final">Final</option></select></div></div>'+
     // ---- options row 1 ----
     '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">'+
       '<div class="field"><label>Time limit (min, 0 = none)</label><input id="axTime" type="number" min="0" value="0"></div>'+
@@ -1437,6 +1445,17 @@ function openSubscribePrompt(whatLabel) {
 
 /* ============ STUDENT-SIDE VIEWS (merged from the student app) ============ */
 
+/* ---- If the user entered a join code at signup, enroll them (once) ---- */
+function maybeJoinFromSignup() {
+  var u = State.user;
+  if (!u || !u.user_metadata || !u.user_metadata.join_code) { return; }
+  var code = u.user_metadata.join_code;
+  // only attempt if not already enrolled somewhere as a student in a prof course
+  joinCourseByCode(code, function(err, course) {
+    if (!err && course) { ensureProfileAndCourse(); if(currentView==='home'){ loadHome(); } }
+  });
+}
+
 /* ---- If the user signed up requesting professor access, queue it (once) ---- */
 function maybeCreateProfRequest() {
   var u = State.user;
@@ -1669,6 +1688,13 @@ function fillPracticeChapters() {
     o.value = c.n; o.textContent = 'Ch ' + c.n + ' · ' + c.title;
     s.appendChild(o);
   });
+  // wire the controls (these were previously never connected)
+  var btn = $('newQuestionBtn');
+  if (btn && !btn.getAttribute('data-wired')) {
+    btn.setAttribute('data-wired', '1');
+    btn.addEventListener('click', loadNewQuestion);
+    s.addEventListener('change', loadNewQuestion);
+  }
 }
 
 function loadNewQuestion() {
@@ -1793,6 +1819,7 @@ function loadMyExams() {
       sb.from('sa_accommodations').select('course_id,time_multiplier,extra_attempts').eq('student_id', uid)
     ]).then(function(r) {
       var exams = r[0].data ? r[0].data : [];
+      exams = exams.filter(function(e){ return e.kind==='midterm' || e.kind==='final'; });
       var attempts = r[1].data ? r[1].data : [];
       var accoms = r[2].data ? r[2].data : [];
       var accomByCourse = {}; accoms.forEach(function(a){ accomByCourse[a.course_id]=a; });
