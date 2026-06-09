@@ -2214,5 +2214,41 @@ sb.auth.getSession().then(function(res){
   if(res.data && res.data.session && res.data.session.user){ onSignedIn(res.data.session.user); }
 });
 </script>
+
+<!-- ── MacroNations cross-app visit tracking ──────────────────────────
+     Reports one Game Theory visit per session into the MacroNations
+     page_views table so the portal's Analytics tab shows unified traffic.
+     Reads mn_sid from the URL (passed by the MacroNations portal) so the
+     visitor is stitched to their portal session. Independent of the
+     StrategyArena Supabase client above. -->
+<script>
+(function () {
+  try {
+    if (sessionStorage.getItem('mn_gt_logged') === '1') { return; }  // count once per session
+    var MN_URL  = 'https://rtaiivegcqqmdchpguzn.supabase.co';
+    var MN_ANON = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
+    var p = new URLSearchParams(location.search);
+    var sid = p.get('mn_sid') || sessionStorage.getItem('mn_sid');
+    if (!sid) { sid = Math.random().toString(36).slice(2) + Date.now().toString(36); }
+    try { sessionStorage.setItem('mn_sid', sid); } catch (e) {}
+    fetch(MN_URL + '/rest/v1/page_views', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'apikey':        MN_ANON,
+        'Authorization': 'Bearer ' + MN_ANON
+      },
+      body: JSON.stringify({
+        session_id: sid,
+        referrer:   document.referrer ? document.referrer.slice(0, 500) : null,
+        visited_at: new Date().toISOString(),
+        course:     'gametheory',
+        event_type: 'visit'
+      })
+    }).then(function () { try { sessionStorage.setItem('mn_gt_logged', '1'); } catch (e) {} })
+      .catch(function () {});
+  } catch (e) {}
+})();
+</script>
 </body>
 </html>
