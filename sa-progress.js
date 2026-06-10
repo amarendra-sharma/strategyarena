@@ -137,24 +137,44 @@
   // both match-style and open-ended explorer arenas without bespoke hooks.
   function initArena(opts) {
     if (!opts || !opts.slug || typeof opts.getSession !== 'function') { return; }
-    var reported = false;
+    var lastSig = null;       // signature of the last snapshot we recorded
+    var recordedOnce = false;
+
+    function snapSig(s) {
+      if (!s) { return null; }
+      return String(s.score) + '|' + String(s.outcome) + '|' + (s.detail ? JSON.stringify(s.detail) : '');
+    }
+    // Record the CURRENT session if it is meaningful and has changed since last time.
     function flush() {
-      if (reported) { return; }
       var snap;
       try { snap = opts.getSession(); } catch (e) { snap = null; }
       if (!snap) { return; }                 // nothing meaningful happened — skip
-      reported = true;
+      var sig = snapSig(snap);
+      if (sig === lastSig) { return; }       // unchanged — don't duplicate
+      lastSig = sig; recordedOnce = true;
       var score = (snap.score !== undefined && snap.score !== null) ? snap.score : null;
       var outcome = snap.outcome ? snap.outcome : 'completed';
       var detail = snap.detail ? snap.detail : null;
       recordArena(opts.slug, score, outcome, detail);
     }
-    // visibilitychange (hidden) is the most reliable "leaving" signal on mobile + desktop.
+
+    // 1) Report DURING play (the reliable path): a light interval that only
+    //    writes when the session has actually changed. This avoids losing the
+    //    write to page-unload, which often kills in-flight network requests.
+    var ticks = 0;
+    var iv = setInterval(function () {
+      ticks++;
+      flush();
+      if (ticks > 600) { clearInterval(iv); }   // stop after ~30 min idle cap
+    }, 3000);
+
+    // 2) Backups at leave-time (best effort; may be dropped by the browser).
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'hidden') { flush(); }
     });
     window.addEventListener('pagehide', flush);
-    // Expose a manual trigger too, for arenas that DO have an explicit "finish".
+    window.addEventListener('beforeunload', flush);
+    // 3) Manual trigger for arenas with an explicit "finish".
     global.SAProgress.reportArenaNow = flush;
   }
 
