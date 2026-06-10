@@ -324,6 +324,7 @@
     <section id="view-progress" class="hidden">
       <h1 class="page-title">My Progress</h1>
       <div class="page-sub">Pulled live from your account.</div>
+      <div id="completionPanel"></div>
       <h3 style="font-size:22px;margin:6px 0 12px;">Badges</h3>
       <div id="badgeCase" class="badge-case"></div>
       <div class="stat-row" id="progStats" style="margin-top:24px;"></div>
@@ -2095,7 +2096,11 @@ function loadProgress() {
       if (rows.length === 0) { tb.innerHTML = '<tr><td colspan="4" style="color:var(--text-subtle);">No arena sessions recorded yet.</td></tr>'; }
     });
   loadBadges();
+  loadCompletion();
 }
+
+/* ---- Course completion ---- */
+var COMPLETION_THRESHOLD = 0.70;   // weighted total at/above this earns the certificate
 
 /* ---- Badges: derived entirely from existing progress data (no schema change) ---- */
 var CHAPTER_BADGE_ICONS = ['♟','⚔','🔁','🌳','🔨','🤝','📡','🎲','🧭','🎯','🧬','👥','🧠','📐'];
@@ -2146,6 +2151,233 @@ function loadBadges() {
     // append milestones after a small divider
     host.innerHTML = html + mhtml;
   }).catch(function(){ host.innerHTML = '<div class="empty">Badges will appear as you complete chapters and arenas.</div>'; });
+}
+
+/* ---- Course completion: weighted total (mirrors the gradebook) + certificate ---- */
+function loadCompletion() {
+  var host = $('completionPanel'); if (!host) { return; }
+  if (!State.user) { host.innerHTML = ''; return; }
+  var uid = State.user.id;
+  // Use the student's primary course: a professor course if joined, else self-study.
+  var courseId = State.payCourseId || State.selfCourseId;
+  if (!courseId) { host.innerHTML = ''; return; }
+
+  Promise.all([
+    sb.from('sa_courses').select('id,title,owner_id,weight_reading,weight_quizzes,weight_arenas,weight_midterm,weight_final').eq('id', courseId).maybeSingle(),
+    sb.from('sa_chapter_progress').select('chapter,reading_done,quiz_passed,quiz_score').eq('student_id', uid).eq('course_id', courseId),
+    sb.from('sa_arena_results').select('arena_slug').eq('student_id', uid),
+    sb.from('sa_exams').select('id,kind,total_points,attempt_scoring').eq('course_id', courseId).eq('is_published', true)
+  ]).then(function(r) {
+    var course = r[0].data; if (!course) { host.innerHTML=''; return; }
+    var prog = r[1].data ? r[1].data : [];
+    var arenas = r[2].data ? r[2].data : [];
+    var exams = r[3].data ? r[3].data : [];
+    var W = { reading:Number(course.weight_reading), quizzes:Number(course.weight_quizzes), arenas:Number(course.weight_arenas), midterm:Number(course.weight_midterm), final:Number(course.weight_final) };
+
+    // components (same definitions as the gradebook)
+    var chaptersRead = 0, quizzesPassed = 0, quizSum = 0, quizN = 0;
+    prog.forEach(function(p){ if(p.reading_done){ chaptersRead++; } if(p.quiz_passed){ quizzesPassed++; } if(p.quiz_score!==null&&p.quiz_score!==undefined){ quizSum+=Number(p.quiz_score); quizN++; } });
+    var reading = chaptersRead/14;
+    var quizzes = quizN>0 ? (quizSum/quizN) : (quizzesPassed/14);
+    var distinctArenas = {}; arenas.forEach(function(a){ distinctArenas[a.arena_slug]=true; });
+    var arenaCount = 0; for (var k in distinctArenas){ if(distinctArenas.hasOwnProperty(k)){ arenaCount++; } }
+    var arenaScore = Math.min(arenaCount/13, 1);
+
+    var midterm = exams.filter(function(e){return e.kind==='midterm';})[0];
+    var fin = exams.filter(function(e){return e.kind==='final';})[0];
+    var examIds = []; if(midterm){examIds.push(midterm.id);} if(fin){examIds.push(fin.id);}
+
+    function finish(midScore, finScore) {
+      var comps=[['Reading',reading,W.reading],['Quizzes',quizzes,W.quizzes],['Arenas',arenaScore,W.arenas]];
+      if(midScore!==null){ comps.push(['Midterm',midScore,W.midterm]); }
+      if(finScore!==null){ comps.push(['Final',finScore,W.final]); }
+      var wsum=comps.reduce(function(s,x){return s+x[2];},0);
+      var total=wsum>0?comps.reduce(function(s,x){return s+x[1]*x[2];},0)/wsum:0;
+      renderCompletion(host, course, comps, total);
+    }
+
+    if (examIds.length === 0) { finish(null, null); return; }
+    sb.from('sa_attempts').select('exam_id,item_id,points_earned,created_at').eq('student_id',uid).in('exam_id',examIds).not('graded_at','is',null).then(function(ea){
+      var att = ea.data ? ea.data : [];
+      function scoreFor(exam){
+        if(!exam || !exam.total_points){ return null; }
+        var policy = exam.attempt_scoring || 'highest';
+        var perItem = {};
+        att.filter(function(a){return a.exam_id===exam.id;})
+           .sort(function(a,b){ return new Date(a.created_at)-new Date(b.created_at); })
+           .forEach(function(a){ if(!perItem[a.item_id]){ perItem[a.item_id]=[]; } perItem[a.item_id].push(a.points_earned?Number(a.points_earned):0); });
+        var keys = Object.keys(perItem); if(keys.length===0){ return null; }
+        var tot=0;
+        keys.forEach(function(iid){ var arr=perItem[iid]; var v; if(policy==='latest'){v=arr[arr.length-1];} else if(policy==='average'){var s=0;for(var i=0;i<arr.length;i++){s+=arr[i];}v=s/arr.length;} else {v=Math.max.apply(null,arr);} tot+=v; });
+        return tot/exam.total_points;
+      }
+      finish(scoreFor(midterm), scoreFor(fin));
+    });
+  });
+}
+
+function renderCompletion(host, course, comps, total) {
+  var pct = Math.round(total*100);
+  var eligible = total >= COMPLETION_THRESHOLD;
+  var ringColor = eligible ? 'var(--green)' : 'var(--violet)';
+  var bits = comps.map(function(c){ return '<span style="white-space:nowrap;">'+esc(c[0])+': <b style="color:var(--text-bright);">'+Math.round(c[1]*100)+'%</b> <span style="color:var(--text-subtle);">(\u00d7'+Math.round(c[2]*100)+'%)</span></span>'; }).join(' &nbsp;·&nbsp; ');
+  var isProfCourse = course.owner_id !== State.user.id;
+  var html = '<div class="card" style="margin:6px 0 20px;display:flex;gap:20px;align-items:center;flex-wrap:wrap;">' +
+    '<div style="width:96px;height:96px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;background:conic-gradient('+ringColor+' '+(pct*3.6)+'deg, rgba(255,255,255,.08) 0deg);">' +
+      '<div style="width:74px;height:74px;border-radius:50%;background:var(--bg2);display:grid;place-items:center;"><span class="mono" style="font-size:22px;color:var(--text-bright);font-weight:600;">'+pct+'%</span></div></div>' +
+    '<div style="flex:1;min-width:240px;">' +
+      '<h3 style="font-size:20px;margin-bottom:4px;">Course completion</h3>' +
+      '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px;">Weighted total across '+esc(course.title)+'. Earn your certificate at '+Math.round(COMPLETION_THRESHOLD*100)+'%.</div>' +
+      '<div style="font-size:12px;color:var(--text-muted);line-height:1.9;">'+bits+'</div>' +
+    '</div>' +
+    '<div style="flex-shrink:0;">' +
+      (eligible
+        ? '<button class="btn btn-primary" id="getCertBtn">View certificate</button>'
+        : '<div class="tag amber" style="font-size:12px;">'+ (Math.round((COMPLETION_THRESHOLD-total)*100)) +'% to go</div>') +
+    '</div></div>';
+  host.innerHTML = html;
+  if (eligible && $('getCertBtn')) {
+    $('getCertBtn').addEventListener('click', function(){ openCertificate(course, pct, isProfCourse); });
+  }
+}
+
+/* ---- Certificate: matches the MacroNations completion certificate ---- */
+function getStudentName(cb) {
+  var nm = (State.profile && State.profile.full_name) ? State.profile.full_name : '';
+  if (nm) { cb(nm); return; }
+  // ask once, save to profile
+  var m = document.createElement('div'); m.className = 'modal-bg';
+  m.innerHTML = '<div class="modal" style="max-width:420px;"><h2>Your name for the certificate</h2>' +
+    '<div class="field"><label>Full name (as it should appear)</label><input id="cnName" placeholder="Jane Q. Student"></div>' +
+    '<div class="inline-actions" style="justify-content:flex-end;"><button class="btn btn-ghost" id="cnCancel">Cancel</button><button class="btn btn-primary" id="cnOk">Continue</button></div></div>';
+  $('modalHost').appendChild(m);
+  function close(){ $('modalHost').innerHTML=''; }
+  $('cnCancel').addEventListener('click', close);
+  m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
+  $('cnOk').addEventListener('click', function(){
+    var v = $('cnName').value.trim(); if (!v) { return; }
+    if (!State.profile) { State.profile = {}; }
+    State.profile.full_name = v;
+    sb.from('sa_profiles').update({ full_name: v }).eq('id', State.user.id).then(function(){}, function(){});
+    close(); cb(v);
+  });
+}
+
+function openCertificate(course, pct, isProfCourse) {
+  getStudentName(function(name) {
+    if (isProfCourse && course.owner_id) {
+      sb.from('sa_profiles').select('full_name,display_title').eq('id', course.owner_id).maybeSingle().then(function(res) {
+        var prof = (res.data && res.data.full_name) ? res.data.full_name : 'Course Instructor';
+        launchCertificate({ name:name, pct:pct, mode:'enrolled', courseTitle:course.title, professor:prof });
+      });
+    } else {
+      launchCertificate({ name:name, pct:pct, mode:'independent', courseTitle:'Game Theory', professor:'' });
+    }
+  });
+}
+
+function launchCertificate(o) {
+  var html = buildCertificateHTML(o);
+  var w = window.open('', '_blank');
+  if (!w) { alert('Please allow pop-ups to view your certificate.'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
+function crestSVG() {
+  return '<svg viewBox="0 0 36 36" width="74" height="74" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MacroNations logo">' +
+    '<defs><clipPath id="nsc"><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z"/></clipPath></defs>' +
+    '<path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z" fill="#0D1F3C"/>' +
+    '<rect x="4" y="9" width="28" height="6" fill="#1A3260" clip-path="url(#nsc)"/>' +
+    '<path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z" fill="none" stroke="#FFD700" stroke-width="1.5"/>' +
+    '<path d="M18 3.5 L30 7.5 L30 21 Q30 30 18 33.5 Q6 30 6 21 L6 7.5 Z" fill="none" stroke="#FFD700" stroke-width="0.6" opacity="0.5"/>' +
+    '<polygon points="18,4.5 18.55,6.2 20.4,6.2 18.9,7.3 19.45,9 18,7.9 16.55,9 17.1,7.3 15.6,6.2 17.45,6.2" fill="#FFD700"/>' +
+    '<polygon points="11.5,6.5 11.85,7.6 12.95,7.6 12.05,8.25 12.4,9.35 11.5,8.7 10.6,9.35 10.95,8.25 10.05,7.6 11.15,7.6" fill="#FFD700" opacity="0.6"/>' +
+    '<polygon points="24.5,6.5 24.85,7.6 25.95,7.6 25.05,8.25 25.4,9.35 24.5,8.7 23.6,9.35 23.95,8.25 23.05,7.6 24.15,7.6" fill="#FFD700" opacity="0.6"/>' +
+    '<text x="18" y="16" text-anchor="middle" font-family="Georgia,serif" font-size="7.5" font-weight="700" fill="#FFD700" letter-spacing="2">MN</text>' +
+    '<line x1="8" y1="18" x2="28" y2="18" stroke="#FFD700" stroke-width="0.8"/>' +
+    '<rect x="17.2" y="17.2" width="1.6" height="1.6" fill="#FFD700" transform="rotate(45 18 18)"/>' +
+    '<rect x="6.5" y="27.5" width="2.5" height="4.5" fill="#60A5FA" clip-path="url(#nsc)"/>' +
+    '<rect x="10" y="25.5" width="2.5" height="6.5" fill="#60A5FA" clip-path="url(#nsc)"/>' +
+    '<rect x="13.5" y="23.5" width="2.5" height="8.5" fill="#60A5FA" clip-path="url(#nsc)"/>' +
+    '<rect x="17" y="21.5" width="2.5" height="10.5" fill="#60A5FA" clip-path="url(#nsc)"/>' +
+    '<rect x="20.5" y="19.5" width="2.5" height="12.5" fill="#60A5FA" clip-path="url(#nsc)"/>' +
+    '<polyline points="7.75,27 11.25,25 14.75,22.8 18.25,20.5 21.75,18.5" fill="none" stroke="#00FF88" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#nsc)"/>' +
+    '<circle cx="7.75" cy="27" r="0.9" fill="#00FF88" clip-path="url(#nsc)"/>' +
+    '<circle cx="11.25" cy="25" r="1.1" fill="#00FF88" clip-path="url(#nsc)"/>' +
+    '<circle cx="14.75" cy="22.8" r="1.3" fill="#00FF88" clip-path="url(#nsc)"/>' +
+    '<circle cx="18.25" cy="20.5" r="1.5" fill="#00FF88" clip-path="url(#nsc)"/>' +
+    '<circle cx="21.75" cy="18.5" r="1.8" fill="#00FF88" clip-path="url(#nsc)"/>' +
+    '<polyline points="20.5,17.5 21.75,18.5 20.8,20" fill="none" stroke="#00FF88" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#nsc)"/>' +
+    '</svg>';
+}
+
+function buildCertificateHTML(o) {
+  var year = new Date().getFullYear();
+  var subtitle = (o.mode === 'enrolled') ? o.courseTitle : 'Independent Study';
+  var leftName, leftRole;
+  if (o.mode === 'enrolled') { leftName = o.professor; leftRole = 'COURSE INSTRUCTOR'; }
+  else { leftName = 'Amarendra Sharma, Ph.D.'; leftRole = 'FOUNDER \u00b7 STRATEGYARENA'; }
+  var body = 'has completed the StrategyArena Game Theory course, demonstrating mastery of strategic reasoning, equilibrium analysis, and the core models of competition, cooperation, and decision-making.';
+
+  var css =
+    '@page{size:A4 landscape;margin:0;}' +
+    '*{margin:0;padding:0;box-sizing:border-box;}' +
+    'body{font-family:Georgia,"Times New Roman",serif;background:#dfe5ef;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px;}' +
+    '.sheet{position:relative;width:1040px;max-width:100%;aspect-ratio:1.414/1;background:linear-gradient(135deg,#fbfcff 0%,#eef2f9 55%,#e7edf7 100%);overflow:hidden;box-shadow:0 24px 70px rgba(20,30,70,.28);}' +
+    '.bar{position:absolute;left:0;right:0;height:14px;background:linear-gradient(90deg,#1e3a8a,#3b5bbf 60%,#1e3a8a);}' +
+    '.bar.top{top:0;border-bottom:2px solid #2a4699;} .bar.bot{bottom:0;border-top:2px solid #2a4699;}' +
+    '.frame{position:absolute;inset:30px;border:1px solid rgba(30,58,138,.22);}' +
+    '.brk{position:absolute;width:42px;height:42px;border:2px solid #1e3a8a;opacity:.55;}' +
+    '.brk.tl{top:46px;left:46px;border-right:none;border-bottom:none;} .brk.tr{top:46px;right:46px;border-left:none;border-bottom:none;}' +
+    '.brk.bl{bottom:46px;left:46px;border-right:none;border-top:none;} .brk.br{bottom:46px;right:46px;border-left:none;border-top:none;}' +
+    '.wm{position:absolute;top:50%;left:50%;transform:translate(-50%,-46%);font-size:190px;font-weight:700;letter-spacing:18px;color:rgba(30,58,138,.045);white-space:nowrap;font-family:Georgia,serif;pointer-events:none;}' +
+    '.inner{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;align-items:center;text-align:center;padding:54px 80px 40px;}' +
+    '.crest{margin-bottom:14px;}' +
+    '.brand{font-size:30px;letter-spacing:7px;color:#16224d;font-weight:700;}' +
+    '.subbrand{font-family:Helvetica,Arial,sans-serif;font-size:11px;letter-spacing:4px;color:#5b6a8c;margin-top:6px;}' +
+    '.ctype{font-family:Helvetica,Arial,sans-serif;font-size:15px;letter-spacing:6px;color:#1e3a8a;font-weight:700;margin:14px 0 6px;}' +
+    '.rule{width:300px;height:1px;background:rgba(30,58,138,.3);margin:6px auto 0;}' +
+    '.presented{font-family:Helvetica,Arial,sans-serif;font-size:12px;letter-spacing:5px;color:#8a94aa;margin-top:30px;}' +
+    '.name{font-size:54px;color:#1c3aa0;font-weight:700;line-height:1.05;margin:14px 0 4px;}' +
+    '.who{font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#8a94aa;letter-spacing:.5px;}' +
+    '.minirule{width:240px;height:1px;background:rgba(30,58,138,.18);margin:14px auto 0;}' +
+    '.body{font-size:16px;color:#2a3a64;line-height:1.7;max-width:620px;margin:26px auto 0;}' +
+    '.program{font-size:19px;color:#16224d;margin-top:26px;}' +
+    '.score{font-family:"Courier New",monospace;font-size:15px;letter-spacing:2px;color:#8a94aa;margin-top:10px;}' +
+    '.foot{margin-top:auto;width:100%;display:flex;justify-content:space-between;align-items:flex-end;padding-top:18px;}' +
+    '.sig{width:34%;} .sig .nm{font-size:14px;color:#16224d;font-weight:700;border-bottom:1px solid rgba(30,58,138,.3);padding-bottom:6px;}' +
+    '.sig .rl{font-family:Helvetica,Arial,sans-serif;font-size:10.5px;letter-spacing:2px;color:#8a94aa;margin-top:6px;}' +
+    '.yr{font-family:Helvetica,Arial,sans-serif;font-size:13px;letter-spacing:3px;color:#8a94aa;align-self:center;}' +
+    '.printbtn{position:fixed;top:16px;right:16px;z-index:10;background:#1e3a8a;color:#fff;border:none;border-radius:8px;padding:10px 16px;font-family:Helvetica,Arial,sans-serif;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(30,58,138,.4);}' +
+    '@media print{.printbtn{display:none;}body{background:#fff;padding:0;}.sheet{box-shadow:none;width:100%;height:100%;}}';
+
+  var h = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>StrategyArena Certificate</title><style>' + css + '</style></head><body>' +
+    '<button class="printbtn" onclick="window.print()">Print / Save as PDF</button>' +
+    '<div class="sheet">' +
+      '<div class="bar top"></div><div class="bar bot"></div>' +
+      '<div class="frame"></div>' +
+      '<div class="brk tl"></div><div class="brk tr"></div><div class="brk bl"></div><div class="brk br"></div>' +
+      '<div class="wm">COMPLETION</div>' +
+      '<div class="inner">' +
+        '<div class="crest">' + crestSVG() + '</div>' +
+        '<div class="brand">MACRONATIONS</div>' +
+        '<div class="subbrand">STRATEGYARENA \u00b7 GAME THEORY</div>' +
+        '<div class="ctype">CERTIFICATE OF COMPLETION</div><div class="rule"></div>' +
+        '<div class="presented">PRESENTED TO</div>' +
+        '<div class="name">' + esc(o.name) + '</div>' +
+        '<div class="who">' + esc(subtitle) + '</div>' +
+        '<div class="minirule"></div>' +
+        '<div class="body">' + esc(body) + '</div>' +
+        '<div class="program">StrategyArena \u00b7 Game Theory</div>' +
+        '<div class="score">Final Score: ' + o.pct + '%</div>' +
+        '<div class="foot">' +
+          '<div class="sig" style="text-align:left;"><div class="nm">' + esc(leftName) + '</div><div class="rl">' + esc(leftRole) + '</div></div>' +
+          '<div class="yr">' + year + '</div>' +
+          '<div class="sig" style="text-align:right;"><div class="nm">Amarendra Sharma, Ph.D.</div><div class="rl">DIRECTOR \u00b7 MACRONATIONS LLC \u2014 NEW YORK</div></div>' +
+        '</div>' +
+      '</div>' +
+    '</div></body></html>';
+  return h;
 }
 
 function runDiagnostics() {
@@ -2213,42 +2445,6 @@ function runDiagnostics() {
 sb.auth.getSession().then(function(res){
   if(res.data && res.data.session && res.data.session.user){ onSignedIn(res.data.session.user); }
 });
-</script>
-
-<!-- ── MacroNations cross-app visit tracking ──────────────────────────
-     Reports one Game Theory visit per session into the MacroNations
-     page_views table so the portal's Analytics tab shows unified traffic.
-     Reads mn_sid from the URL (passed by the MacroNations portal) so the
-     visitor is stitched to their portal session. Independent of the
-     StrategyArena Supabase client above. -->
-<script>
-(function () {
-  try {
-    if (sessionStorage.getItem('mn_gt_logged') === '1') { return; }  // count once per session
-    var MN_URL  = 'https://rtaiivegcqqmdchpguzn.supabase.co';
-    var MN_ANON = 'sb_publishable_KCPCMiKYQoEUgG45DVF5uA_ke-UxQKm';
-    var p = new URLSearchParams(location.search);
-    var sid = p.get('mn_sid') || sessionStorage.getItem('mn_sid');
-    if (!sid) { sid = Math.random().toString(36).slice(2) + Date.now().toString(36); }
-    try { sessionStorage.setItem('mn_sid', sid); } catch (e) {}
-    fetch(MN_URL + '/rest/v1/page_views', {
-      method: 'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'apikey':        MN_ANON,
-        'Authorization': 'Bearer ' + MN_ANON
-      },
-      body: JSON.stringify({
-        session_id: sid,
-        referrer:   document.referrer ? document.referrer.slice(0, 500) : null,
-        visited_at: new Date().toISOString(),
-        course:     'gametheory',
-        event_type: 'visit'
-      })
-    }).then(function () { try { sessionStorage.setItem('mn_gt_logged', '1'); } catch (e) {} })
-      .catch(function () {});
-  } catch (e) {}
-})();
 </script>
 </body>
 </html>
