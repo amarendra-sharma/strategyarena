@@ -2184,7 +2184,7 @@
         </div>
 
         <blockquote>
-          "Confess and testify against your partner, and you'll go free if they stay silent. If you both confess, we'll have you on the major charge but I'll get you a reduced sentence — five years each. If you both stay silent, the best we can do is the minor charge — one year each. But if your partner confesses while you stay silent, you take the full ten years."
+          "Confess and testify against your partner, and you'll walk free if they stay silent. If you both confess, we'll have you on the major charge but I'll get you a reduced sentence — four years each. If you both stay silent, the best we can do is the minor charge — two years each. But if your partner confesses while you stay silent, you take the full five years."
         </blockquote>
 
         <p>
@@ -2192,7 +2192,7 @@
         </p>
 
         <p>
-          Let's lay out the payoffs. Since both prisoners want to <em>minimize</em> jail time, we'll write payoffs as the negative of years (so −10 is the worst, 0 is the best). Or — slightly more cheerfully — we can flip it and write payoffs as years saved relative to the maximum sentence. Either way works; the structure of the game doesn't change. We'll use the second convention since it makes "higher number = better" (which matches the rest of the course).
+          Let's lay out the payoffs. Since both prisoners want to <em>minimize</em> jail time, a natural payoff is simply <em>years saved</em> relative to the worst possible sentence. The longest sentence here is five years, so we'll define each payoff as <strong>5 − (years served)</strong>: going free is worth 5, two years is worth 3, four years is worth 1, and five years is worth 0. This flips "less jail" into "higher number," so that bigger payoffs mean better outcomes — matching the rest of the course. (Writing payoffs as the negative of years would give the same game; this convention is just friendlier to read.)
         </p>
 
         <div class="payoff-matrix">
@@ -2216,11 +2216,11 @@
             </div>
             <div class="pm-cell optimal">
               <div class="pm-payoff"><span class="row-payoff">3</span>, <span class="col-payoff">3</span></div>
-              <div class="pm-cell-label">Both: 1 year (minor)</div>
+              <div class="pm-cell-label">Both: 2 years (minor)</div>
             </div>
             <div class="pm-cell">
               <div class="pm-payoff"><span class="row-payoff">0</span>, <span class="col-payoff">5</span></div>
-              <div class="pm-cell-label">P1: 10 yrs / P2: 0</div>
+              <div class="pm-cell-label">P1: 5 yrs / P2: free</div>
             </div>
           </div>
           <div class="pm-row">
@@ -2232,11 +2232,11 @@
             </div>
             <div class="pm-cell">
               <div class="pm-payoff"><span class="row-payoff">5</span>, <span class="col-payoff">0</span></div>
-              <div class="pm-cell-label">P1: 0 / P2: 10 yrs</div>
+              <div class="pm-cell-label">P1: free / P2: 5 yrs</div>
             </div>
             <div class="pm-cell equilibrium">
               <div class="pm-payoff"><span class="row-payoff">1</span>, <span class="col-payoff">1</span></div>
-              <div class="pm-cell-label">Both: 5 years</div>
+              <div class="pm-cell-label">Both: 4 years (major)</div>
             </div>
           </div>
         </div>
@@ -2270,7 +2270,7 @@
         <p>Confessing is better.</p>
 
         <p>
-          So <em>regardless of what Prisoner 2 does</em>, Prisoner 1 is better off confessing. Confess yields a higher payoff in both possible cases. The same logic applies to Prisoner 2 by symmetry. Both will confess. The outcome is <span class="hi">(1, 1)</span>: each gets five years.
+          So <em>regardless of what Prisoner 2 does</em>, Prisoner 1 is better off confessing. Confess yields a higher payoff in both possible cases. The same logic applies to Prisoner 2 by symmetry. Both will confess. The outcome is <span class="hi">(1, 1)</span>: each gets four years.
         </p>
 
         <p>
@@ -2279,7 +2279,7 @@
 
         <div class="key-idea">
           <div class="ki-label">Key idea</div>
-          <p>Both prisoners reason their way to confessing — and both end up with five years, when staying silent together would have given them one year each. <strong>Individually rational choices produced a collectively terrible result.</strong> That gap between what's smart for each and what's good for both is the whole point of the prisoner's dilemma.</p>
+          <p>Both prisoners reason their way to confessing — and both end up with four years, when staying silent together would have given them two years each. <strong>Individually rational choices produced a collectively terrible result.</strong> That gap between what's smart for each and what's good for both is the whole point of the prisoner's dilemma.</p>
         </div>
 
         <div class="definition">
@@ -2294,14 +2294,14 @@
 
         <div class="insight">
           <div class="insight-label">Why this is unsettling</div>
-          <p>Both players, acting rationally on their dominant strategies, end up at <span class="hi">(1, 1)</span> — five years each. But both would have preferred <span class="hi">(3, 3)</span> — one year each. Individual rationality leads to a collectively worse outcome. This is the prisoner's dilemma.</p>
+          <p>Both players, acting rationally on their dominant strategies, end up at <span class="hi">(1, 1)</span> — four years each. But both would have preferred <span class="hi">(3, 3)</span> — two years each. Individual rationality leads to a collectively worse outcome. This is the prisoner's dilemma.</p>
         </div>
 
         <div class="concept-check" data-quiz-id="cc2-1">
           <div class="cc-label">⚡ Concept check</div>
           <div class="cc-question">In the prisoner's dilemma above, suppose Prisoner 1 has decided to be loyal and stay silent. Knowing this, what is Prisoner 2's best response?</div>
           <div class="cc-options">
-            <button class="cc-option" data-correct="false" data-explain="If Prisoner 2 also stays silent, both get (3, 3) — one year each. But Prisoner 2 can do better.">A. Stay silent — both serve only one year</button>
+            <button class="cc-option" data-correct="false" data-explain="If Prisoner 2 also stays silent, both get (3, 3) — two years each. But Prisoner 2 can do better.">A. Stay silent — both serve only two years</button>
             <button class="cc-option" data-correct="true" data-explain="Correct. If Prisoner 1 stays silent, Prisoner 2's options are: stay silent for payoff 3, or confess for payoff 5. Five is greater than three, so Prisoner 2 walks free. This is the brutal logic at the heart of the dilemma — even when one player commits to cooperation, the other has every incentive to defect.">B. Confess and walk free</button>
             <button class="cc-option" data-correct="false" data-explain="Look again at the payoffs. If P1 stays silent and P2 confesses, P2 gets payoff 5 — better than the 3 of mutual silence. So they're not equivalent.">C. Either is equally good</button>
             <button class="cc-option" data-correct="false" data-explain="The payoffs are clearly defined. Try comparing 3 (stay silent) and 5 (confess) when P1 stays silent.">D. Cannot be determined</button>
@@ -2877,6 +2877,13 @@
         <p>
           The conclusion is jarring: <strong>under a known finite horizon with rational players, mutual defection happens in every single round.</strong> The fact that the game repeats 10 times changes nothing. Let us state this precisely and prove it.
         </p>
+
+        <div class="key-idea">
+          <div class="ki-label">First, a term you'll need: subgame-perfect equilibrium</div>
+          <p>The theorem below — and the cooperation results later in this chapter — are stated in terms of <strong>subgame-perfect equilibrium (SPE)</strong>, a sharper cousin of Nash equilibrium for games that unfold over time. Here is the intuition; Chapter 4 makes it formal and proves the connection to backward induction.</p>
+          <p style="margin-top:12px;">Think of any point in the repeated game — a particular round, reached after some particular history of moves — as the start of a smaller game in its own right, a <em>subgame</em>. A plan of play is a <strong>Nash equilibrium</strong> if no one wants to deviate <em>along the path that actually happens</em>. It is <strong>subgame-perfect</strong> if it is a Nash equilibrium in <em>every</em> subgame — at every round, after every history, including ones the players never expect to reach.</p>
+          <p style="margin-top:12px;">Why insist on more than Nash? Because plain Nash equilibrium tolerates <em>empty threats</em>: "I'll cooperate, but if you ever cross me I'll do something drastic" can be a Nash equilibrium even when carrying out the threat would hurt the threatener — so no one would actually do it. Subgame perfection throws those out. It demands that your plan be one you'd genuinely want to follow <em>even at the moments you hoped never to face</em>. That credibility test is exactly the backward-induction reasoning we just used to unravel the finite game: ask what's optimal at the very end, then work back. When every round's choice is optimal given what follows, the plan is subgame-perfect.</p>
+        </div>
 
         <div class="thm-env proposition">
           <div class="thm-head">
