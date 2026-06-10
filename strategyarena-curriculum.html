@@ -9579,11 +9579,21 @@ document.addEventListener('DOMContentLoaded', () => {
   bindReadingProgress();
   bindMobileMenu();
   bindExerciseSolutions();
-  bindAssessmentPreview();
   bindProofToggles();
+  bindAssessmentPreview();
   updateSidebarProgress();
   renderMath();
+  navigateToHash();
 });
+
+// Open the chapter named in the URL hash, e.g. ...curriculum.html#chapter-2
+function navigateToHash() {
+  var m = (window.location.hash || '').match(/chapter-(-?\d+)/);
+  if (!m) { return; }
+  var ch = parseInt(m[1], 10);
+  if (!isNaN(ch)) { navigateTo(ch); }
+}
+window.addEventListener('hashchange', navigateToHash);
 </script>
 
 <!-- Access gating: lock Chapters 3-14 unless the reader has an active subscription -->
