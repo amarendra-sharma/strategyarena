@@ -1052,7 +1052,10 @@ function openAssembler(){
       '<button type="button" class="btn btn-ghost btn-sm ax-mode" data-axmode="random">Random by topic</button></div>'+
     // ---- MANUAL builder ----
     '<div id="axManual">'+
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;">'+
       '<div class="field" style="max-width:280px;"><label>Filter by chapter</label><select id="axChapter"><option value="">All chapters</option></select></div>'+
+      '<div class="field" style="max-width:220px;"><label>Filter by type</label><select id="axType"><option value="">All types</option><option value="multiple_choice">Multiple choice</option><option value="parameterized_numeric">Numeric</option><option value="parameterized_decision">Decision</option><option value="free_response">Short answer (written)</option></select></div>'+
+      '</div>'+
       '<div class="assembler-wrap"><div><div style="font-size:12px;color:var(--text-subtle);margin-bottom:6px;">Item bank — click a question to preview it in full</div><div class="pick-list" id="axBank">'+loadingCard()+'</div></div>'+
       '<div><div style="font-size:12px;color:var(--text-subtle);margin-bottom:6px;">Selected</div><div class="card" id="axSelected" style="min-height:120px;max-height:300px;overflow-y:auto;"><div class="empty">No items selected.</div></div>'+
       '<div id="axTotal" style="font-size:13px;color:var(--text-muted);margin-top:10px;"></div></div></div>'+
@@ -1070,6 +1073,7 @@ function openAssembler(){
   $('axCancel').addEventListener('click', close);
   m.addEventListener('click', function(e){ if(e.target===m){ close(); } });
   $('axChapter').addEventListener('change', loadBank);
+  if($('axType')){ $('axType').addEventListener('change', loadBank); }
 
   // build-mode toggle
   Array.prototype.forEach.call(m.querySelectorAll('.ax-mode'), function(b){
@@ -1089,6 +1093,7 @@ function openAssembler(){
   function loadBank(){
     var q=sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt,options').eq('is_active',true).order('id');
     var ch=$('axChapter').value; if(ch){ q=q.eq('chapter',parseInt(ch,10)); }
+    var ty=$('axType')?$('axType').value:''; if(ty){ q=q.eq('item_type',ty); }
     $('axBank').innerHTML=loadingCard();
     q.then(function(res){
       var items=res.data?res.data:[];
@@ -1099,7 +1104,7 @@ function openAssembler(){
         var checked=assemblerSel[it.id]?'checked':'';
         html+='<div class="item-pick"><input type="checkbox" data-id="'+it.id+'" '+checked+' style="margin-top:4px;">'+
           '<div style="flex:1;cursor:pointer;" data-preview="'+it.id+'"><div class="ip-prompt">'+esc(fullOrTrim(it.prompt))+'</div>'+
-          '<div class="ip-meta">'+esc(it.id)+' · Ch'+it.chapter+' · '+esc(it.concept_tag)+' · '+esc(it.difficulty)+' · '+(it.points||1)+'pt · <span style="color:var(--violet);">click to preview</span></div>'+
+          '<div class="ip-meta">'+esc(it.id)+' · Ch'+it.chapter+' · '+esc(it.concept_tag)+' · '+esc(it.difficulty)+' · '+(it.points||1)+'pt'+(it.item_type==='free_response'?' · <span style="color:var(--amber);">written</span>':'')+' · <span style="color:var(--violet);">click to preview</span></div>'+
           '<div class="ip-full" id="full-'+it.id+'" style="display:none;"></div></div></div>';
       });
       $('axBank').innerHTML=html;
@@ -1129,6 +1134,8 @@ function openAssembler(){
         opt+='</div>';
       } else if(it.item_type==='parameterized_numeric'){
         opt='<div style="margin-top:6px;font-size:12px;color:var(--text-subtle);">Numeric answer · each student gets unique values</div>';
+      } else if(it.item_type==='free_response'){
+        opt='<div style="margin-top:6px;font-size:12px;color:var(--amber);">Short answer · students type a written response · graded by you (or AI-assisted)</div>';
       }
       box.innerHTML='<div style="margin-top:8px;padding:10px;border-radius:8px;background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.2);font-size:13px;color:var(--text);">'+esc(it.prompt)+opt+'</div>';
       box.style.display='block';
@@ -1977,6 +1984,10 @@ function renderExamQuestion() {
     html += '<div class="q-options" id="examOpt">' +
       '<button class="q-option' + ((saved==='yes')?' sel':'') + '" data-val="yes">Yes</button>' +
       '<button class="q-option' + ((saved==='no')?' sel':'') + '" data-val="no">No</button></div>';
+  } else if (item.item_type === 'free_response') {
+    html += '<div class="field"><label>Your answer</label>' +
+      '<textarea id="examText" rows="6" style="width:100%;min-height:130px;resize:vertical;" placeholder="Write your answer in a few sentences...">' + (saved!==undefined?esc(saved):'') + '</textarea>' +
+      '<div style="font-size:12px;color:var(--text-subtle);margin-top:4px;">Short answer &middot; graded by your instructor.</div></div>';
   } else {
     html += '<div class="field" style="max-width:260px;"><label>Your answer</label>' +
       '<input id="examNum" type="text" inputmode="decimal" placeholder="e.g. 30 or 0.55" value="' + (saved!==undefined?esc(saved):'') + '"></div>';
@@ -2002,7 +2013,10 @@ function renderExamQuestion() {
       });
     });
   }
-  function captureNum() { var el = $('examNum'); if (el) { ExamState.answers[i] = el.value.trim(); } }
+  function captureNum() {
+    var t = $('examText'); if (t) { ExamState.answers[i] = t.value; return; }
+    var el = $('examNum'); if (el) { ExamState.answers[i] = el.value.trim(); }
+  }
   if ($('examPrev')) { $('examPrev').addEventListener('click', function(){ captureNum(); ExamState.idx = Math.max(0, i-1); renderExamQuestion(); }); }
   if ($('examNext')) { $('examNext').addEventListener('click', function(){ captureNum(); ExamState.idx = Math.min(n-1, i+1); renderExamQuestion(); }); }
   if ($('examSubmit')) { $('examSubmit').addEventListener('click', function(){ captureNum(); confirmSubmitExam(); }); }
@@ -2031,26 +2045,44 @@ function gradeExam(auto) {
   host.innerHTML = '<div class="card" style="text-align:center;"><span class="spinner"></span> &nbsp;' + (auto ? 'Time is up — grading your exam…' : 'Grading your exam…') + '</div>';
   var items = ExamState.items;
   var chain = Promise.resolve();
-  var earned = 0, totalPts = 0, correct = 0;
+  var earned = 0, autoPts = 0, correct = 0, pendingCount = 0, pendingPts = 0;
   items.forEach(function(it, k) {
-    totalPts += (it.points ? Number(it.points) : 1);
+    var isFree = (it.item_type === 'free_response');
+    if (isFree) { pendingPts += (it.points ? Number(it.points) : 1); }
+    else { autoPts += (it.points ? Number(it.points) : 1); }
     chain = chain.then(function() {
       var submitted = ExamState.answers[k];
-      if (submitted === undefined || submitted === '') { submitted = '__BLANK__'; }
+      if (isFree) {
+        // submit the text as-is (may be empty); instructor grades it later
+        if (submitted === undefined) { submitted = ''; }
+      } else {
+        if (submitted === undefined || submitted === '') { submitted = '__BLANK__'; }
+      }
       return sb.functions.invoke('grade-attempt', { body: { action:'grade', attempt_id: it.attempt_id, submitted_value: submitted } }).then(function(fn) {
+        if (isFree) { pendingCount++; return; }
         if (fn.data && fn.data.is_correct) { correct++; earned += (fn.data.points_earned ? Number(fn.data.points_earned) : 0); }
       });
     });
   });
   chain.then(function() {
     ExamState.finished = true;
-    var pct = totalPts ? Math.round((earned/totalPts)*100) : 0;
+    var pct = autoPts ? Math.round((earned/autoPts)*100) : 0;
+    var autoLine = autoPts > 0
+      ? (correct + ' of ' + (items.length - pendingCount) + ' auto-graded correct \u00b7 ' + earned + ' / ' + autoPts + ' points')
+      : 'No auto-graded questions on this exam.';
+    var pendingLine = pendingCount > 0
+      ? '<p style="font-size:13px;color:var(--amber);margin-bottom:6px;">' + pendingCount + ' written ' + (pendingCount===1?'answer':'answers') + ' (' + pendingPts + ' pts) await your instructor\u2019s review.</p>'
+      : '';
+    var bigNumber = autoPts > 0
+      ? '<div style="font-family:JetBrains Mono,monospace;font-size:40px;color:var(--text-bright);">' + pct + '%</div><div style="font-size:11px;color:var(--text-subtle);">auto-graded portion</div>'
+      : '<div style="font-size:22px;color:var(--text-bright);">Submitted</div>';
     host.innerHTML = '<div class="card" style="max-width:520px;margin:0 auto;text-align:center;">' +
-      '<div style="font-size:34px;margin-bottom:6px;">' + (pct>=70?'🎉':'✅') + '</div>' +
+      '<div style="font-size:34px;margin-bottom:6px;">' + ((autoPts>0 && pct>=70)?'🎉':'✅') + '</div>' +
       '<h3 style="font-size:26px;margin-bottom:6px;">Exam submitted</h3>' +
-      '<div style="font-family:JetBrains Mono,monospace;font-size:40px;color:var(--text-bright);">' + pct + '%</div>' +
-      '<div style="color:var(--text-muted);font-size:14px;margin:6px 0 18px;">' + correct + ' of ' + items.length + ' correct · ' + earned + ' / ' + totalPts + ' points</div>' +
-      '<p style="font-size:12.5px;color:var(--text-subtle);margin-bottom:16px;">Your score has been recorded in your instructor\u2019s gradebook.</p>' +
+      bigNumber +
+      '<div style="color:var(--text-muted);font-size:14px;margin:10px 0 12px;">' + autoLine + '</div>' +
+      pendingLine +
+      '<p style="font-size:12.5px;color:var(--text-subtle);margin:8px 0 16px;">Your results have been recorded in your instructor\u2019s gradebook' + (pendingCount>0 ? ' and your final score will update once written answers are graded.' : '.') + '</p>' +
       '<button class="btn btn-primary" id="examDone">Back to exams</button></div>';
     $('examDone').addEventListener('click', function(){ loadMyExams(); });
   });
