@@ -251,6 +251,7 @@
       <div class="nav-item" data-view="gradebook"><span class="ico">&#128202;</span> Gradebook</div>
       <div class="nav-item" data-view="analytics"><span class="ico">&#128293;</span> Analytics</div>
       <div class="nav-item" data-view="exams"><span class="ico">&#128221;</span> Exams</div>
+      <div class="nav-item" data-view="grading"><span class="ico">&#9999;</span> Grade Written</div>
       <div class="nav-item" data-view="subscriptions"><span class="ico">&#128179;</span> Subscriptions</div>
       <div class="nav-item" data-view="diagnostics"><span class="ico">&#128274;</span> Diagnostics</div>
     </div>
@@ -549,6 +550,7 @@ var VIEW_META = {
   gradebook:['Gradebook','Weighted grades across all components.',true],
   analytics:['Analytics','Concept mastery and cohort engagement.',true],
   exams:['Exams','Assemble and publish midterms and finals.',true],
+  grading:['Grade Written','Review and finalize written answers, with optional AI assistance.',true],
   subscriptions:['Subscriptions','Manage paid access for this course.',true],
   platform:['Platform & Pricing','Global price, Stripe link, and author bio.',false],
   people:['Instructors','Grant or revoke instructor access.',false]
@@ -562,7 +564,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(it
   });
 });
 function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_VIEWS[i]===v){ return true; } } return false; }
-var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','gradebook','analytics','exams','subscriptions','diagnostics'];
+var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','gradebook','analytics','exams','grading','subscriptions','diagnostics'];
 var ADMIN_VIEWS = ['platform','people'];
 function viewAllowed(view){
   if(isStudentView(view)){ return true; }
@@ -601,6 +603,7 @@ function rerenderCurrentView(){
   else if(currentView==='gradebook'){ renderGradebook(host); }
   else if(currentView==='analytics'){ renderAnalytics(host); }
   else if(currentView==='exams'){ renderExams(host); }
+  else if(currentView==='grading'){ renderGrading(host); }
   else if(currentView==='subscriptions'){ renderSubscriptions(host); }
   else if(currentView==='platform'){ renderPlatform(host); }
   else if(currentView==='people'){ renderPeople(host); }
@@ -1027,6 +1030,169 @@ function loadExams(){
   });
 }
 var assemblerSel={};
+/* ====================================================================
+   GRADE WRITTEN  (AI-assisted, instructor-reviewed)
+   ==================================================================== */
+function renderGrading(host){
+  if(!needCourse(host)){ return; }
+  host.innerHTML =
+    '<div class="card" id="graderKeyCard" style="margin-bottom:16px;"></div>' +
+    '<div id="gradingBody">' + loadingCard() + '</div>';
+  renderGraderKeyCard();
+  loadPendingWritten();
+}
+
+function renderGraderKeyCard(){
+  var card = $('graderKeyCard'); if(!card){ return; }
+  sb.rpc('sa_has_grader_key').then(function(res){
+    var hasKey = !!(res && res.data);
+    var status = hasKey
+      ? '<span class="tag green">API key saved</span>'
+      : '<span class="tag dim">No API key</span>';
+    card.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
+        '<div><div style="font-size:16px;color:var(--text-bright);">AI grading assistant ' + status + '</div>' +
+        '<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">Uses <b>your own</b> Anthropic API key. The key is stored securely and never shown again; AI proposes scores you review and finalize.</div></div>' +
+        '<button class="btn btn-ghost btn-sm" id="gkEdit">' + (hasKey?'Update key':'Add API key') + '</button>' +
+      '</div>' +
+      '<div id="gkForm" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">' +
+        '<div id="gkMsg" class="msg"></div>' +
+        '<div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;">' +
+        '<div class="field"><label>Anthropic API key</label><input id="gkKey" type="password" placeholder="sk-ant-..." autocomplete="off"></div>' +
+        '<div class="field"><label>Model (optional)</label><input id="gkModel" placeholder="claude-3-5-haiku-latest"></div>' +
+        '</div>' +
+        '<div class="inline-actions" style="justify-content:flex-end;">' +
+          (hasKey?'<button class="btn btn-danger btn-sm" id="gkClear">Remove key</button>':'') +
+          '<button class="btn btn-ghost btn-sm" id="gkCancel">Cancel</button>' +
+          '<button class="btn btn-primary btn-sm" id="gkSave">Save key</button></div>' +
+      '</div>';
+    $('gkEdit').addEventListener('click', function(){
+      var f=$('gkForm'); f.style.display = (f.style.display==='none')?'block':'none';
+    });
+    if($('gkCancel')){ $('gkCancel').addEventListener('click', function(){ $('gkForm').style.display='none'; }); }
+    if($('gkSave')){ $('gkSave').addEventListener('click', function(){
+      var key=$('gkKey').value.trim(); var model=$('gkModel').value.trim();
+      if(!key){ var e=$('gkMsg'); e.className='msg err'; e.textContent='Enter your API key.'; return; }
+      $('gkSave').disabled=true;
+      var payload={ owner_id:State.user.id, provider:'anthropic', api_key:key, model:(model||null) };
+      sb.from('sa_grader_keys').upsert(payload,{onConflict:'owner_id'}).then(function(r){
+        $('gkSave').disabled=false;
+        if(r.error){ var e=$('gkMsg'); e.className='msg err'; e.textContent=r.error.message; return; }
+        renderGraderKeyCard();
+      });
+    }); }
+    if(hasKey && $('gkClear')){ $('gkClear').addEventListener('click', function(){
+      sb.from('sa_grader_keys').delete().eq('owner_id',State.user.id).then(function(){ renderGraderKeyCard(); });
+    }); }
+  });
+}
+
+function loadPendingWritten(){
+  var body=$('gradingBody'); if(!body){ return; }
+  body.innerHTML=loadingCard();
+  // published exams in this course, then their free_response items, then ungraded attempts
+  sb.from('sa_exams').select('id,title,item_ids').eq('course_id',State.teachCourseId).then(function(ex){
+    var exams=ex.data?ex.data:[];
+    if(exams.length===0){ body.innerHTML='<div class="card empty">No exams in this course yet.</div>'; return; }
+    var allItemIds=[]; exams.forEach(function(e){ (e.item_ids||[]).forEach(function(id){ if(allItemIds.indexOf(id)<0){ allItemIds.push(id); } }); });
+    if(allItemIds.length===0){ body.innerHTML='<div class="card empty">No exam questions yet.</div>'; return; }
+    sb.from('sa_assessment_items').select('id,prompt,points,item_type').in('id',allItemIds).eq('item_type','free_response').then(function(it){
+      var items=it.data?it.data:[];
+      var itemById={}; items.forEach(function(x){ itemById[x.id]=x; });
+      var frIds=items.map(function(x){ return x.id; });
+      if(frIds.length===0){ body.innerHTML='<div class="card empty">No written (short-answer) questions in this course\u2019s exams. Add free-response items in the exam assembler to use AI grading.</div>'; return; }
+      // ungraded written attempts in this course
+      sb.from('sa_attempts').select('id,student_id,item_id,exam_id,submitted_value,ai_score,ai_feedback,ai_graded_at,graded_at,points_earned').eq('course_id',State.teachCourseId).in('item_id',frIds).is('graded_at',null).then(function(at){
+        var attempts=at.data?at.data:[];
+        // also fetch student emails for display
+        var sids=[]; attempts.forEach(function(a){ if(sids.indexOf(a.student_id)<0){ sids.push(a.student_id); } });
+        var examTitle={}; exams.forEach(function(e){ examTitle[e.id]=e.title; });
+        if(attempts.length===0){ body.innerHTML='<div class="card empty">No written answers are waiting to be graded. \uD83C\uDF89</div>'; return; }
+        var finish=function(nameById){
+          var pendingAI=attempts.filter(function(a){ return !a.ai_graded_at; }).length;
+          var head='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">' +
+            '<div style="font-size:13px;color:var(--text-muted);">' + attempts.length + ' written ' + (attempts.length===1?'answer':'answers') + ' awaiting review' + (pendingAI>0?(' \u00b7 ' + pendingAI + ' not yet AI-graded'):'') + '</div>' +
+            '<button class="btn btn-ghost btn-sm" id="aiAll">Run AI grading on all</button></div>';
+          var rows='';
+          attempts.forEach(function(a){
+            var it=itemById[a.item_id]||{}; var maxP=it.points||1;
+            var who=nameById[a.student_id]||a.student_id;
+            var aiBlock = a.ai_graded_at
+              ? '<div style="margin-top:8px;padding:9px 11px;border-radius:8px;background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.22);">' +
+                  '<div style="font-size:11px;color:var(--violet);text-transform:uppercase;letter-spacing:.06em;">AI suggestion</div>' +
+                  '<div style="font-size:13px;color:var(--text-bright);margin-top:2px;">Score: ' + a.ai_score + ' / ' + maxP + '</div>' +
+                  '<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">' + esc(a.ai_feedback||'') + '</div>' +
+                  '<button class="btn btn-ghost btn-sm" data-useai="' + a.id + '" style="margin-top:6px;">Use this score</button></div>'
+              : '<div style="margin-top:8px;font-size:12px;color:var(--text-subtle);">No AI suggestion yet.</div>';
+            rows +=
+              '<div class="card" style="margin-bottom:12px;" data-attempt="' + a.id + '">' +
+                '<div style="font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;">' + esc(examTitle[a.exam_id]||'') + ' \u00b7 ' + esc(who) + ' \u00b7 ' + maxP + ' pts</div>' +
+                '<div style="font-size:14px;color:var(--text-bright);margin:4px 0 8px;">' + esc(it.prompt||'') + '</div>' +
+                '<div style="font-size:13px;color:var(--text);background:var(--bg2);border-radius:8px;padding:10px;white-space:pre-wrap;">' + (a.submitted_value?esc(a.submitted_value):'<span style=\"color:var(--text-subtle);\">(left blank)</span>') + '</div>' +
+                aiBlock +
+                '<div style="display:flex;gap:10px;align-items:flex-end;margin-top:12px;flex-wrap:wrap;">' +
+                  '<div class="field" style="max-width:120px;margin:0;"><label>Score (/' + maxP + ')</label><input class="gradeScore" data-id="' + a.id + '" type="number" min="0" max="' + maxP + '" step="0.5" value="' + (a.ai_graded_at?a.ai_score:'') + '"></div>' +
+                  '<div class="field" style="flex:1;min-width:220px;margin:0;"><label>Feedback (optional)</label><input class="gradeFb" data-id="' + a.id + '" value="' + esc(a.ai_feedback||'') + '"></div>' +
+                  '<button class="btn btn-ghost btn-sm" data-ai="' + a.id + '">Run AI</button>' +
+                  '<button class="btn btn-primary btn-sm" data-final="' + a.id + '">Finalize</button>' +
+                '</div>' +
+              '</div>';
+          });
+          body.innerHTML=head+rows;
+          $('aiAll').addEventListener('click', function(){ runAIGrade(null); });
+          Array.prototype.forEach.call(body.querySelectorAll('[data-ai]'), function(b){ b.addEventListener('click', function(){ runAIGrade(b.getAttribute('data-ai')); }); });
+          Array.prototype.forEach.call(body.querySelectorAll('[data-useai]'), function(b){ b.addEventListener('click', function(){
+            var id=b.getAttribute('data-useai');
+            var a=attempts.filter(function(x){return x.id===id;})[0];
+            var sc=body.querySelector('.gradeScore[data-id="'+id+'"]'); if(sc&&a){ sc.value=a.ai_score; }
+          }); });
+          Array.prototype.forEach.call(body.querySelectorAll('[data-final]'), function(b){ b.addEventListener('click', function(){ finalizeGrade(b.getAttribute('data-final')); }); });
+        };
+        if(sids.length===0){ finish({}); }
+        else {
+          sb.from('sa_profiles').select('id,email,full_name').in('id',sids).then(function(pr){
+            var nameById={}; (pr.data||[]).forEach(function(p){ nameById[p.id]=p.full_name||p.email||p.id; });
+            finish(nameById);
+          });
+        }
+      });
+    });
+  });
+}
+
+function runAIGrade(attemptId){
+  var body=$('gradingBody');
+  var note=document.createElement('div'); note.className='card'; note.style.marginBottom='12px';
+  note.innerHTML='<span class="spinner"></span> &nbsp;Asking the AI to grade' + (attemptId?' this answer':' all pending answers') + '\u2026 this can take a moment.';
+  body.insertBefore(note, body.firstChild);
+  var payload={ action:'propose', course_id:State.teachCourseId };
+  if(attemptId){ payload.attempt_id=attemptId; }
+  sb.functions.invoke('ai-grade',{ body:payload }).then(function(fn){
+    if(fn.error || (fn.data && fn.data.error)){
+      var msg=(fn.data&&fn.data.message)?fn.data.message:((fn.data&&fn.data.error)?fn.data.error:(fn.error?fn.error.message:'AI grading failed'));
+      note.innerHTML='<div class="feedback wrong" style="display:block;">'+esc(msg)+'</div>';
+      return;
+    }
+    loadPendingWritten();
+  });
+}
+
+function finalizeGrade(attemptId){
+  var sc=$('gradingBody').querySelector('.gradeScore[data-id="'+attemptId+'"]');
+  var fb=$('gradingBody').querySelector('.gradeFb[data-id="'+attemptId+'"]');
+  if(!sc || sc.value===''){ alert('Enter a score before finalizing.'); return; }
+  var card=$('gradingBody').querySelector('[data-attempt="'+attemptId+'"]');
+  if(card){ card.style.opacity='0.5'; }
+  sb.functions.invoke('ai-grade',{ body:{ action:'finalize', attempt_id:attemptId, points:parseFloat(sc.value), feedback:(fb?fb.value:'') } }).then(function(fn){
+    if(fn.error || (fn.data && fn.data.error)){
+      if(card){ card.style.opacity='1'; }
+      alert((fn.data&&fn.data.error)?fn.data.error:(fn.error?fn.error.message:'Finalize failed'));
+      return;
+    }
+    loadPendingWritten();
+  });
+}
+
 function openAssembler(){
   assemblerSel={};
   var m=document.createElement('div'); m.className='modal-bg';
