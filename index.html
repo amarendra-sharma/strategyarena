@@ -1997,7 +1997,7 @@ function loadMyExams() {
     if (courseIds.length === 0) { host.innerHTML = '<div class="card empty">You are not enrolled in a course with exams yet. Join a course from Home.</div>'; return; }
     Promise.all([
       sb.from('sa_exams').select('id,course_id,kind,title,total_points,time_limit_minutes,instructions,item_ids,is_published,max_attempts,shuffle_questions,attempt_scoring,opens_at,closes_at').in('course_id', courseIds).eq('is_published', true).order('created_at',{ascending:true}),
-      sb.from('sa_attempts').select('exam_id,item_id,points_earned,graded_at').eq('student_id', uid).not('exam_id','is',null),
+      sb.from('sa_attempts').select('exam_id,item_id,points_earned,graded_at,submitted_value').eq('student_id', uid).not('exam_id','is',null),
       sb.from('sa_accommodations').select('course_id,time_multiplier,extra_attempts').eq('student_id', uid)
     ]).then(function(r) {
       var exams = r[0].data ? r[0].data : [];
@@ -2014,7 +2014,7 @@ function loadMyExams() {
       var bestPctBy = {};
       var examPtsAcc = {}; // exam -> {sitting tally}
       attempts.forEach(function(a){
-        if(a.graded_at && firstItemOf[a.exam_id] && a.item_id===firstItemOf[a.exam_id]){ sittingsBy[a.exam_id]=(sittingsBy[a.exam_id]||0)+1; }
+        if(a.submitted_value!==null && a.submitted_value!==undefined && firstItemOf[a.exam_id] && a.item_id===firstItemOf[a.exam_id]){ sittingsBy[a.exam_id]=(sittingsBy[a.exam_id]||0)+1; }
       });
       // total earned across all graded attempts of an exam (approx best by summing latest sitting is complex; show simple completed flag + score)
       var earnedBy = {};
