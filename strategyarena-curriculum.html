@@ -9233,9 +9233,11 @@ function bindNav() {
 
   $$('[data-arena]').forEach(btn => {
     btn.addEventListener('click', () => {
-      // In real integration, route to arena. For demo:
-      const target = btn.dataset.arena;
-      alert(`Would open arena: ${target}\n\n(In full integration, this routes to the arena module.)`);
+      var target = btn.dataset.arena;
+      // a couple of slugs differ from their file name
+      var alias = { behavioral: 'ultimatum-trust' };
+      var slug = alias[target] ? alias[target] : target;
+      window.open('strategyarena-' + slug + '.html', '_blank');
     });
   });
 }
