@@ -31,6 +31,7 @@
 
   /* Auth */
   .auth-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .auth-wrap.as-overlay { position:fixed; inset:0; z-index:1000; background:rgba(5,6,12,.92); backdrop-filter:blur(4px); overflow:auto; }
   .auth-card { width:100%; max-width:420px; background:var(--surface-strong); border:1px solid var(--border-strong); border-radius:20px; padding:40px 36px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
   .brand { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
   .brand-mark { width:42px; height:42px; border-radius:11px; background:linear-gradient(135deg,var(--violet-deep),var(--violet)); display:grid; place-items:center; font-size:22px; box-shadow:0 8px 24px rgba(124,92,255,.4); }
@@ -224,6 +225,7 @@
     </div>
     <button class="btn btn-primary" id="authSubmit" style="width:100%;">Sign in</button>
     <div class="auth-toggle" id="authToggle">No account yet? <b>Create one</b></div>
+    <div class="auth-toggle hidden" id="authDismiss" style="margin-top:10px;cursor:pointer;"><b>&larr; Keep browsing without an account</b></div>
   </div>
 </div>
 
@@ -409,6 +411,44 @@ function money(cents,cur){ var c=(cents?cents:0)/100; var sym=(cur==='usd'||!cur
 function show(el){ if(el){el.classList.remove('hidden');} }
 function hide(el){ if(el){el.classList.add('hidden');} }
 
+/* ---- guest (anonymous) browsing helpers ---- */
+function isAnon(){ return !!(State.user && State.user.is_anonymous); }
+function setAuthMode(signup){
+  State.signup = signup;
+  $('authSubmit').textContent = signup ? 'Create account' : 'Sign in';
+  $('authToggle').innerHTML = signup ? 'Already registered? <b>Sign in</b>' : 'No account yet? <b>Create one</b>';
+  setAuthMsg('','');
+  if(signup){ show($('signupRole')); } else { hide($('signupRole')); }
+}
+function openAuthOverlay(mode){
+  setAuthMode(mode === 'signup');
+  var s = $('authScreen');
+  s.classList.add('as-overlay');
+  show(s);
+  if($('authDismiss')){ show($('authDismiss')); }
+  window.scrollTo(0,0);
+}
+function closeAuthOverlay(){
+  var s = $('authScreen');
+  hide(s);
+  s.classList.remove('as-overlay');
+}
+function openAccountWall(whatLabel){
+  var m = document.createElement('div'); m.className = 'modal-bg';
+  m.innerHTML = '<div class="modal" style="max-width:460px;text-align:center;">' +
+    '<div style="font-size:30px;margin-bottom:8px;">&#128075;</div>' +
+    '<h2 style="margin-bottom:8px;">Create a free account</h2>' +
+    '<p style="color:var(--text-muted);font-size:14px;margin-bottom:18px;">' + esc(whatLabel) +
+    ' needs an account so we can save it to you. Chapters 1&ndash;2 and the Prisoner\'s Dilemma arena stay free to preview &mdash; creating an account keeps your progress and lets you unlock the full course.</p>' +
+    '<button class="btn btn-primary" id="awCreate" style="width:100%;margin-bottom:10px;">Create account / Sign in</button>' +
+    '<button class="btn btn-ghost" id="awClose" style="width:100%;">Keep browsing</button>' +
+  '</div>';
+  document.body.appendChild(m);
+  m.addEventListener('click', function(e){ if(e.target === m){ document.body.removeChild(m); } });
+  $('awClose').addEventListener('click', function(){ document.body.removeChild(m); });
+  $('awCreate').addEventListener('click', function(){ document.body.removeChild(m); openAuthOverlay('signup'); });
+}
+
 /* ====================================================================
    AUTH
    ==================================================================== */
@@ -416,6 +456,7 @@ function setAuthMsg(t,k){ var m=$('authMsg'); m.textContent=t||''; m.className='
 $('authToggle').addEventListener('click', function(){ State.signup=!State.signup; $('authSubmit').textContent=State.signup?'Create account':'Sign in'; $('authToggle').innerHTML=State.signup?'Already registered? <b>Sign in</b>':'No account yet? <b>Create one</b>'; setAuthMsg('',''); if(State.signup){ show($('signupRole')); } else { hide($('signupRole')); } });
 $('authSubmit').addEventListener('click', doAuth);
 $('authPassword').addEventListener('keydown', function(e){ if(e.key==='Enter'){ doAuth(); } });
+if($('authDismiss')){ $('authDismiss').addEventListener('click', closeAuthOverlay); }
 
 // signup role choice (student vs professor)
 var SIGNUP_ROLE = 'student';
@@ -448,6 +489,19 @@ function doAuth(){
       var jc = $('authJoinCode') ? $('authJoinCode').value.trim() : '';
       if(jc){ meta = { join_code: jc }; }
     }
+    if(isAnon()){
+      // upgrade the guest account in place so progress is preserved (same uid)
+      sb.auth.updateUser({email:email,password:pw,data:meta}).then(function(res){
+        $('authSubmit').disabled=false;
+        if(res.error){ setAuthMsg(res.error.message,'err'); return; }
+        var u = (res.data && res.data.user) ? res.data.user : State.user;
+        var extra = (SIGNUP_ROLE==='professor') ? ' Your professor request will be reviewed once an admin approves it.' : '';
+        setAuthMsg('Account created — your progress is saved.'+extra+' If we emailed a confirmation link, click it to finish securing your account.','ok');
+        closeAuthOverlay();
+        onSignedIn(u);
+      });
+      return;
+    }
     sb.auth.signUp({email:email,password:pw,options:{data:meta}}).then(function(res){
       $('authSubmit').disabled=false;
       if(res.error){ setAuthMsg(res.error.message,'err'); return; }
@@ -465,7 +519,7 @@ function doAuth(){
     });
   }
 }
-$('signOutBtn').addEventListener('click', signOut);
+$('signOutBtn').addEventListener('click', function(){ if(isAnon()){ openAuthOverlay('signup'); } else { signOut(); } });
 function signOut(){ sb.auth.signOut().then(function(){ State.user=null; hide($('appScreen')); hide($('denyScreen')); show($('authScreen')); }); }
 
 /* ====================================================================
@@ -486,9 +540,11 @@ function onSignedIn(user){
 // Everyone enters as a student. Instructors/admins get extra nav groups.
 function enterApp(user){
   show($('appScreen'));
-  $('sideUser').textContent=user.email;
+  var guest = isAnon();
+  $('sideUser').textContent = guest ? 'Guest' : (user.email || 'Guest');
+  $('signOutBtn').textContent = guest ? 'Sign in / Save progress' : 'Sign out';
   var role=State.role;
-  $('sideRole').textContent = (role==='admin') ? 'Super Administrator' : (role==='instructor' ? 'Instructor' : 'Student');
+  $('sideRole').textContent = guest ? 'Browsing as guest' : ((role==='admin') ? 'Super Administrator' : (role==='instructor' ? 'Instructor' : 'Student'));
   if(role==='instructor' || role==='admin'){ show($('teachGroup')); } else { hide($('teachGroup')); }
   if(role==='admin'){ show($('adminGroup')); } else { hide($('adminGroup')); }
   // student self-study provisioning (own course for practice/progress)
@@ -573,6 +629,8 @@ function viewAllowed(view){
   return true;
 }
 function switchView(view){
+  // Guests can browse Learn (chapters/arenas/practice) but Track features need an account.
+  if(isAnon() && (view==='progress' || view==='myexams')){ openAccountWall('Saving your progress and taking exams'); view='home'; }
   // Enforce role access at the view level (not just by hiding tabs).
   if(!viewAllowed(view)){ view='home'; }
   // stop any running exam timer when leaving the exam view
@@ -1599,6 +1657,7 @@ function resolveAccess() {
 function chapterLocked(n) { if (State.hasAccess) { return false; } return !FREE_CHAPTERS[n]; }
 function arenaLocked(slug) { if (State.hasAccess) { return false; } return !FREE_ARENAS[slug]; }
 function openSubscribePrompt(whatLabel) {
+  if(isAnon()){ openAccountWall(whatLabel); return; }
   var baseLink = State.settings ? State.settings.stripe_link : '';
   var price = State.settings ? State.settings.price_cents : 0;
   var cur = State.settings ? State.settings.currency : 'usd';
@@ -1698,6 +1757,7 @@ function maybeHandleInboundCourse() {
   });
 }
 function ensureProfileAndCourse() {
+  if(isAnon()){ return Promise.resolve(); }
   var uid = State.user.id;
   // profile row already upserted in onSignedIn (without role, so admin/instructor
   // roles are never clobbered). Go straight to resolving the student's course.
@@ -2649,7 +2709,16 @@ function runDiagnostics() {
    BOOT
    ==================================================================== */
 sb.auth.getSession().then(function(res){
-  if(res.data && res.data.session && res.data.session.user){ onSignedIn(res.data.session.user); }
+  if(res.data && res.data.session && res.data.session.user){ onSignedIn(res.data.session.user); return; }
+  // No session: let anyone in as a guest (anonymous), so they can browse
+  // without signing up. Full features stay gated behind account + unlock.
+  sb.auth.signInAnonymously().then(function(r2){
+    if(r2.error || !(r2.data && r2.data.session && r2.data.session.user)){
+      // anonymous sign-ins not enabled in this project -> show the sign-in screen
+      show($('authScreen')); return;
+    }
+    onSignedIn(r2.data.session.user);
+  });
 });
 </script>
 </body>
