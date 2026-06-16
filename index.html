@@ -225,6 +225,7 @@
     </div>
     <button class="btn btn-primary" id="authSubmit" style="width:100%;">Sign in</button>
     <div class="auth-toggle" id="authToggle">No account yet? <b>Create one</b></div>
+    <div class="auth-toggle" id="authForgot" style="margin-top:8px;"><a href="#" onclick="doForgotPassword();return false;" style="color:var(--text-subtle);text-decoration:none;">Forgot your password?</a></div>
     <div class="auth-toggle hidden" id="authDismiss" style="margin-top:10px;cursor:pointer;"><b>&larr; Keep browsing without an account</b></div>
   </div>
 </div>
@@ -360,6 +361,7 @@
 var SUPABASE_URL = 'https://qgelvmefyexyzpwqupev.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZWx2bWVmeWV4eXpwd3F1cGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDY5ODAsImV4cCI6MjA5NjAyMjk4MH0.AR55GBLefKHfs9ncWWzEFks_VISPjJtbW8SezyjM3lc';
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+sb.auth.onAuthStateChange(function(event){ if(event === 'PASSWORD_RECOVERY'){ openResetPassword(); } });
 
 var CHAPTERS = [
   {n:1,title:'Strategic Thinking'},{n:2,title:"Prisoner's Dilemma"},{n:3,title:'Repeated Games'},
@@ -453,6 +455,46 @@ function openAccountWall(whatLabel){
    AUTH
    ==================================================================== */
 function setAuthMsg(t,k){ var m=$('authMsg'); m.textContent=t||''; m.className='msg '+(k?k:''); if(!t){m.className='msg';} }
+function doForgotPassword(){
+  var email = $('authEmail') ? $('authEmail').value.trim() : '';
+  if(!email){ email = window.prompt('Enter your account email to receive a password reset link:'); }
+  if(!email){ return; }
+  email = email.trim();
+  var redirectTo = location.origin + location.pathname + '?reset=1';
+  setAuthMsg('Sending reset link...','');
+  sb.auth.resetPasswordForEmail(email, { redirectTo: redirectTo }).then(function(r){
+    if(r && r.error){ setAuthMsg(r.error.message,'err'); return; }
+    setAuthMsg('If an account exists for ' + email + ', a reset link is on its way. Check your inbox (and spam).','ok');
+  });
+}
+function openResetPassword(){
+  if(document.getElementById('rpBg')){ return; }
+  var bg = document.createElement('div'); bg.id = 'rpBg';
+  bg.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(8,8,16,.94);display:flex;align-items:center;justify-content:center;padding:24px;';
+  bg.innerHTML =
+    '<div style="width:100%;max-width:380px;box-sizing:border-box;background:#16131f;border:1px solid #7c5cff;border-radius:16px;padding:28px;">' +
+      '<h2 style="margin:0 0 6px;color:#fff;font-size:20px;">Set a new password</h2>' +
+      '<p style="color:#b3a9cf;font-size:13px;margin:0 0 16px;">Choose a new password for your account.</p>' +
+      '<input id="rpNew" type="password" placeholder="New password" style="width:100%;box-sizing:border-box;padding:10px;margin-bottom:10px;border-radius:8px;border:1px solid #36304a;background:#0e0c16;color:#fff;">' +
+      '<input id="rpConf" type="password" placeholder="Confirm new password" style="width:100%;box-sizing:border-box;padding:10px;margin-bottom:10px;border-radius:8px;border:1px solid #36304a;background:#0e0c16;color:#fff;">' +
+      '<div id="rpMsg" style="font-size:13px;margin-bottom:10px;min-height:16px;color:#b3a9cf;"></div>' +
+      '<button id="rpGo" style="width:100%;padding:11px;border:0;border-radius:8px;background:#7c5cff;color:#fff;font-weight:700;cursor:pointer;">Update password</button>' +
+    '</div>';
+  document.body.appendChild(bg);
+  $('rpGo').addEventListener('click', function(){
+    var p = $('rpNew').value, c = $('rpConf').value, m = $('rpMsg');
+    if(!p || p.length < 8){ m.style.color = '#ff9b9b'; m.textContent = 'Password must be at least 8 characters.'; return; }
+    if(p !== c){ m.style.color = '#ff9b9b'; m.textContent = 'Passwords do not match.'; return; }
+    $('rpGo').disabled = true; m.style.color = '#b3a9cf'; m.textContent = 'Updating...';
+    sb.auth.updateUser({ password: p }).then(function(r){
+      $('rpGo').disabled = false;
+      if(r && r.error){ m.style.color = '#ff9b9b'; m.textContent = r.error.message; return; }
+      m.style.color = '#7fe0a0'; m.textContent = 'Password updated. You are signed in.';
+      try { history.replaceState({}, '', location.origin + location.pathname); } catch(e){}
+      setTimeout(function(){ if(document.getElementById('rpBg')){ document.body.removeChild(bg); } }, 1300);
+    });
+  });
+}
 $('authToggle').addEventListener('click', function(){ State.signup=!State.signup; $('authSubmit').textContent=State.signup?'Create account':'Sign in'; $('authToggle').innerHTML=State.signup?'Already registered? <b>Sign in</b>':'No account yet? <b>Create one</b>'; setAuthMsg('',''); if(State.signup){ show($('signupRole')); } else { hide($('signupRole')); } });
 $('authSubmit').addEventListener('click', doAuth);
 $('authPassword').addEventListener('keydown', function(e){ if(e.key==='Enter'){ doAuth(); } });
@@ -2714,6 +2756,7 @@ sb.auth.getSession().then(function(res){
   // without signing up. Full features stay gated behind account + unlock.
   sb.auth.signInAnonymously().then(function(r2){
     if(r2.error || !(r2.data && r2.data.session && r2.data.session.user)){
+      try{ console.warn('[StrategyArena] anonymous sign-in failed:', (r2.error?r2.error.message:'no session'), '\u2014 enable "Allow anonymous sign-ins" in this Supabase project\u2019s Auth settings to let visitors browse without an account.'); }catch(e){}
       // anonymous sign-ins not enabled in this project -> show the sign-in screen
       show($('authScreen')); return;
     }
