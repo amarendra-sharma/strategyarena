@@ -2651,7 +2651,10 @@ function loadCompletion() {
     var chaptersRead = 0, quizzesPassed = 0, quizSum = 0, quizN = 0;
     prog.forEach(function(p){ if(p.reading_done){ chaptersRead++; } if(p.quiz_passed){ quizzesPassed++; } if(p.quiz_score!==null&&p.quiz_score!==undefined){ quizSum+=Number(p.quiz_score); quizN++; } });
     var reading = chaptersRead/14;
-    var quizzes = quizN>0 ? (quizSum/quizN) : (quizzesPassed/14);
+    // Quizzes are scored over ALL 14 chapters (an unattempted chapter counts as
+    // 0), consistent with Reading and Arenas. Averaging only over attempted
+    // quizzes would show 100% after a single perfect quiz.
+    var quizzes = quizN>0 ? (quizSum/14) : (quizzesPassed/14);
     var distinctArenas = {}; arenas.forEach(function(a){ distinctArenas[a.arena_slug]=true; });
     var arenaCount = 0; for (var k in distinctArenas){ if(distinctArenas.hasOwnProperty(k)){ arenaCount++; } }
     var arenaScore = Math.min(arenaCount/13, 1);
