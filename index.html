@@ -1017,7 +1017,7 @@ function loadExams(){
       var nItems=e.item_ids?e.item_ids.length:0;
       html+='<tr><td>'+esc(e.title)+'</td><td><span class="tag violet">'+esc(e.kind)+'</span></td><td>'+nItems+'</td><td>'+esc(e.total_points||0)+'</td>'+
         '<td>'+(e.is_published?'<span class="tag green">published</span>':'<span class="tag dim">draft</span>')+'</td>'+
-        '<td class="inline-actions"><button class="btn btn-ghost btn-sm" data-pub="'+e.id+'" data-on="'+(e.is_published?'1':'0')+'">'+(e.is_published?'Unpublish':'Publish')+'</button>'+
+        '<td class="inline-actions"><button class="btn btn-ghost btn-sm" data-edit="'+e.id+'">Edit</button><button class="btn btn-ghost btn-sm" data-clone="'+e.id+'">Clone</button><button class="btn btn-ghost btn-sm" data-pub="'+e.id+'" data-on="'+(e.is_published?'1':'0')+'">'+(e.is_published?'Unpublish':'Publish')+'</button>'+
         '<button class="btn btn-danger btn-sm" data-del="'+e.id+'">Delete</button></td></tr>';
     });
     html+='</tbody></table></div>';
@@ -1025,7 +1025,14 @@ function loadExams(){
     Array.prototype.forEach.call($('examList').querySelectorAll('[data-pub]'), function(b){ b.addEventListener('click', function(){
       sb.from('sa_exams').update({is_published:b.getAttribute('data-on')!=='1'}).eq('id',b.getAttribute('data-pub')).then(loadExams);
     }); });
+    Array.prototype.forEach.call($('examList').querySelectorAll('[data-edit]'), function(b){ b.addEventListener('click', function(){
+      openExamEditor(b.getAttribute('data-edit'));
+    }); });
+    Array.prototype.forEach.call($('examList').querySelectorAll('[data-clone]'), function(b){ b.addEventListener('click', function(){
+      cloneExam(b.getAttribute('data-clone'));
+    }); });
     Array.prototype.forEach.call($('examList').querySelectorAll('[data-del]'), function(b){ b.addEventListener('click', function(){
+      if(!confirm('Delete this exam? This cannot be undone.')){ return; }
       sb.from('sa_exams').delete().eq('id',b.getAttribute('data-del')).then(loadExams);
     }); });
   });
@@ -1202,6 +1209,179 @@ function finalizeGrade(attemptId){
   });
 }
 
+/* ====================================================================
+   EXAM EDITOR — settings, dates, and question add/remove (any exam)
+   ==================================================================== */
+function dtLocalValue(iso){
+  // ISO -> value for <input type="datetime-local"> (local time, no seconds)
+  if(!iso){ return ''; }
+  var d=new Date(iso); if(isNaN(d.getTime())){ return ''; }
+  function pad(n){ return (n<10?'0':'')+n; }
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+}
+function localToIso(v){ if(!v){ return null; } var d=new Date(v); return isNaN(d.getTime())?null:d.toISOString(); }
+
+function cloneExam(examId){
+  sb.from('sa_exams').select('*').eq('id',examId).single().then(function(res){
+    if(res.error||!res.data){ alert('Could not load the exam to clone.'); return; }
+    var e=res.data;
+    var copy={
+      course_id: e.course_id,
+      kind: e.kind,
+      title: (e.title||'Exam') + ' (copy)',
+      item_ids: (e.item_ids||[]).slice(),
+      total_points: e.total_points,
+      time_limit_minutes: e.time_limit_minutes,
+      instructions: e.instructions,
+      max_attempts: e.max_attempts,
+      shuffle_questions: e.shuffle_questions,
+      attempt_scoring: e.attempt_scoring,
+      is_published: false,       // always a draft
+      opens_at: null,            // clear dates so they are set fresh
+      closes_at: null
+    };
+    sb.from('sa_exams').insert(copy).select('id').single().then(function(r){
+      if(r.error){ alert('Clone failed: '+r.error.message); return; }
+      loadExams();
+      if(r.data && r.data.id){ openExamEditor(r.data.id); }
+    });
+  });
+}
+
+function openExamEditor(examId){
+  var m=document.createElement('div'); m.className='modal-bg';
+  m.innerHTML='<div class="modal" style="max-width:900px;"><h2>Edit exam</h2><div id="edMsg" class="msg"></div><div id="edBody">'+loadingCard()+'</div></div>';
+  document.body.appendChild(m);
+  function close(){ if(m.parentNode){ document.body.removeChild(m); } }
+
+  var EX=null; var EDIT_IDS=[]; var bank={}; // id->item for items currently in exam
+
+  sb.from('sa_exams').select('*').eq('id',examId).single().then(function(res){
+    if(res.error||!res.data){ $('edBody').innerHTML='<div class="card empty">Could not load exam.</div>'; return; }
+    EX=res.data; EDIT_IDS=(EX.item_ids||[]).slice();
+    // fetch the items currently in the exam (to show questions)
+    if(EDIT_IDS.length===0){ renderEditor({}); return; }
+    sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt,options').in('id',EDIT_IDS).then(function(r2){
+      (r2.data||[]).forEach(function(it){ bank[it.id]=it; });
+      renderEditor(bank);
+    });
+  });
+
+  function pointsTotal(){
+    var tot=0; EDIT_IDS.forEach(function(id){ var it=bank[id]; tot += (it&&it.points)?Number(it.points):1; }); return tot;
+  }
+
+  function renderEditor(){
+    var e=EX;
+    var html=''+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">'+
+        '<div class="field" style="grid-column:1/3;"><label>Title</label><input id="edTitle" value="'+esc(e.title||'')+'"></div>'+
+        '<div class="field" style="grid-column:1/3;"><label>Instructions (shown before the exam)</label><textarea id="edInstr" rows="2">'+esc(e.instructions||'')+'</textarea></div>'+
+        '<div class="field"><label>Kind</label><select id="edKind"><option value="midterm"'+(e.kind==='midterm'?' selected':'')+'>Midterm</option><option value="final"'+(e.kind==='final'?' selected':'')+'>Final</option></select></div>'+
+        '<div class="field"><label>Time limit (minutes)</label><input id="edTime" type="number" min="0" value="'+(e.time_limit_minutes||'')+'"></div>'+
+        '<div class="field"><label>Opens at</label><input id="edOpens" type="datetime-local" value="'+dtLocalValue(e.opens_at)+'"></div>'+
+        '<div class="field"><label>Closes at</label><input id="edCloses" type="datetime-local" value="'+dtLocalValue(e.closes_at)+'"></div>'+
+        '<div class="field"><label>Max attempts (0 = unlimited)</label><input id="edAtt" type="number" min="0" value="'+(e.max_attempts===null||e.max_attempts===undefined?1:e.max_attempts)+'"></div>'+
+        '<div class="field"><label>Attempt scoring</label><select id="edScore"><option value="highest"'+(e.attempt_scoring==='highest'?' selected':'')+'>Highest</option><option value="latest"'+(e.attempt_scoring==='latest'?' selected':'')+'>Latest</option><option value="average"'+(e.attempt_scoring==='average'?' selected':'')+'>Average</option></select></div>'+
+        '<div class="field" style="grid-column:1/3;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input id="edShuf" type="checkbox"'+(e.shuffle_questions?' checked':'')+'> Shuffle question order per attempt</label></div>'+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px;border-top:1px solid var(--border);padding-top:12px;">'+
+        '<div style="font-size:14px;color:var(--text-bright);">Questions (<span id="edCount">'+EDIT_IDS.length+'</span>) \u00b7 <span id="edPts">'+pointsTotal()+'</span> pts</div>'+
+        '<button class="btn btn-ghost btn-sm" id="edAddToggle">+ Add questions</button></div>'+
+      '<div id="edQList"></div>'+
+      '<div id="edAddPanel" style="display:none;border-top:1px dashed var(--border);margin-top:10px;padding-top:10px;"></div>'+
+      '<div class="inline-actions" style="justify-content:flex-end;margin-top:16px;">'+
+        '<button class="btn btn-ghost btn-sm" id="edCancel">Cancel</button>'+
+        '<button class="btn btn-primary btn-sm" id="edSave">Save changes</button></div>';
+    $('edBody').innerHTML=html;
+    renderQList();
+    $('edCancel').addEventListener('click', close);
+    $('edAddToggle').addEventListener('click', function(){ var p=$('edAddPanel'); if(p.style.display==='none'){ p.style.display='block'; loadAddBank(); } else { p.style.display='none'; } });
+    $('edSave').addEventListener('click', save);
+  }
+
+  function renderQList(){
+    var host=$('edQList'); if(!host){ return; }
+    if(EDIT_IDS.length===0){ host.innerHTML='<div class="card empty">No questions yet. Use \u201C+ Add questions\u201D.</div>'; updateCounts(); return; }
+    var html='';
+    EDIT_IDS.forEach(function(id,idx){
+      var it=bank[id]||{id:id};
+      var typeBadge = it.item_type==='free_response'?'<span class="tag amber">written</span>':(it.item_type==='multiple_choice'?'<span class="tag violet">MC</span>':'<span class="tag dim">numeric</span>');
+      var opts='';
+      if(it.options && it.options.length){ opts='<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Options: '+it.options.map(function(o){return esc(o);}).join(' \u00b7 ')+'</div>'; }
+      html+='<div class="card" style="margin-bottom:8px;background:var(--bg2);">'+
+        '<div style="display:flex;justify-content:space-between;gap:10px;">'+
+          '<div style="flex:1;"><div style="font-size:11px;color:var(--text-subtle);">'+(idx+1)+'. '+esc(id)+' '+typeBadge+' \u00b7 '+esc((it.difficulty||''))+' \u00b7 '+((it.points||1))+'pt</div>'+
+          '<div style="font-size:13.5px;color:var(--text-bright);margin-top:3px;">'+esc(it.prompt||'(question text unavailable)')+'</div>'+opts+'</div>'+
+          '<button class="btn btn-danger btn-sm" data-rm="'+id+'" style="align-self:flex-start;">Remove</button>'+
+        '</div></div>';
+    });
+    host.innerHTML=html;
+    Array.prototype.forEach.call(host.querySelectorAll('[data-rm]'), function(b){ b.addEventListener('click', function(){
+      var id=b.getAttribute('data-rm');
+      EDIT_IDS=EDIT_IDS.filter(function(x){ return x!==id; });
+      renderQList();
+    }); });
+    updateCounts();
+  }
+  function updateCounts(){ if($('edCount')){ $('edCount').textContent=EDIT_IDS.length; } if($('edPts')){ $('edPts').textContent=pointsTotal(); } }
+
+  function loadAddBank(){
+    var panel=$('edAddPanel');
+    panel.innerHTML='<div class="field" style="max-width:240px;"><label>Filter by chapter</label><select id="edBankCh"><option value="">All chapters</option></select></div><div class="pick-list" id="edBankList" style="max-height:280px;overflow-y:auto;">'+loadingCard()+'</div>';
+    var sel=$('edBankCh'); for(var c=1;c<=14;c++){ var o=document.createElement('option'); o.value=c; o.text='Chapter '+c; sel.appendChild(o); }
+    sel.addEventListener('change', fillBank);
+    fillBank();
+  }
+  function fillBank(){
+    var ch=$('edBankCh').value;
+    var q=sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt,options').eq('is_active',true).order('id');
+    if(ch){ q=q.eq('chapter',parseInt(ch,10)); }
+    q.then(function(res){
+      var items=res.data?res.data:[];
+      var html='';
+      items.forEach(function(it){
+        bank[it.id]=it;
+        var inExam = EDIT_IDS.indexOf(it.id)>=0;
+        var tb = it.item_type==='free_response'?'<span class="tag amber">written</span>':(it.item_type==='multiple_choice'?'<span class="tag violet">MC</span>':'<span class="tag dim">numeric</span>');
+        html+='<div class="item-pick" style="display:flex;gap:10px;align-items:flex-start;"><div style="flex:1;"><div class="ip-prompt">'+esc(it.prompt)+'</div>'+
+          '<div class="ip-meta">'+esc(it.id)+' \u00b7 Ch'+it.chapter+' \u00b7 '+esc(it.difficulty)+' \u00b7 '+(it.points||1)+'pt '+tb+'</div></div>'+
+          (inExam?'<span class="tag green" style="align-self:center;">added</span>':'<button class="btn btn-ghost btn-sm" data-add="'+it.id+'" style="align-self:center;">Add</button>')+'</div>';
+      });
+      $('edBankList').innerHTML=html||'<div class="card empty">No items.</div>';
+      Array.prototype.forEach.call($('edBankList').querySelectorAll('[data-add]'), function(b){ b.addEventListener('click', function(){
+        var id=b.getAttribute('data-add');
+        if(EDIT_IDS.indexOf(id)<0){ EDIT_IDS.push(id); }
+        renderQList(); fillBank();
+      }); });
+    });
+  }
+
+  function save(){
+    if(EDIT_IDS.length===0){ var e0=$('edMsg'); e0.className='msg err'; e0.textContent='An exam needs at least one question.'; return; }
+    var opens=localToIso($('edOpens').value); var closes=localToIso($('edCloses').value);
+    if(opens && closes && new Date(closes)<=new Date(opens)){ var e1=$('edMsg'); e1.className='msg err'; e1.textContent='Close time must be after open time.'; return; }
+    var patch={
+      title: $('edTitle').value.trim()||EX.title,
+      instructions: $('edInstr').value,
+      kind: $('edKind').value,
+      time_limit_minutes: $('edTime').value? parseInt($('edTime').value,10): null,
+      opens_at: opens, closes_at: closes,
+      max_attempts: $('edAtt').value!==''? parseInt($('edAtt').value,10): 1,
+      attempt_scoring: $('edScore').value,
+      shuffle_questions: $('edShuf').checked,
+      item_ids: EDIT_IDS,
+      total_points: pointsTotal()
+    };
+    $('edSave').disabled=true;
+    sb.from('sa_exams').update(patch).eq('id',examId).then(function(r){
+      $('edSave').disabled=false;
+      if(r.error){ var e2=$('edMsg'); e2.className='msg err'; e2.textContent=r.error.message; return; }
+      close(); loadExams();
+    });
+  }
+}
+
 function openExamLibrary(){
   if(!State.teachCourseId){ alert('Select a course first (top of the console).'); return; }
   var m=document.createElement('div'); m.className='modal-bg';
@@ -1232,8 +1412,9 @@ function openExamLibrary(){
         sb.rpc('sa_adopt_exam',{ p_template_id:b.getAttribute('data-adopt'), p_course_id:State.teachCourseId }).then(function(r){
           var e=$('libMsg');
           if(r.error){ b.disabled=false; e.className='msg err'; e.textContent=r.error.message; return; }
-          e.className='msg ok'; e.textContent='Added to your course. Set the dates and publish it from the exam list.';
-          setTimeout(function(){ if(m.parentNode){ document.body.removeChild(m); } loadExams(); }, 1200);
+          e.className='msg ok'; e.textContent='Added to your course. Opening the editor so you can set dates and review questions\u2026';
+          var newId=r.data;
+          setTimeout(function(){ if(m.parentNode){ document.body.removeChild(m); } loadExams(); if(newId){ openExamEditor(newId); } }, 900);
         });
       });
     });
