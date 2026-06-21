@@ -31,7 +31,6 @@
 
   /* Auth */
   .auth-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
-  .auth-wrap.as-overlay { position:fixed; inset:0; z-index:1000; background:rgba(5,6,12,.92); backdrop-filter:blur(4px); overflow:auto; }
   .auth-card { width:100%; max-width:420px; background:var(--surface-strong); border:1px solid var(--border-strong); border-radius:20px; padding:40px 36px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
   .brand { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
   .brand-mark { width:42px; height:42px; border-radius:11px; background:linear-gradient(135deg,var(--violet-deep),var(--violet)); display:grid; place-items:center; font-size:22px; box-shadow:0 8px 24px rgba(124,92,255,.4); }
@@ -225,8 +224,6 @@
     </div>
     <button class="btn btn-primary" id="authSubmit" style="width:100%;">Sign in</button>
     <div class="auth-toggle" id="authToggle">No account yet? <b>Create one</b></div>
-    <div class="auth-toggle" id="authForgot" style="margin-top:8px;"><a href="#" onclick="doForgotPassword();return false;" style="color:var(--text-subtle);text-decoration:none;">Forgot your password?</a></div>
-    <div class="auth-toggle hidden" id="authDismiss" style="margin-top:10px;cursor:pointer;"><b>&larr; Keep browsing without an account</b></div>
   </div>
 </div>
 
@@ -361,7 +358,6 @@
 var SUPABASE_URL = 'https://qgelvmefyexyzpwqupev.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZWx2bWVmeWV4eXpwd3F1cGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDY5ODAsImV4cCI6MjA5NjAyMjk4MH0.AR55GBLefKHfs9ncWWzEFks_VISPjJtbW8SezyjM3lc';
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-sb.auth.onAuthStateChange(function(event){ if(event === 'PASSWORD_RECOVERY'){ openResetPassword(); } });
 
 var CHAPTERS = [
   {n:1,title:'Strategic Thinking'},{n:2,title:"Prisoner's Dilemma"},{n:3,title:'Repeated Games'},
@@ -413,92 +409,13 @@ function money(cents,cur){ var c=(cents?cents:0)/100; var sym=(cur==='usd'||!cur
 function show(el){ if(el){el.classList.remove('hidden');} }
 function hide(el){ if(el){el.classList.add('hidden');} }
 
-/* ---- guest (anonymous) browsing helpers ---- */
-function isAnon(){ return !!(State.user && State.user.is_anonymous); }
-function setAuthMode(signup){
-  State.signup = signup;
-  $('authSubmit').textContent = signup ? 'Create account' : 'Sign in';
-  $('authToggle').innerHTML = signup ? 'Already registered? <b>Sign in</b>' : 'No account yet? <b>Create one</b>';
-  setAuthMsg('','');
-  if(signup){ show($('signupRole')); } else { hide($('signupRole')); }
-}
-function openAuthOverlay(mode){
-  setAuthMode(mode === 'signup');
-  var s = $('authScreen');
-  s.classList.add('as-overlay');
-  show(s);
-  if($('authDismiss')){ show($('authDismiss')); }
-  window.scrollTo(0,0);
-}
-function closeAuthOverlay(){
-  var s = $('authScreen');
-  hide(s);
-  s.classList.remove('as-overlay');
-}
-function openAccountWall(whatLabel){
-  var m = document.createElement('div'); m.className = 'modal-bg';
-  m.innerHTML = '<div class="modal" style="max-width:460px;text-align:center;">' +
-    '<div style="font-size:30px;margin-bottom:8px;">&#128075;</div>' +
-    '<h2 style="margin-bottom:8px;">Create a free account</h2>' +
-    '<p style="color:var(--text-muted);font-size:14px;margin-bottom:18px;">' + esc(whatLabel) +
-    ' needs an account so we can save it to you. Chapters 1&ndash;2 and the Prisoner\'s Dilemma arena stay free to preview &mdash; creating an account keeps your progress and lets you unlock the full course.</p>' +
-    '<button class="btn btn-primary" id="awCreate" style="width:100%;margin-bottom:10px;">Create account / Sign in</button>' +
-    '<button class="btn btn-ghost" id="awClose" style="width:100%;">Keep browsing</button>' +
-  '</div>';
-  document.body.appendChild(m);
-  m.addEventListener('click', function(e){ if(e.target === m){ document.body.removeChild(m); } });
-  $('awClose').addEventListener('click', function(){ document.body.removeChild(m); });
-  $('awCreate').addEventListener('click', function(){ document.body.removeChild(m); openAuthOverlay('signup'); });
-}
-
 /* ====================================================================
    AUTH
    ==================================================================== */
 function setAuthMsg(t,k){ var m=$('authMsg'); m.textContent=t||''; m.className='msg '+(k?k:''); if(!t){m.className='msg';} }
-function doForgotPassword(){
-  var email = $('authEmail') ? $('authEmail').value.trim() : '';
-  if(!email){ email = window.prompt('Enter your account email to receive a password reset link:'); }
-  if(!email){ return; }
-  email = email.trim();
-  var redirectTo = location.origin + location.pathname + '?reset=1';
-  setAuthMsg('Sending reset link...','');
-  sb.auth.resetPasswordForEmail(email, { redirectTo: redirectTo }).then(function(r){
-    if(r && r.error){ setAuthMsg(r.error.message,'err'); return; }
-    setAuthMsg('If an account exists for ' + email + ', a reset link is on its way. Check your inbox (and spam).','ok');
-  });
-}
-function openResetPassword(){
-  if(document.getElementById('rpBg')){ return; }
-  var bg = document.createElement('div'); bg.id = 'rpBg';
-  bg.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(8,8,16,.94);display:flex;align-items:center;justify-content:center;padding:24px;';
-  bg.innerHTML =
-    '<div style="width:100%;max-width:380px;box-sizing:border-box;background:#16131f;border:1px solid #7c5cff;border-radius:16px;padding:28px;">' +
-      '<h2 style="margin:0 0 6px;color:#fff;font-size:20px;">Set a new password</h2>' +
-      '<p style="color:#b3a9cf;font-size:13px;margin:0 0 16px;">Choose a new password for your account.</p>' +
-      '<input id="rpNew" type="password" placeholder="New password" style="width:100%;box-sizing:border-box;padding:10px;margin-bottom:10px;border-radius:8px;border:1px solid #36304a;background:#0e0c16;color:#fff;">' +
-      '<input id="rpConf" type="password" placeholder="Confirm new password" style="width:100%;box-sizing:border-box;padding:10px;margin-bottom:10px;border-radius:8px;border:1px solid #36304a;background:#0e0c16;color:#fff;">' +
-      '<div id="rpMsg" style="font-size:13px;margin-bottom:10px;min-height:16px;color:#b3a9cf;"></div>' +
-      '<button id="rpGo" style="width:100%;padding:11px;border:0;border-radius:8px;background:#7c5cff;color:#fff;font-weight:700;cursor:pointer;">Update password</button>' +
-    '</div>';
-  document.body.appendChild(bg);
-  $('rpGo').addEventListener('click', function(){
-    var p = $('rpNew').value, c = $('rpConf').value, m = $('rpMsg');
-    if(!p || p.length < 8){ m.style.color = '#ff9b9b'; m.textContent = 'Password must be at least 8 characters.'; return; }
-    if(p !== c){ m.style.color = '#ff9b9b'; m.textContent = 'Passwords do not match.'; return; }
-    $('rpGo').disabled = true; m.style.color = '#b3a9cf'; m.textContent = 'Updating...';
-    sb.auth.updateUser({ password: p }).then(function(r){
-      $('rpGo').disabled = false;
-      if(r && r.error){ m.style.color = '#ff9b9b'; m.textContent = r.error.message; return; }
-      m.style.color = '#7fe0a0'; m.textContent = 'Password updated. You are signed in.';
-      try { history.replaceState({}, '', location.origin + location.pathname); } catch(e){}
-      setTimeout(function(){ if(document.getElementById('rpBg')){ document.body.removeChild(bg); } }, 1300);
-    });
-  });
-}
 $('authToggle').addEventListener('click', function(){ State.signup=!State.signup; $('authSubmit').textContent=State.signup?'Create account':'Sign in'; $('authToggle').innerHTML=State.signup?'Already registered? <b>Sign in</b>':'No account yet? <b>Create one</b>'; setAuthMsg('',''); if(State.signup){ show($('signupRole')); } else { hide($('signupRole')); } });
 $('authSubmit').addEventListener('click', doAuth);
 $('authPassword').addEventListener('keydown', function(e){ if(e.key==='Enter'){ doAuth(); } });
-if($('authDismiss')){ $('authDismiss').addEventListener('click', closeAuthOverlay); }
 
 // signup role choice (student vs professor)
 var SIGNUP_ROLE = 'student';
@@ -531,19 +448,6 @@ function doAuth(){
       var jc = $('authJoinCode') ? $('authJoinCode').value.trim() : '';
       if(jc){ meta = { join_code: jc }; }
     }
-    if(isAnon()){
-      // upgrade the guest account in place so progress is preserved (same uid)
-      sb.auth.updateUser({email:email,password:pw,data:meta}).then(function(res){
-        $('authSubmit').disabled=false;
-        if(res.error){ setAuthMsg(res.error.message,'err'); return; }
-        var u = (res.data && res.data.user) ? res.data.user : State.user;
-        var extra = (SIGNUP_ROLE==='professor') ? ' Your professor request will be reviewed once an admin approves it.' : '';
-        setAuthMsg('Account created — your progress is saved.'+extra+' If we emailed a confirmation link, click it to finish securing your account.','ok');
-        closeAuthOverlay();
-        onSignedIn(u);
-      });
-      return;
-    }
     sb.auth.signUp({email:email,password:pw,options:{data:meta}}).then(function(res){
       $('authSubmit').disabled=false;
       if(res.error){ setAuthMsg(res.error.message,'err'); return; }
@@ -561,7 +465,7 @@ function doAuth(){
     });
   }
 }
-$('signOutBtn').addEventListener('click', function(){ if(isAnon()){ openAuthOverlay('signup'); } else { signOut(); } });
+$('signOutBtn').addEventListener('click', signOut);
 function signOut(){ sb.auth.signOut().then(function(){ State.user=null; hide($('appScreen')); hide($('denyScreen')); show($('authScreen')); }); }
 
 /* ====================================================================
@@ -582,11 +486,9 @@ function onSignedIn(user){
 // Everyone enters as a student. Instructors/admins get extra nav groups.
 function enterApp(user){
   show($('appScreen'));
-  var guest = isAnon();
-  $('sideUser').textContent = guest ? 'Guest' : (user.email || 'Guest');
-  $('signOutBtn').textContent = guest ? 'Sign in / Save progress' : 'Sign out';
+  $('sideUser').textContent=user.email;
   var role=State.role;
-  $('sideRole').textContent = guest ? 'Browsing as guest' : ((role==='admin') ? 'Super Administrator' : (role==='instructor' ? 'Instructor' : 'Student'));
+  $('sideRole').textContent = (role==='admin') ? 'Super Administrator' : (role==='instructor' ? 'Instructor' : 'Student');
   if(role==='instructor' || role==='admin'){ show($('teachGroup')); } else { hide($('teachGroup')); }
   if(role==='admin'){ show($('adminGroup')); } else { hide($('adminGroup')); }
   // student self-study provisioning (own course for practice/progress)
@@ -671,8 +573,6 @@ function viewAllowed(view){
   return true;
 }
 function switchView(view){
-  // Guests can browse Learn (chapters/arenas/practice) but Track features need an account.
-  if(isAnon() && (view==='progress' || view==='myexams')){ openAccountWall('Saving your progress and taking exams'); view='home'; }
   // Enforce role access at the view level (not just by hiding tabs).
   if(!viewAllowed(view)){ view='home'; }
   // stop any running exam timer when leaving the exam view
@@ -1103,8 +1003,9 @@ function heatColor(acc){
    ==================================================================== */
 function renderExams(host){
   if(!needCourse(host)){ return; }
-  host.innerHTML='<div style="margin-bottom:16px;"><button class="btn btn-primary" id="newExamBtn">+ Assemble exam</button></div><div id="examList">'+loadingCard()+'</div>';
+  host.innerHTML='<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-primary" id="newExamBtn">+ Assemble exam</button><button class="btn btn-ghost" id="libBtn">\uD83D\uDCDA Use a ready-made exam</button></div><div id="examList">'+loadingCard()+'</div>';
   $('newExamBtn').addEventListener('click', function(){ openAssembler(); });
+  $('libBtn').addEventListener('click', function(){ openExamLibrary(); });
   loadExams();
 }
 function loadExams(){
@@ -1298,6 +1199,44 @@ function finalizeGrade(attemptId){
       return;
     }
     loadPendingWritten();
+  });
+}
+
+function openExamLibrary(){
+  if(!State.teachCourseId){ alert('Select a course first (top of the console).'); return; }
+  var m=document.createElement('div'); m.className='modal-bg';
+  m.innerHTML='<div class="modal" style="max-width:720px;"><h2>Ready-made exams</h2>'+
+    '<p style="font-size:13px;color:var(--text-muted);">Adopt a maintained exam into your selected course instead of building your own. A copy is added (unpublished) so you can set the dates and publish it.</p>'+
+    '<div id="libMsg" class="msg"></div><div id="libList">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="justify-content:flex-end;margin-top:12px;"><button class="btn btn-ghost btn-sm" id="libClose">Close</button></div></div>';
+  document.body.appendChild(m);
+  $('libClose').addEventListener('click', function(){ document.body.removeChild(m); });
+  sb.from('sa_exams').select('id,title,kind,description,total_points,time_limit_minutes,item_ids')
+    .eq('is_listed',true).eq('is_template',true).then(function(res){
+    var tpls=res.data?res.data:[];
+    if(res.error){ $('libList').innerHTML='<div class="card empty">'+esc(res.error.message)+'</div>'; return; }
+    if(tpls.length===0){ $('libList').innerHTML='<div class="card empty">No ready-made exams are available yet.</div>'; return; }
+    var html='';
+    tpls.forEach(function(t){
+      var n=(t.item_ids?t.item_ids.length:0);
+      html+='<div class="card" style="margin-bottom:10px;">'+
+        '<div style="font-size:15px;color:var(--text-bright);">'+esc(t.title)+' <span class="tag dim">'+esc(t.kind)+'</span></div>'+
+        '<div style="font-size:12.5px;color:var(--text-muted);margin:3px 0 6px;">'+esc(t.description||'')+'</div>'+
+        '<div style="font-size:12px;color:var(--text-subtle);">'+n+' questions \u00b7 '+(t.total_points||0)+' pts \u00b7 '+(t.time_limit_minutes||0)+' min</div>'+
+        '<button class="btn btn-primary btn-sm" data-adopt="'+t.id+'" style="margin-top:8px;">Add to my course</button></div>';
+    });
+    $('libList').innerHTML=html;
+    Array.prototype.forEach.call($('libList').querySelectorAll('[data-adopt]'), function(b){
+      b.addEventListener('click', function(){
+        b.disabled=true;
+        sb.rpc('sa_adopt_exam',{ p_template_id:b.getAttribute('data-adopt'), p_course_id:State.teachCourseId }).then(function(r){
+          var e=$('libMsg');
+          if(r.error){ b.disabled=false; e.className='msg err'; e.textContent=r.error.message; return; }
+          e.className='msg ok'; e.textContent='Added to your course. Set the dates and publish it from the exam list.';
+          setTimeout(function(){ if(m.parentNode){ document.body.removeChild(m); } loadExams(); }, 1200);
+        });
+      });
+    });
   });
 }
 
@@ -1699,7 +1638,6 @@ function resolveAccess() {
 function chapterLocked(n) { if (State.hasAccess) { return false; } return !FREE_CHAPTERS[n]; }
 function arenaLocked(slug) { if (State.hasAccess) { return false; } return !FREE_ARENAS[slug]; }
 function openSubscribePrompt(whatLabel) {
-  if(isAnon()){ openAccountWall(whatLabel); return; }
   var baseLink = State.settings ? State.settings.stripe_link : '';
   var price = State.settings ? State.settings.price_cents : 0;
   var cur = State.settings ? State.settings.currency : 'usd';
@@ -1799,7 +1737,6 @@ function maybeHandleInboundCourse() {
   });
 }
 function ensureProfileAndCourse() {
-  if(isAnon()){ return Promise.resolve(); }
   var uid = State.user.id;
   // profile row already upserted in onSignedIn (without role, so admin/instructor
   // roles are never clobbered). Go straight to resolving the student's course.
@@ -2087,6 +2024,48 @@ function errCard(msg) {
 /* ===================== STUDENT EXAM-TAKING FLOW ===================== */
 var ExamState = { exam:null, items:[], answers:{}, idx:0, courseId:null, submitting:false, finished:false };
 
+function openExamReview(examId){
+  var host = $('viewHost') || document.body;
+  switchView('myexams');
+  var box = $('viewHost'); if(!box){ return; }
+  box.innerHTML = '<div class="card">'+loadingCard()+'</div>';
+  sb.rpc('sa_exam_review', { p_exam_id: examId }).then(function(res){
+    if(res.error){
+      box.innerHTML = '<div class="card"><p>'+esc(res.error.message||'Review is not available yet.')+'</p>'+
+        '<button class="btn btn-ghost btn-sm" id="rvBack">Back to exams</button></div>';
+      if($('rvBack')){ $('rvBack').addEventListener('click', loadMyExams); }
+      return;
+    }
+    var rows = res.data || [];
+    var html = '<div class="card" style="max-width:760px;margin:0 auto;">'+
+      '<h3 style="font-size:22px;margin-bottom:4px;">Review \u2014 questions to revisit</h3>'+
+      '<p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">These are the auto-graded questions you missed, plus your written answers with the grading notes. Use them to study; the correct choice is shown for each.</p>';
+    if(rows.length===0){
+      html += '<p style="color:var(--text-bright);">Nothing to review here \u2014 you didn\u2019t miss any auto-graded questions on this exam. \uD83C\uDF89</p>';
+    } else {
+      rows.forEach(function(r){
+        var isWritten = (r.item_type==='free_response');
+        var correctTxt = '';
+        if(!isWritten && r.correct_option!==null && r.correct_option!==undefined){
+          correctTxt = '<div style="font-size:12.5px;color:var(--green);margin-top:4px;">Correct option: choice #'+(Number(r.correct_option)+1)+'</div>';
+        }
+        var notes = r.answer_notes ? '<div style="font-size:12.5px;color:var(--text-muted);margin-top:4px;"><b>Notes:</b> '+esc(r.answer_notes)+'</div>' : '';
+        var badge = isWritten
+          ? '<span class="tag amber">written</span>'
+          : '<span class="tag rose">missed</span>';
+        html += '<div class="card" style="margin-bottom:10px;background:var(--bg2);">'+
+          '<div style="font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.05em;">'+esc(r.item_id)+' '+badge+'</div>'+
+          '<div style="font-size:14px;color:var(--text-bright);margin:4px 0 6px;">'+esc(r.prompt||'')+'</div>'+
+          '<div style="font-size:13px;"><b>Your answer:</b> '+(r.your_answer?esc(r.your_answer):'<span style="color:var(--text-subtle);">(blank)</span>')+'</div>'+
+          correctTxt + notes + '</div>';
+      });
+    }
+    html += '<button class="btn btn-primary btn-sm" id="rvBack" style="margin-top:8px;">Back to exams</button></div>';
+    box.innerHTML = html;
+    if($('rvBack')){ $('rvBack').addEventListener('click', loadMyExams); }
+  });
+}
+
 function loadMyExams() {
   var host = $('myExamsBody'); if (!host) { return; }
   if (!State.user) { host.innerHTML = '<div class="card empty">Sign in to see your exams.</div>'; return; }
@@ -2138,7 +2117,9 @@ function loadMyExams() {
         else if (closed) { statusHtml='<span class="tag rose">Closed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>Closed</button>'; }
         else if (allowed!==0 && sittings>=allowed) {
           var pctS = e.total_points && earnedBy[e.id]!==undefined ? Math.round((earnedBy[e.id]/(e.total_points*Math.max(1,sittings)))*100) : null;
-          statusHtml='<span class="tag green">Completed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>No attempts left</button>';
+          var canReview = (e.closes_at && now > new Date(e.closes_at).getTime()) || (!e.closes_at && sittings>0);
+          var reviewBtn = canReview ? ' <button class="btn btn-ghost btn-sm" data-review="'+e.id+'">Review answers</button>' : '';
+          statusHtml='<span class="tag green">Completed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>No attempts left</button>'+reviewBtn;
         }
         else { statusHtml='<span class="tag amber">'+(sittings>0?('Attempt '+(sittings+1)):'Not taken')+'</span>'; action='<button class="btn btn-primary btn-sm" data-start="'+e.id+'">'+(sittings>0?'Retake':'Start exam')+'</button>'; }
         var meta = nItems + ' questions · ' + (e.total_points||0) + ' pts';
@@ -2151,6 +2132,9 @@ function loadMyExams() {
           '<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">' + statusHtml + action + '</div></div>';
       });
       host.innerHTML = html;
+      Array.prototype.forEach.call(host.querySelectorAll('[data-review]'), function(b) {
+        b.addEventListener('click', function() { openExamReview(b.getAttribute('data-review')); });
+      });
       Array.prototype.forEach.call(host.querySelectorAll('[data-start]'), function(b) {
         b.addEventListener('click', function() {
           var eid = b.getAttribute('data-start');
@@ -2751,17 +2735,7 @@ function runDiagnostics() {
    BOOT
    ==================================================================== */
 sb.auth.getSession().then(function(res){
-  if(res.data && res.data.session && res.data.session.user){ onSignedIn(res.data.session.user); return; }
-  // No session: let anyone in as a guest (anonymous), so they can browse
-  // without signing up. Full features stay gated behind account + unlock.
-  sb.auth.signInAnonymously().then(function(r2){
-    if(r2.error || !(r2.data && r2.data.session && r2.data.session.user)){
-      try{ console.warn('[StrategyArena] anonymous sign-in failed:', (r2.error?r2.error.message:'no session'), '\u2014 enable "Allow anonymous sign-ins" in this Supabase project\u2019s Auth settings to let visitors browse without an account.'); }catch(e){}
-      // anonymous sign-ins not enabled in this project -> show the sign-in screen
-      show($('authScreen')); return;
-    }
-    onSignedIn(r2.data.session.user);
-  });
+  if(res.data && res.data.session && res.data.session.user){ onSignedIn(res.data.session.user); }
 });
 </script>
 </body>
