@@ -2366,7 +2366,7 @@ var ExamState = { exam:null, items:[], answers:{}, idx:0, courseId:null, submitt
    repeated violations. The instructor sees an integrity flag afterward.
    ==================================================================== */
 var Proctor = {
-  active:false, violations:0, events:[], maxBeforeSubmit:3, banner:null, handlers:{},
+  active:false, violations:0, events:[], maxBeforeSubmit:4, _lastFlagAt:0, banner:null, handlers:{},
   cam:{ stream:null, video:null, canvas:null, faceDetector:null, faceTimer:null, thumb:null, ready:false, lastSnap:0 },
   enabled:function(){
     // honor a per-exam toggle; default ON for published exams unless turned off
@@ -2443,7 +2443,7 @@ var Proctor = {
   },
   start:function(){
     if(!this.enabled()){ return; }
-    this.active=true; this.violations=0; this.events=[];
+    this.active=true; this.violations=0; this.events=[]; this._lastFlagAt=0;
     var self=this;
     // request fullscreen
     this.goFullscreen();
@@ -2462,8 +2462,10 @@ var Proctor = {
     this.handlers.copy=function(ev){ ev.preventDefault(); self.flag('copy blocked'); };
     this.handlers.paste=function(ev){ ev.preventDefault(); self.flag('paste blocked'); };
     this.handlers.ctx=function(ev){ ev.preventDefault(); };
+    this.handlers.beforeunload=function(ev){ if(self.active){ ev.preventDefault(); ev.returnValue=''; return ''; } };
     document.addEventListener('visibilitychange', this.handlers.vis);
     window.addEventListener('blur', this.handlers.blur);
+    window.addEventListener('beforeunload', this.handlers.beforeunload);
     document.addEventListener('fullscreenchange', this.handlers.fs);
     document.addEventListener('copy', this.handlers.copy);
     document.addEventListener('paste', this.handlers.paste);
@@ -2493,17 +2495,35 @@ var Proctor = {
   },
   flag:function(reason){
     if(!this.active){ return; }
-    this.violations++;
-    this.events.push({ t:new Date().toISOString(), reason:reason });
-    if(this.cam && this.cam.ready){ this.snapshot(reason); }   // store a snapshot when a flag fires
-    var c=$('proctorCount'); if(c){ c.textContent = this.violations + ' flag' + (this.violations===1?'':'s'); }
-    if(this.violations===this.maxBeforeSubmit-1){
-      // final warning
-      if(this.banner){ this.banner.style.background='#3a1420'; this.banner.firstChild.textContent='\u26A0 Warning: one more flag will auto-submit your exam.'; }
+    // Debounce: opening another window fires BOTH visibilitychange and blur
+    // (and sometimes fullscreenchange). Collapse events within 1.2s into ONE
+    // strike so a single action doesn't burn multiple warnings.
+    var now = Date.now();
+    this.events.push({ t:new Date().toISOString(), reason:reason });   // always log the raw event
+    if(this.cam && this.cam.ready){ this.snapshot(reason); }
+    if(this._lastFlagAt && (now - this._lastFlagAt) < 1200){
+      return;   // same incident, already counted
     }
-    if(this.violations>=this.maxBeforeSubmit){
+    this._lastFlagAt = now;
+    this.violations++;   // this is the strike count (distinct incidents) - internal only
+    var c=$('proctorCount'); if(c){ c.textContent = 'Activity flagged'; }
+    if(this.violations < this.maxBeforeSubmit){
+      // warn the student WITHOUT revealing how many are left (so they can't
+      // "spend" a known number of free violations).
+      if(this.banner){
+        this.banner.style.background='#3a1420';
+        this.banner.firstChild.textContent='\u26A0 Warning: leaving the exam is recorded. Continuing to do so will submit your exam automatically.';
+      }
+      this.toast('\u26A0 Warning: stay in the exam window. Repeated violations will end and submit your exam.');
+    } else {
       this.flagSubmit();
     }
+  },
+  toast:function(msg){
+    var t=document.createElement('div');
+    t.style.cssText='position:fixed;top:46px;left:50%;transform:translateX(-50%);z-index:10001;background:#3a1420;color:#ffd9e0;border:1px solid #7a2540;border-radius:8px;padding:11px 18px;font:600 13px/1.4 system-ui,sans-serif;max-width:520px;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.5);';
+    t.textContent=msg; document.body.appendChild(t);
+    setTimeout(function(){ if(t.parentNode){ t.parentNode.removeChild(t); } }, 4500);
   },
   flagSubmit:function(){
     this.stop();
@@ -2518,6 +2538,7 @@ var Proctor = {
     this.stopCamera();
     document.removeEventListener('visibilitychange', this.handlers.vis);
     window.removeEventListener('blur', this.handlers.blur);
+    window.removeEventListener('beforeunload', this.handlers.beforeunload);
     document.removeEventListener('fullscreenchange', this.handlers.fs);
     document.removeEventListener('copy', this.handlers.copy);
     document.removeEventListener('paste', this.handlers.paste);
@@ -2668,6 +2689,7 @@ function loadMyExams() {
 }
 
 function startExam(exam, accom) {
+  ExamState._consented = false;   // require consent fresh for each exam start
   if (!exam.item_ids || exam.item_ids.length === 0) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
   // If the exam requires a camera in BLOCK mode, get permission before anything else.
   if (exam.camera_mode === 'block') {
@@ -2689,7 +2711,45 @@ function startExam(exam, accom) {
 
 function proceedStartExam(exam, accom) {
   if (!exam.item_ids || exam.item_ids.length === 0) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
-  ExamState = { exam:exam, items:[], answers:{}, idx:0, courseId:exam.course_id, submitting:false, finished:false, timer:null, deadline:null };
+  // For proctored exams, show a rules/consent screen first.
+  var proctored = (exam.proctored !== false);
+  var cam = exam.camera_mode && exam.camera_mode !== 'off';
+  if (proctored && !ExamState._consented) {
+    showProctorConsent(exam, accom, cam);
+    return;
+  }
+  reallyStartExam(exam, accom);
+}
+
+function showProctorConsent(exam, accom, cam){
+  var host = $('myExamsBody');
+  var rules = '';
+  rules += '<li>Stay in this browser window and in fullscreen for the whole exam.</li>';
+  rules += '<li>Do <b>not</b> open another window or tab, switch apps, or minimize.</li>';
+  rules += '<li>Copy, paste, and right-click are disabled.</li>';
+  if(cam){ rules += '<li>Your webcam stays on. A snapshot is saved whenever a rule is broken.' + (exam.camera_mode==='block'?' A working camera is required to start.':'') + '</li>'; }
+  rules += '<li>Leaving the exam is recorded. Repeated violations will <b>submit your exam automatically</b>.</li>';
+  host.innerHTML =
+    '<div class="card" style="max-width:620px;margin:0 auto;">'+
+      '<h2 style="font-size:22px;margin-bottom:6px;">Before you begin \u2014 proctored exam</h2>'+
+      '<p style="font-size:13.5px;color:var(--text-muted);margin-bottom:12px;">This exam is monitored to protect academic integrity. Please read the rules:</p>'+
+      '<ul style="font-size:14px;line-height:1.7;color:var(--text-bright);padding-left:20px;margin-bottom:8px;">'+rules+'</ul>'+
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text-muted);margin:6px 0 16px;">Note: this is browser-based monitoring. It records and reacts to violations but does not physically lock your computer. By starting, you consent to this monitoring'+(cam?' and to webcam snapshots being stored and reviewed by your instructor':'')+'.</div>'+
+      '<div class="inline-actions" style="justify-content:flex-end;gap:10px;">'+
+        '<button class="btn btn-ghost btn-sm" id="pcCancel">Cancel</button>'+
+        '<button class="btn btn-primary btn-sm" id="pcBegin">I understand \u2014 begin exam</button>'+
+      '</div>'+
+    '</div>';
+  $('pcCancel').addEventListener('click', function(){ loadMyExams(); });
+  $('pcBegin').addEventListener('click', function(){
+    ExamState._consented = true;
+    reallyStartExam(exam, accom);
+  });
+}
+
+function reallyStartExam(exam, accom) {
+  if (!exam.item_ids || exam.item_ids.length === 0) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
+  ExamState = { exam:exam, items:[], answers:{}, idx:0, courseId:exam.course_id, submitting:false, finished:false, timer:null, deadline:null, _consented:true };
   var host = $('myExamsBody');
   host.innerHTML = '<div class="card"><span class="spinner"></span> &nbsp;Preparing your exam…</div>';
   // order of items (shuffle if the instructor enabled it)
