@@ -2247,9 +2247,11 @@ function errCard(msg) {
 var ExamState = { exam:null, items:[], answers:{}, idx:0, courseId:null, submitting:false, finished:false };
 
 function openExamReview(examId){
-  var host = $('viewHost') || document.body;
-  switchView('myexams');
-  var box = $('viewHost'); if(!box){ return; }
+  // The student Exams list lives in #myExamsBody (inside the visible
+  // #view-myexams section). Render the review there; #viewHost is hidden for
+  // student views, which is why writing to it showed nothing.
+  var box = $('myExamsBody');
+  if(!box){ return; }
   box.innerHTML = '<div class="card">'+loadingCard()+'</div>';
   sb.rpc('sa_exam_review', { p_exam_id: examId }).then(function(res){
     if(res.error){
