@@ -917,7 +917,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore){
       midterm:midScore, final:finScore, total:total };
   });
   var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
-    '<div style="font-size:12.5px;color:var(--text-muted);">Weighted total renormalizes over components with data. Unpublished exams are excluded until you publish them.</div>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data, so untaken or unpublished exams are excluded (not counted as zero). This differs from a student\u2019s &ldquo;Course completion,&rdquo; which counts the whole course including exams not yet taken.</div>'+
     '<button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div>';
   html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Student</th><th>Sub</th><th>Reading</th><th>Quizzes</th><th>Arenas</th><th>Practice</th><th>Midterm</th><th>Final</th><th>Weighted</th></tr></thead><tbody>';
   computed.forEach(function(g){
@@ -2664,9 +2664,13 @@ function loadCompletion() {
     var examIds = []; if(midterm){examIds.push(midterm.id);} if(fin){examIds.push(fin.id);}
 
     function finish(midScore, finScore) {
+      // Exams ALWAYS count toward completion: an untaken (or unpublished) exam
+      // scores 0, so a student must take the midterm and final to reach 100% /
+      // earn the certificate. The denominator is the full configured course
+      // weight (not renormalized over only-available components).
       var comps=[['Reading',reading,W.reading],['Quizzes',quizzes,W.quizzes],['Arenas',arenaScore,W.arenas]];
-      if(midScore!==null){ comps.push(['Midterm',midScore,W.midterm]); }
-      if(finScore!==null){ comps.push(['Final',finScore,W.final]); }
+      if(W.midterm>0){ comps.push(['Midterm', midScore!==null?midScore:0, W.midterm, midScore===null]); }
+      if(W.final>0){ comps.push(['Final', finScore!==null?finScore:0, W.final, finScore===null]); }
       var wsum=comps.reduce(function(s,x){return s+x[2];},0);
       var total=wsum>0?comps.reduce(function(s,x){return s+x[1]*x[2];},0)/wsum:0;
       renderCompletion(host, course, comps, total);
@@ -2696,14 +2700,20 @@ function renderCompletion(host, course, comps, total) {
   var pct = Math.round(total*100);
   var eligible = total >= COMPLETION_THRESHOLD;
   var ringColor = eligible ? 'var(--green)' : 'var(--violet)';
-  var bits = comps.map(function(c){ return '<span style="white-space:nowrap;">'+esc(c[0])+': <b style="color:var(--text-bright);">'+Math.round(c[1]*100)+'%</b> <span style="color:var(--text-subtle);">(\u00d7'+Math.round(c[2]*100)+'%)</span></span>'; }).join(' &nbsp;·&nbsp; ');
+  var bits = comps.map(function(c){
+    var notTaken = c[3]===true;
+    var val = notTaken
+      ? '<span style="color:var(--amber);">not yet taken</span>'
+      : '<b style="color:var(--text-bright);">'+Math.round(c[1]*100)+'%</b>';
+    return '<span style="white-space:nowrap;">'+esc(c[0])+': '+val+' <span style="color:var(--text-subtle);">(\u00d7'+Math.round(c[2]*100)+'%)</span></span>';
+  }).join(' &nbsp;·&nbsp; ');
   var isProfCourse = course.owner_id !== State.user.id;
   var html = '<div class="card" style="margin:6px 0 20px;display:flex;gap:20px;align-items:center;flex-wrap:wrap;">' +
     '<div style="width:96px;height:96px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;background:conic-gradient('+ringColor+' '+(pct*3.6)+'deg, rgba(255,255,255,.08) 0deg);">' +
       '<div style="width:74px;height:74px;border-radius:50%;background:var(--bg2);display:grid;place-items:center;"><span class="mono" style="font-size:22px;color:var(--text-bright);font-weight:600;">'+pct+'%</span></div></div>' +
     '<div style="flex:1;min-width:240px;">' +
       '<h3 style="font-size:20px;margin-bottom:4px;">Course completion</h3>' +
-      '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px;">Weighted total across '+esc(course.title)+'. Earn your certificate at '+Math.round(COMPLETION_THRESHOLD*100)+'%.</div>' +
+      '<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px;"><b>Progress toward finishing the entire course, including exams.</b> Exams you haven\u2019t taken count as 0 here, so you must complete the midterm and final to reach 100%. Earn your certificate at '+Math.round(COMPLETION_THRESHOLD*100)+'%. (Your instructor\u2019s gradebook shows your grade on work done so far, which is calculated differently.)</div>' +
       '<div style="font-size:12px;color:var(--text-muted);line-height:1.9;">'+bits+'</div>' +
     '</div>' +
     '<div style="flex-shrink:0;">' +
