@@ -1060,15 +1060,17 @@ function renderGraderKeyCard(){
     card.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
         '<div><div style="font-size:16px;color:var(--text-bright);">AI grading assistant ' + status + '</div>' +
-        '<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">Uses <b>your own</b> Anthropic API key. The key is stored securely and never shown again; AI proposes scores you review and finalize.</div></div>' +
+        '<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">Uses <b>your own</b> API key. Choose <b>Anthropic</b> (paid, pennies per exam) or <b>Google Gemini</b> (has a free tier). The key is stored securely and never shown again; AI proposes scores you review and finalize.</div></div>' +
         '<button class="btn btn-ghost btn-sm" id="gkEdit">' + (hasKey?'Update key':'Add API key') + '</button>' +
       '</div>' +
       '<div id="gkForm" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">' +
         '<div id="gkMsg" class="msg"></div>' +
-        '<div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;">' +
-        '<div class="field"><label>Anthropic API key</label><input id="gkKey" type="password" placeholder="sk-ant-..." autocomplete="off"></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:12px;">' +
+        '<div class="field"><label>Provider</label><select id="gkProv"><option value="anthropic">Anthropic (paid)</option><option value="google">Google Gemini (free tier)</option></select></div>' +
+        '<div class="field"><label>API key</label><input id="gkKey" type="password" placeholder="sk-ant-..." autocomplete="off"></div>' +
         '<div class="field"><label>Model (optional)</label><input id="gkModel" placeholder="claude-3-5-haiku-latest"></div>' +
         '</div>' +
+        '<div style="font-size:12px;color:var(--text-subtle);margin-top:2px;" id="gkHint">Get an Anthropic key at console.anthropic.com.</div>' +
         '<div class="inline-actions" style="justify-content:flex-end;">' +
           (hasKey?'<button class="btn btn-danger btn-sm" id="gkClear">Remove key</button>':'') +
           '<button class="btn btn-ghost btn-sm" id="gkCancel">Cancel</button>' +
@@ -1077,12 +1079,26 @@ function renderGraderKeyCard(){
     $('gkEdit').addEventListener('click', function(){
       var f=$('gkForm'); f.style.display = (f.style.display==='none')?'block':'none';
     });
+    function syncProv(){
+      var pv=$('gkProv')?$('gkProv').value:'anthropic';
+      if(pv==='google'){
+        if($('gkKey')){ $('gkKey').placeholder='AIza...'; }
+        if($('gkModel')){ $('gkModel').placeholder='gemini-2.5-flash'; }
+        if($('gkHint')){ $('gkHint').innerHTML='Get a FREE Gemini key at aistudio.google.com (Get API key) \u2014 no credit card. Note: free-tier requests may be used by Google to improve its models, so avoid sending sensitive data.'; }
+      } else {
+        if($('gkKey')){ $('gkKey').placeholder='sk-ant-...'; }
+        if($('gkModel')){ $('gkModel').placeholder='claude-3-5-haiku-latest'; }
+        if($('gkHint')){ $('gkHint').textContent='Get an Anthropic key at console.anthropic.com (paid, but only pennies per exam).'; }
+      }
+    }
+    if($('gkProv')){ $('gkProv').addEventListener('change', syncProv); syncProv(); }
     if($('gkCancel')){ $('gkCancel').addEventListener('click', function(){ $('gkForm').style.display='none'; }); }
     if($('gkSave')){ $('gkSave').addEventListener('click', function(){
       var key=$('gkKey').value.trim(); var model=$('gkModel').value.trim();
+      var prov=$('gkProv')?$('gkProv').value:'anthropic';
       if(!key){ var e=$('gkMsg'); e.className='msg err'; e.textContent='Enter your API key.'; return; }
       $('gkSave').disabled=true;
-      var payload={ owner_id:State.user.id, provider:'anthropic', api_key:key, model:(model||null) };
+      var payload={ owner_id:State.user.id, provider:prov, api_key:key, model:(model||null) };
       sb.from('sa_grader_keys').upsert(payload,{onConflict:'owner_id'}).then(function(r){
         $('gkSave').disabled=false;
         if(r.error){ var e=$('gkMsg'); e.className='msg err'; e.textContent=r.error.message; return; }
@@ -1128,7 +1144,7 @@ function loadPendingWritten(){
             var pendingAI=attempts.filter(function(a){ return !a.ai_graded_at; }).length;
             var head='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">' +
               '<div style="font-size:13px;color:var(--text-muted);">' + attempts.length + ' written ' + (attempts.length===1?'answer':'answers') + ' awaiting review' + (pendingAI>0?(' \u00b7 ' + pendingAI + ' not yet AI-graded'):'') + '</div>' +
-              '<button class="btn btn-ghost btn-sm" id="aiAll">Run AI grading on all</button></div>';
+              '<div class="inline-actions"><button class="btn btn-ghost btn-sm" id="aiAll">Run AI grading on all</button><button class="btn btn-primary btn-sm" id="finAll">Finalize all reviewed</button></div></div>';
             var rows='';
             attempts.forEach(function(a){
               var it=itemById[a.item_id]||{}; var maxP=it.points||1;
@@ -1156,6 +1172,14 @@ function loadPendingWritten(){
             });
             body.innerHTML=head+rows;
             $('aiAll').addEventListener('click', function(){ runAIGrade(null); });
+            if($('finAll')){ $('finAll').addEventListener('click', function(){
+              if(!confirm('Finalize all answers that have an AI suggestion, accepting the AI score? You can still re-grade individuals afterward.')){ return; }
+              $('finAll').disabled=true; $('finAll').textContent='Finalizing\u2026';
+              sb.functions.invoke('ai-grade',{ body:{ action:'finalize_all', course_id:State.teachCourseId } }).then(function(fn){
+                if(fn.error || (fn.data && fn.data.error)){ $('finAll').disabled=false; $('finAll').textContent='Finalize all reviewed'; alert((fn.data&&fn.data.error)?fn.data.error:(fn.error?fn.error.message:'Failed')); return; }
+                loadPendingWritten();
+              });
+            }); }
             Array.prototype.forEach.call(body.querySelectorAll('[data-ai]'), function(b){ b.addEventListener('click', function(){ runAIGrade(b.getAttribute('data-ai')); }); });
             Array.prototype.forEach.call(body.querySelectorAll('[data-useai]'), function(b){ b.addEventListener('click', function(){
               var id=b.getAttribute('data-useai');
@@ -1189,6 +1213,8 @@ function runAIGrade(attemptId){
       note.innerHTML='<div class="feedback wrong" style="display:block;">'+esc(msg)+'</div>';
       return;
     }
+    var rem = (fn.data && fn.data.remaining) ? Number(fn.data.remaining) : 0;
+    if(rem>0){ alert('Graded a batch. '+rem+' more answer'+(rem===1?'':'s')+' still need AI grading \u2014 click \u201CRun AI grading on all\u201D again to continue (this keeps within free-tier rate limits).'); }
     loadPendingWritten();
   });
 }
