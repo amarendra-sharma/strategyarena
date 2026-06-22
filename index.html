@@ -253,12 +253,12 @@
       <div class="nav-item" data-view="exams"><span class="ico">&#128221;</span> Exams</div>
       <div class="nav-item" data-view="grading"><span class="ico">&#9999;</span> Grade Written</div>
       <div class="nav-item" data-view="subscriptions"><span class="ico">&#128179;</span> Subscriptions</div>
-      <div class="nav-item" data-view="diagnostics"><span class="ico">&#128274;</span> Diagnostics</div>
     </div>
     <div class="nav-group hidden" id="adminGroup">
       <div class="nav-group-label">Administer</div>
       <div class="nav-item" data-view="platform"><span class="ico">&#9881;</span> Platform &amp; Pricing</div>
       <div class="nav-item" data-view="people"><span class="ico">&#128081;</span> Instructors</div>
+      <div class="nav-item" data-view="diagnostics"><span class="ico">&#128274;</span> Diagnostics</div>
     </div>
     <div class="side-foot">
       <div class="side-user" id="sideUser">-</div>
@@ -535,7 +535,7 @@ $('coursePick').addEventListener('change', function(){ State.teachCourseId=$('co
 /* ====================================================================
    NAV
    ==================================================================== */
-var STUDENT_VIEWS = ['home','chapters','arenas','practice','myexams','progress','diagnostics'];
+var STUDENT_VIEWS = ['home','chapters','arenas','practice','myexams','progress'];
 var VIEW_META = {
   home:['Home','Your strategic-thinking workspace.',false],
   chapters:['Chapters','Read the textbook.',false],
@@ -564,8 +564,8 @@ Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(it
   });
 });
 function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_VIEWS[i]===v){ return true; } } return false; }
-var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','gradebook','analytics','exams','grading','subscriptions','diagnostics'];
-var ADMIN_VIEWS = ['platform','people'];
+var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','gradebook','analytics','exams','grading','subscriptions'];
+var ADMIN_VIEWS = ['platform','people','diagnostics'];
 function viewAllowed(view){
   if(isStudentView(view)){ return true; }
   if(ADMIN_VIEWS.indexOf(view)>=0){ return State.role==='admin'; }
@@ -583,6 +583,14 @@ function switchView(view){
   var stu=isStudentView(view);
   // toggle the two content regions
   if(stu){ show($('studentViews')); hide($('viewHost')); } else { hide($('studentViews')); show($('viewHost')); }
+  // diagnostics is an admin-only view that uses a fixed section, not #viewHost
+  var diagEl=$('view-diagnostics');
+  if(diagEl){
+    if(view==='diagnostics'){
+      hide($('viewHost')); hide($('studentViews')); show(diagEl);
+      var db=$('runDiagBtn'); if(db && !db.__wired){ db.__wired=true; db.addEventListener('click', runDiagnostics); }
+    } else { hide(diagEl); }
+  }
   // student fixed sections
   STUDENT_VIEWS.forEach(function(v){ var el=$('view-'+v); if(el){ if(v===view){ show(el); } else { hide(el); } } });
   if(stu){
