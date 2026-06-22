@@ -1098,15 +1098,30 @@ function renderGraderKeyCard(){
       var prov=$('gkProv')?$('gkProv').value:'anthropic';
       if(!key){ var e=$('gkMsg'); e.className='msg err'; e.textContent='Enter your API key.'; return; }
       $('gkSave').disabled=true;
-      var payload={ owner_id:State.user.id, provider:prov, api_key:key, model:(model||null) };
-      sb.from('sa_grader_keys').upsert(payload,{onConflict:'owner_id'}).then(function(r){
-        $('gkSave').disabled=false;
-        if(r.error){ var e=$('gkMsg'); e.className='msg err'; e.textContent=r.error.message; return; }
-        renderGraderKeyCard();
+      // Use the LIVE session user id (auth.uid()) so it always matches the RLS
+      // check (owner_id = auth.uid()::text). State.user can be stale across
+      // account switches, which previously caused "row violates RLS".
+      sb.auth.getUser().then(function(u){
+        var liveId = (u && u.data && u.data.user) ? u.data.user.id : null;
+        if(!liveId){
+          $('gkSave').disabled=false;
+          var e=$('gkMsg'); e.className='msg err';
+          e.textContent='Your session looks expired. Please log out and back in, then save your key again.';
+          return;
+        }
+        var payload={ owner_id:liveId, provider:prov, api_key:key, model:(model||null) };
+        sb.from('sa_grader_keys').upsert(payload,{onConflict:'owner_id'}).then(function(r){
+          $('gkSave').disabled=false;
+          if(r.error){ var e=$('gkMsg'); e.className='msg err'; e.textContent=r.error.message; return; }
+          renderGraderKeyCard();
+        });
       });
     }); }
     if(hasKey && $('gkClear')){ $('gkClear').addEventListener('click', function(){
-      sb.from('sa_grader_keys').delete().eq('owner_id',State.user.id).then(function(){ renderGraderKeyCard(); });
+      sb.auth.getUser().then(function(u){
+        var liveId=(u&&u.data&&u.data.user)?u.data.user.id:State.user.id;
+        sb.from('sa_grader_keys').delete().eq('owner_id',liveId).then(function(){ renderGraderKeyCard(); });
+      });
     }); }
   });
 }
