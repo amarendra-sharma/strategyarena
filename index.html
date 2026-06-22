@@ -1285,14 +1285,46 @@ function dtLocalValue(iso){
 }
 function localToIso(v){ if(!v){ return null; } var d=new Date(v); return isNaN(d.getTime())?null:d.toISOString(); }
 
+function clearIntegrityLog(examId, modal){
+  if(!confirm('Clear ALL integrity flags and stored snapshots for this exam? This permanently deletes the proctoring records and webcam snapshots for every student on this exam. This cannot be undone.')){ return; }
+  var btn=$('intgClear'); if(btn){ btn.disabled=true; btn.textContent='Clearing\u2026'; }
+
+  // 1) collect snapshot paths: list each student folder under {examId}/ then delete
+  sb.storage.from('proctor-snapshots').list(examId, { limit:1000 }).then(function(folders){
+    var dirs = folders.data ? folders.data : [];
+    var listPromises = dirs.map(function(d){
+      return sb.storage.from('proctor-snapshots').list(examId + '/' + d.name, { limit:1000 }).then(function(fl){
+        var files = fl.data ? fl.data : [];
+        return files.map(function(f){ return examId + '/' + d.name + '/' + f.name; });
+      });
+    });
+    return Promise.all(listPromises).then(function(lists){
+      var allPaths = [];
+      lists.forEach(function(arr){ allPaths = allPaths.concat(arr); });
+      if(allPaths.length === 0){ return Promise.resolve(); }
+      return sb.storage.from('proctor-snapshots').remove(allPaths);
+    });
+  }).then(function(){
+    // 2) delete the event rows for this exam
+    return sb.from('sa_proctor_events').delete().eq('exam_id', examId);
+  }).then(function(){
+    if(modal && modal.parentNode){ document.body.removeChild(modal); }
+    alert('Integrity log and snapshots cleared for this exam.');
+  }, function(err){
+    if(btn){ btn.disabled=false; btn.textContent='Clear log + snapshots'; }
+    alert('Could not fully clear: ' + ((err && err.message) ? err.message : 'unknown error') + '. Some items may remain.');
+  });
+}
+
 function openIntegrityLog(examId){
   var m=document.createElement('div'); m.className='modal-bg';
   m.innerHTML='<div class="modal" style="max-width:680px;"><h2>Exam integrity log</h2>'+
     '<p style="font-size:12.5px;color:var(--text-muted);">Soft-proctoring flags recorded during this exam (fullscreen exits, tab switches, blocked copy/paste). Treat these as a signal worth a closer look \u2014 not proof of misconduct.</p>'+
     '<div id="intgBody">'+loadingCard()+'</div>'+
-    '<div class="inline-actions" style="justify-content:flex-end;margin-top:12px;"><button class="btn btn-ghost btn-sm" id="intgClose">Close</button></div></div>';
+    '<div class="inline-actions" style="justify-content:space-between;margin-top:12px;"><button class="btn btn-danger btn-sm" id="intgClear">Clear log + snapshots</button><button class="btn btn-ghost btn-sm" id="intgClose">Close</button></div></div>';
   document.body.appendChild(m);
   $('intgClose').addEventListener('click', function(){ document.body.removeChild(m); });
+  $('intgClear').addEventListener('click', function(){ clearIntegrityLog(examId, m); });
   sb.from('sa_proctor_events').select('student_id,violations,events,updated_at').eq('exam_id',examId).order('violations',{ascending:false}).then(function(res){
     if(res.error){ $('intgBody').innerHTML='<div class="card empty">'+esc(res.error.message)+'</div>'; return; }
     var rows=res.data?res.data:[];
@@ -1310,9 +1342,30 @@ function openIntegrityLog(examId){
             '<div style="font-size:14px;color:var(--text-bright);">'+esc(nameById[r.student_id]||r.student_id)+'</div>'+
             '<span class="tag '+sev+'">'+r.violations+' flag'+(r.violations===1?'':'s')+'</span></div>'+
           (evs?('<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">'+evs+'</div>'):'')+
+          '<div class="snapWrap" data-snap="'+esc(examId)+'/'+esc(r.student_id)+'" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;"></div>'+
           '</div>';
       });
       $('intgBody').innerHTML=html;
+      // load snapshots per student from storage
+      Array.prototype.forEach.call($('intgBody').querySelectorAll('.snapWrap'), function(w){
+        var prefix=w.getAttribute('data-snap');
+        sb.storage.from('proctor-snapshots').list(prefix, { limit:12, sortBy:{ column:'name', order:'desc' } }).then(function(lr){
+          var files=lr.data?lr.data:[];
+          if(files.length===0){ return; }
+          files.forEach(function(f){
+            var full=prefix+'/'+f.name;
+            sb.storage.from('proctor-snapshots').createSignedUrl(full, 3600).then(function(su){
+              if(su.data && su.data.signedUrl){
+                var img=document.createElement('img');
+                img.src=su.data.signedUrl;
+                img.style.cssText='width:80px;height:60px;object-fit:cover;border-radius:5px;border:1px solid var(--border);cursor:pointer;';
+                img.addEventListener('click', function(){ window.open(su.data.signedUrl,'_blank'); });
+                w.appendChild(img);
+              }
+            });
+          });
+        });
+      });
     });
   });
 }
@@ -1381,6 +1434,7 @@ function openExamEditor(examId){
         '<div class="field"><label>Attempt scoring</label><select id="edScore"><option value="highest"'+(e.attempt_scoring==='highest'?' selected':'')+'>Highest</option><option value="latest"'+(e.attempt_scoring==='latest'?' selected':'')+'>Latest</option><option value="average"'+(e.attempt_scoring==='average'?' selected':'')+'>Average</option></select></div>'+
         '<div class="field" style="grid-column:1/3;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input id="edShuf" type="checkbox"'+(e.shuffle_questions?' checked':'')+'> Shuffle question order per attempt</label></div>'+
         '<div class="field" style="grid-column:1/3;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input id="edProctor" type="checkbox"'+(e.proctored!==false?' checked':'')+'> Soft proctoring (fullscreen, tab-switch detection, copy/paste block, integrity log). <span style="color:var(--text-subtle);font-size:11px;">Deters casual cheating; not a substitute for a lockdown browser.</span></label></div>'+
+        '<div class="field" style="grid-column:1/3;"><label>Webcam monitoring</label><select id="edCamMode"><option value="off"'+((!e.camera_mode||e.camera_mode==='off')?' selected':'')+'>Off</option><option value="flag"'+(e.camera_mode==='flag'?' selected':'')+'>On \u2014 allow if camera denied, but flag it</option><option value="block"'+(e.camera_mode==='block'?' selected':'')+'>On \u2014 require camera to start (block if denied)</option></select><span style="color:var(--text-subtle);font-size:11px;">Shows a live self-view, stores a snapshot when a flag fires, and (Chrome/Edge) flags no-face / multiple-faces. Tell students they will be recorded.</span></div>'+
       '</div>'+
       '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px;border-top:1px solid var(--border);padding-top:12px;">'+
         '<div style="font-size:14px;color:var(--text-bright);">Questions (<span id="edCount">'+EDIT_IDS.length+'</span>) \u00b7 <span id="edPts">'+pointsTotal()+'</span> pts</div>'+
@@ -1468,6 +1522,7 @@ function openExamEditor(examId){
       attempt_scoring: $('edScore').value,
       shuffle_questions: $('edShuf').checked,
       proctored: $('edProctor') ? $('edProctor').checked : true,
+      camera_mode: $('edCamMode') ? $('edCamMode').value : 'off',
       item_ids: EDIT_IDS,
       total_points: pointsTotal()
     };
@@ -2312,10 +2367,79 @@ var ExamState = { exam:null, items:[], answers:{}, idx:0, courseId:null, submitt
    ==================================================================== */
 var Proctor = {
   active:false, violations:0, events:[], maxBeforeSubmit:3, banner:null, handlers:{},
+  cam:{ stream:null, video:null, canvas:null, faceDetector:null, faceTimer:null, thumb:null, ready:false, lastSnap:0 },
   enabled:function(){
     // honor a per-exam toggle; default ON for published exams unless turned off
     var e = ExamState.exam;
     return !!(e && e.proctored !== false);
+  },
+  // camera is requested when the exam asks for it (camera_mode: 'block' or 'flag')
+  camMode:function(){ var e=ExamState.exam; return e && e.camera_mode ? e.camera_mode : 'off'; },
+  startCamera:function(onResult){
+    var self=this; var mode=this.camMode();
+    if(mode==='off'){ if(onResult){ onResult(true); } return; }
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      self.flag('camera not supported by browser');
+      if(onResult){ onResult(mode!=='block'); } return;
+    }
+    navigator.mediaDevices.getUserMedia({ video:{ width:320, height:240 }, audio:false }).then(function(stream){
+      self.cam.stream=stream;
+      var v=document.createElement('video'); v.autoplay=true; v.muted=true; v.playsInline=true; v.srcObject=stream;
+      v.style.cssText='width:120px;height:90px;border-radius:8px;object-fit:cover;display:block;';
+      self.cam.video=v;
+      var c=document.createElement('canvas'); c.width=320; c.height=240; self.cam.canvas=c;
+      // floating self-view
+      var thumb=document.createElement('div'); thumb.id='proctorCam';
+      thumb.style.cssText='position:fixed;bottom:14px;right:14px;z-index:9999;background:#0c0a18;border:1px solid #3a2f60;border-radius:10px;padding:5px;box-shadow:0 8px 24px rgba(0,0,0,.5);';
+      var lbl=document.createElement('div'); lbl.style.cssText='font:600 9px/1.3 system-ui;color:#9b87e0;text-align:center;margin-top:3px;'; lbl.textContent='\uD83D\uDD34 REC \u00b7 monitored';
+      thumb.appendChild(v); thumb.appendChild(lbl); document.body.appendChild(thumb); self.cam.thumb=thumb;
+      // detect camera being cut mid-exam
+      var track=stream.getVideoTracks()[0];
+      if(track){ track.onended=function(){ if(self.active){ self.flag('camera turned off mid-exam'); } }; }
+      // optional face detection (Chrome/Edge only)
+      if('FaceDetector' in window){
+        try{ self.cam.faceDetector=new window.FaceDetector({ fastMode:true, maxDetectedFaces:3 }); }catch(e){ self.cam.faceDetector=null; }
+      }
+      self.cam.ready=true;
+      self.startFaceLoop();
+      if(onResult){ onResult(true); }
+    }, function(err){
+      // denied or unavailable
+      self.flag('camera access denied');
+      if(onResult){ onResult(mode!=='block'); }
+    });
+  },
+  startFaceLoop:function(){
+    var self=this;
+    // take a baseline snapshot at start; then face checks every 8s
+    self.snapshot('exam start');
+    if(!self.cam.faceDetector){ return; } // presence-only on unsupported browsers
+    self.cam.faceTimer=setInterval(function(){
+      if(!self.active || !self.cam.video){ return; }
+      self.cam.faceDetector.detect(self.cam.video).then(function(faces){
+        if(!faces || faces.length===0){ self.flag('no face detected'); }
+        else if(faces.length>1){ self.flag('multiple faces detected'); }
+      }, function(){});
+    }, 8000);
+  },
+  snapshot:function(reason){
+    var self=this;
+    if(!self.cam.ready || !self.cam.video || !self.cam.canvas){ return; }
+    try{
+      var ctx=self.cam.canvas.getContext('2d');
+      ctx.drawImage(self.cam.video, 0, 0, self.cam.canvas.width, self.cam.canvas.height);
+      self.cam.canvas.toBlob(function(blob){
+        if(!blob || !State.user || !ExamState.exam){ return; }
+        var path=ExamState.exam.id + '/' + State.user.id + '/' + Date.now() + '.jpg';
+        sb.storage.from('proctor-snapshots').upload(path, blob, { contentType:'image/jpeg', upsert:true }).then(function(){}, function(){});
+      }, 'image/jpeg', 0.6);
+    }catch(e){}
+  },
+  stopCamera:function(){
+    if(this.cam.faceTimer){ clearInterval(this.cam.faceTimer); this.cam.faceTimer=null; }
+    if(this.cam.stream){ this.cam.stream.getTracks().forEach(function(t){ try{ t.stop(); }catch(e){} }); }
+    if(this.cam.thumb && this.cam.thumb.parentNode){ this.cam.thumb.parentNode.removeChild(this.cam.thumb); }
+    this.cam={ stream:null, video:null, canvas:null, faceDetector:null, faceTimer:null, thumb:null, ready:false, lastSnap:0 };
   },
   start:function(){
     if(!this.enabled()){ return; }
@@ -2344,6 +2468,8 @@ var Proctor = {
     document.addEventListener('copy', this.handlers.copy);
     document.addEventListener('paste', this.handlers.paste);
     document.addEventListener('contextmenu', this.handlers.ctx);
+    // start webcam monitoring if the exam requires it
+    this.startCamera(function(){});
   },
   goFullscreen:function(){
     var el=document.documentElement;
@@ -2369,6 +2495,7 @@ var Proctor = {
     if(!this.active){ return; }
     this.violations++;
     this.events.push({ t:new Date().toISOString(), reason:reason });
+    if(this.cam && this.cam.ready){ this.snapshot(reason); }   // store a snapshot when a flag fires
     var c=$('proctorCount'); if(c){ c.textContent = this.violations + ' flag' + (this.violations===1?'':'s'); }
     if(this.violations===this.maxBeforeSubmit-1){
       // final warning
@@ -2388,6 +2515,7 @@ var Proctor = {
   stop:function(){
     if(!this.active){ return; }
     this.active=false;
+    this.stopCamera();
     document.removeEventListener('visibilitychange', this.handlers.vis);
     window.removeEventListener('blur', this.handlers.blur);
     document.removeEventListener('fullscreenchange', this.handlers.fs);
@@ -2469,7 +2597,7 @@ function loadMyExams() {
     var titleById = {}; rows.forEach(function(r){ titleById[r.course_id] = r.sa_courses ? r.sa_courses.title : 'Course'; });
     if (courseIds.length === 0) { host.innerHTML = '<div class="card empty">You are not enrolled in a course with exams yet. Join a course from Home.</div>'; return; }
     Promise.all([
-      sb.from('sa_exams').select('id,course_id,kind,title,total_points,time_limit_minutes,instructions,item_ids,is_published,max_attempts,shuffle_questions,attempt_scoring,opens_at,closes_at,proctored').in('course_id', courseIds).eq('is_published', true).order('created_at',{ascending:true}),
+      sb.from('sa_exams').select('id,course_id,kind,title,total_points,time_limit_minutes,instructions,item_ids,is_published,max_attempts,shuffle_questions,attempt_scoring,opens_at,closes_at,proctored,camera_mode').in('course_id', courseIds).eq('is_published', true).order('created_at',{ascending:true}),
       sb.from('sa_attempts').select('exam_id,item_id,points_earned,graded_at,submitted_value').eq('student_id', uid).not('exam_id','is',null),
       sb.from('sa_accommodations').select('course_id,time_multiplier,extra_attempts').eq('student_id', uid)
     ]).then(function(r) {
@@ -2540,6 +2668,26 @@ function loadMyExams() {
 }
 
 function startExam(exam, accom) {
+  if (!exam.item_ids || exam.item_ids.length === 0) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
+  // If the exam requires a camera in BLOCK mode, get permission before anything else.
+  if (exam.camera_mode === 'block') {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      $('myExamsBody').innerHTML = errCard('This exam requires a webcam, but your browser does not support camera access. Try Chrome or Edge on a laptop.');
+      return;
+    }
+    $('myExamsBody').innerHTML = '<div class="card"><span class="spinner"></span> &nbsp;Requesting camera access (required for this exam)…</div>';
+    navigator.mediaDevices.getUserMedia({ video:true, audio:false }).then(function(s){
+      s.getTracks().forEach(function(t){ t.stop(); }); // release; Proctor re-acquires
+      proceedStartExam(exam, accom);
+    }, function(){
+      $('myExamsBody').innerHTML = errCard('This exam requires a webcam and it was blocked or unavailable. Enable camera access in your browser and try again.');
+    });
+    return;
+  }
+  proceedStartExam(exam, accom);
+}
+
+function proceedStartExam(exam, accom) {
   if (!exam.item_ids || exam.item_ids.length === 0) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
   ExamState = { exam:exam, items:[], answers:{}, idx:0, courseId:exam.course_id, submitting:false, finished:false, timer:null, deadline:null };
   var host = $('myExamsBody');
