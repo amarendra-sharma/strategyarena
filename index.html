@@ -201,11 +201,12 @@
 <!-- ===================== AUTH ===================== -->
 <div id="authScreen" class="auth-wrap">
   <div class="auth-card">
-    <div class="brand"><div class="brand-mark">&#9823;</div><div class="brand-name">StrategyArena</div></div>
+    <div class="brand"><a href="https://macronations.com" target="_blank" rel="noopener" title="MacroNations portal" style="display:flex;align-items:center;gap:12px;text-decoration:none;"><span style="width:42px;height:42px;display:inline-block;"><svg viewBox="0 0 36 36" width="42" height="42" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MacroNations logo"><defs><clipPath id="nsc2"><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z"/></clipPath></defs><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z" fill="#0D1F3C"/><rect x="4" y="9" width="28" height="6" fill="#1A3260" clip-path="url(#nsc2)"/><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z" fill="none" stroke="#FFD700" stroke-width="1.5"/><text x="18" y="16" text-anchor="middle" font-family="Georgia,serif" font-size="7.5" font-weight="700" fill="#FFD700" letter-spacing="2">MN</text><line x1="8" y1="18" x2="28" y2="18" stroke="#FFD700" stroke-width="0.8"/><rect x="6.5" y="27.5" width="2.5" height="4.5" fill="#60A5FA" clip-path="url(#nsc2)"/><rect x="10" y="25.5" width="2.5" height="6.5" fill="#60A5FA" clip-path="url(#nsc2)"/><rect x="13.5" y="23.5" width="2.5" height="8.5" fill="#60A5FA" clip-path="url(#nsc2)"/><rect x="17" y="21.5" width="2.5" height="10.5" fill="#60A5FA" clip-path="url(#nsc2)"/><rect x="20.5" y="19.5" width="2.5" height="12.5" fill="#60A5FA" clip-path="url(#nsc2)"/><polyline points="7.75,27 11.25,25 14.75,22.8 18.25,20.5 21.75,18.5" fill="none" stroke="#00FF88" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#nsc2)"/></svg></span><span class="brand-name">StrategyArena</span></a></div>
     <div class="auth-sub">Sign in to your game-theory workspace — or create an account to get started.</div>
     <div id="authMsg" class="msg"></div>
     <div class="field"><label>Email</label><input id="authEmail" type="email" autocomplete="email" placeholder="you@university.edu"></div>
     <div class="field"><label>Password</label><input id="authPassword" type="password" autocomplete="current-password" placeholder="********"></div>
+    <div id="forgotRow" style="text-align:right;margin-top:-6px;margin-bottom:8px;"><a href="#" id="forgotLink" style="font-size:12.5px;color:var(--violet);text-decoration:none;">Forgot password?</a></div>
     <div id="signupRole" class="hidden">
       <div class="field"><label>I am signing up as</label>
         <div style="display:flex;gap:8px;">
@@ -230,7 +231,7 @@
 <!-- ===================== APP ===================== -->
 <div id="appScreen" class="app hidden">
   <aside class="sidebar">
-    <div class="side-brand"><div class="brand-mark">&#9823;</div><div class="brand-name">Console</div></div>
+    <div class="side-brand"><a href="https://macronations.com" target="_blank" rel="noopener" title="MacroNations portal" style="display:flex;align-items:center;gap:10px;text-decoration:none;"><span class="mn-logo" style="width:34px;height:34px;display:inline-block;"><svg viewBox="0 0 36 36" width="34" height="34" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MacroNations logo"><defs><clipPath id="nsc1"><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z"/></clipPath></defs><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z" fill="#0D1F3C"/><rect x="4" y="9" width="28" height="6" fill="#1A3260" clip-path="url(#nsc1)"/><path d="M18 1.5 L32 6 L32 21 Q32 32 18 35.5 Q4 32 4 21 L4 6 Z" fill="none" stroke="#FFD700" stroke-width="1.5"/><text x="18" y="16" text-anchor="middle" font-family="Georgia,serif" font-size="7.5" font-weight="700" fill="#FFD700" letter-spacing="2">MN</text><line x1="8" y1="18" x2="28" y2="18" stroke="#FFD700" stroke-width="0.8"/><rect x="6.5" y="27.5" width="2.5" height="4.5" fill="#60A5FA" clip-path="url(#nsc1)"/><rect x="10" y="25.5" width="2.5" height="6.5" fill="#60A5FA" clip-path="url(#nsc1)"/><rect x="13.5" y="23.5" width="2.5" height="8.5" fill="#60A5FA" clip-path="url(#nsc1)"/><rect x="17" y="21.5" width="2.5" height="10.5" fill="#60A5FA" clip-path="url(#nsc1)"/><rect x="20.5" y="19.5" width="2.5" height="12.5" fill="#60A5FA" clip-path="url(#nsc1)"/><polyline points="7.75,27 11.25,25 14.75,22.8 18.25,20.5 21.75,18.5" fill="none" stroke="#00FF88" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" clip-path="url(#nsc1)"/></svg></span><span class="brand-name">Console</span></a></div>
     <div class="nav-group">
       <div class="nav-group-label">Learn</div>
       <div class="nav-item active" data-view="home"><span class="ico">&#8962;</span> Home</div>
@@ -335,16 +336,16 @@
       <div class="card" style="padding:6px 6px 2px;"><table class="tbl" id="arenaTbl"><thead><tr><th>Arena</th><th>Outcome</th><th>Score</th><th>When</th></tr></thead><tbody></tbody></table></div>
     </section>
 
-    <!-- DIAGNOSTICS -->
+    </div>
+    <div id="viewHost"></div>
+
+    <!-- DIAGNOSTICS (admin-only; sibling of viewHost so it isn't hidden with studentViews) -->
     <section id="view-diagnostics" class="hidden">
       <h1 class="page-title">Backend Diagnostics</h1>
       <div class="page-sub">Confirms your Supabase wiring — and proves the answer-key vault is locked.</div>
       <button class="btn btn-primary" id="runDiagBtn" style="width:auto;margin-bottom:18px;">Run checks</button>
       <div class="diag" id="diagOut">Click “Run checks” to test the connection, RLS, and the grading function.</div>
     </section>
-  
-    </div>
-    <div id="viewHost"></div>
   </main>
 </div>
 
@@ -415,6 +416,16 @@ function hide(el){ if(el){el.classList.add('hidden');} }
 function setAuthMsg(t,k){ var m=$('authMsg'); m.textContent=t||''; m.className='msg '+(k?k:''); if(!t){m.className='msg';} }
 $('authToggle').addEventListener('click', function(){ State.signup=!State.signup; $('authSubmit').textContent=State.signup?'Create account':'Sign in'; $('authToggle').innerHTML=State.signup?'Already registered? <b>Sign in</b>':'No account yet? <b>Create one</b>'; setAuthMsg('',''); if(State.signup){ show($('signupRole')); } else { hide($('signupRole')); } });
 $('authSubmit').addEventListener('click', doAuth);
+if($('forgotLink')){ $('forgotLink').addEventListener('click', function(ev){
+  ev.preventDefault();
+  var email=$('authEmail').value.trim();
+  if(!email){ setAuthMsg('Enter your email above first, then click \u201CForgot password?\u201D','err'); return; }
+  setAuthMsg('Sending reset link...','');
+  sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname }).then(function(res){
+    if(res.error){ setAuthMsg(res.error.message,'err'); return; }
+    setAuthMsg('If an account exists for ' + email + ', a password-reset link has been emailed. Check your inbox (and spam).','ok');
+  });
+}); }
 $('authPassword').addEventListener('keydown', function(e){ if(e.key==='Enter'){ doAuth(); } });
 
 // signup role choice (student vs professor)
@@ -2981,6 +2992,22 @@ function runDiagnostics() {
    ==================================================================== */
 sb.auth.getSession().then(function(res){
   if(res.data && res.data.session && res.data.session.user){ onSignedIn(res.data.session.user); }
+});
+
+// When the user returns from a password-reset email, Supabase fires
+// PASSWORD_RECOVERY. Prompt for a new password and update it.
+sb.auth.onAuthStateChange(function(event, session){
+  if(event==='PASSWORD_RECOVERY'){
+    var np = window.prompt('Enter a new password (at least 6 characters):');
+    if(np && np.length>=6){
+      sb.auth.updateUser({ password: np }).then(function(r){
+        if(r.error){ alert('Could not update password: '+r.error.message); }
+        else { alert('Password updated. You are now signed in.'); }
+      });
+    } else if(np!==null){
+      alert('Password must be at least 6 characters. Click the reset link again to retry.');
+    }
+  }
 });
 </script>
 </body>
