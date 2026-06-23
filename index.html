@@ -253,12 +253,12 @@
       <div class="nav-item" data-view="analytics"><span class="ico">&#128293;</span> Analytics</div>
       <div class="nav-item" data-view="exams"><span class="ico">&#128221;</span> Exams</div>
       <div class="nav-item" data-view="grading"><span class="ico">&#9999;</span> Grade Written</div>
-      <div class="nav-item" data-view="subscriptions"><span class="ico">&#128179;</span> Subscriptions</div>
     </div>
     <div class="nav-group hidden" id="adminGroup">
       <div class="nav-group-label">Administer</div>
       <div class="nav-item" data-view="platform"><span class="ico">&#9881;</span> Platform &amp; Pricing</div>
       <div class="nav-item" data-view="people"><span class="ico">&#128081;</span> Instructors</div>
+      <div class="nav-item" data-view="subscriptions"><span class="ico">&#128179;</span> Subscriptions</div>
       <div class="nav-item" data-view="diagnostics"><span class="ico">&#128274;</span> Diagnostics</div>
     </div>
     <div class="side-foot">
@@ -575,8 +575,8 @@ Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(it
   });
 });
 function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_VIEWS[i]===v){ return true; } } return false; }
-var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','gradebook','analytics','exams','grading','subscriptions'];
-var ADMIN_VIEWS = ['platform','people','diagnostics'];
+var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','gradebook','analytics','exams','grading'];
+var ADMIN_VIEWS = ['platform','people','subscriptions','diagnostics'];
 function viewAllowed(view){
   if(isStudentView(view)){ return true; }
   if(ADMIN_VIEWS.indexOf(view)>=0){ return State.role==='admin'; }
@@ -2431,9 +2431,11 @@ var Proctor = {
       self.cam.canvas.toBlob(function(blob){
         if(!blob || !State.user || !ExamState.exam){ return; }
         var path=ExamState.exam.id + '/' + State.user.id + '/' + Date.now() + '.jpg';
-        sb.storage.from('proctor-snapshots').upload(path, blob, { contentType:'image/jpeg', upsert:true }).then(function(){}, function(){});
+        sb.storage.from('proctor-snapshots').upload(path, blob, { contentType:'image/jpeg', upsert:true }).then(function(r){
+          if(r && r.error){ try{ console.error('proctor snapshot upload failed:', r.error.message); }catch(e){} Proctor._lastSnapError = r.error.message; }
+        }, function(e){ try{ console.error('proctor snapshot exception:', e); }catch(x){} Proctor._lastSnapError = (e&&e.message)?e.message:'unknown'; });
       }, 'image/jpeg', 0.6);
-    }catch(e){}
+    }catch(e){ try{ console.error('proctor snapshot draw error:', e); }catch(x){} }
   },
   stopCamera:function(){
     if(this.cam.faceTimer){ clearInterval(this.cam.faceTimer); this.cam.faceTimer=null; }
@@ -2526,11 +2528,16 @@ var Proctor = {
     setTimeout(function(){ if(t.parentNode){ t.parentNode.removeChild(t); } }, 4500);
   },
   flagSubmit:function(){
-    this.stop();
-    if(typeof gradeExam==='function' && !ExamState.finished && !ExamState.submitting){
-      alert('Your exam was auto-submitted after repeated proctoring flags. Your instructor will see the integrity log.');
-      gradeExam(true);
-    }
+    var self=this;
+    // persist the log FIRST (await it), then stop and submit, so the record
+    // is saved even though we're about to tear everything down.
+    this.persist().then(function(){
+      self.stop();
+      if(typeof gradeExam==='function' && !ExamState.finished && !ExamState.submitting){
+        alert('Your exam was auto-submitted after repeated proctoring flags. Your instructor will see the integrity log.');
+        gradeExam(true);
+      }
+    });
   },
   stop:function(){
     if(!this.active){ return; }
@@ -2559,7 +2566,13 @@ var Proctor = {
       events: JSON.stringify(this.events.slice(0,50))
     };
     if(!rec.student_id){ return Promise.resolve(); }
-    return sb.from('sa_proctor_events').upsert(rec, { onConflict:'exam_id,student_id' }).then(function(){}, function(){});
+    return sb.from('sa_proctor_events').upsert(rec, { onConflict:'exam_id,student_id' }).then(function(r){
+      if(r && r.error){ try{ console.error('proctor persist failed:', r.error.message); }catch(e){} Proctor._lastError = r.error.message; }
+      return r;
+    }, function(e){
+      try{ console.error('proctor persist exception:', e); }catch(x){}
+      Proctor._lastError = (e && e.message) ? e.message : 'unknown';
+    });
   }
 };
 
