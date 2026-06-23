@@ -41,6 +41,7 @@ var MNProctor = (function () {
   var SB = null;
   var BUCKET = 'proctor-snapshots';
   var TABLE = 'mn_proctor_events';
+  var PROFILES = 'sa_profiles';
   var autoSubmitCb = null;
 
   var S = {
@@ -59,6 +60,7 @@ var MNProctor = (function () {
     SB = opts.sb;
     if(opts.bucket){ BUCKET = opts.bucket; }
     if(opts.table){ TABLE = opts.table; }
+    if(opts.profilesTable){ PROFILES = opts.profilesTable; }
     if(typeof opts.maxBeforeSubmit === 'number'){ S.maxBeforeSubmit = opts.maxBeforeSubmit; }
   }
   function onAutoSubmit(cb){ autoSubmitCb = cb; }
@@ -315,7 +317,7 @@ var MNProctor = (function () {
       var rows=res.data?res.data:[];
       if(rows.length===0){ hostEl.innerHTML='<div style="opacity:.7;font-size:13px;">No proctoring events recorded yet.</div>'; return; }
       var ids=rows.map(function(r){ return r.student_id; });
-      SB.from('sa_profiles').select('id,full_name,email').in('id',ids).then(function(pr){
+      SB.from(PROFILES).select('id,full_name,email').in('id',ids).then(function(pr){
         // profile table name may differ per app; fall back to id if missing
         var nameById={}; if(pr && pr.data){ pr.data.forEach(function(p){ nameById[p.id]=p.full_name||p.email||p.id; }); }
         var html='';
