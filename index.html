@@ -356,6 +356,7 @@
 <div id="modalHost"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="mn-proctor.js"></script>
 <script>
 /* ====================================================================
    CONFIG
@@ -363,6 +364,11 @@
 var SUPABASE_URL = 'https://qgelvmefyexyzpwqupev.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZWx2bWVmeWV4eXpwd3F1cGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDY5ODAsImV4cCI6MjA5NjAyMjk4MH0.AR55GBLefKHfs9ncWWzEFks_VISPjJtbW8SezyjM3lc';
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Shared MacroNations proctoring engine. Point it at StrategyArena's existing
+// table/bucket so no data migration is needed.
+if(typeof MNProctor!=='undefined'){
+  MNProctor.init({ sb: sb, table: 'sa_proctor_events', bucket: 'proctor-snapshots' });
+}
 
 var CHAPTERS = [
   {n:1,title:'Strategic Thinking'},{n:2,title:"Prisoner's Dilemma"},{n:3,title:'Repeated Games'},
@@ -597,7 +603,7 @@ function switchView(view){
   if(!viewAllowed(view)){ view='home'; }
   // stop any running exam timer when leaving the exam view
   if(typeof ExamState!=='undefined' && ExamState.timer && view!=='myexams'){ clearInterval(ExamState.timer); ExamState.timer=null; }
-  if(typeof Proctor!=='undefined' && Proctor.active && view!=='myexams'){ Proctor.stop(); }
+  if(typeof MNProctor!=='undefined' && MNProctor.isActive() && view!=='myexams'){ MNProctor.finish(); }
   currentView=view;
   var meta=VIEW_META[view];
   if(meta){ $('pageTitle').textContent=meta[0]; $('pageSub').textContent=meta[1]; if(meta[2]){ show($('coursePickWrap')); } else { hide($('coursePickWrap')); } }
@@ -1297,26 +1303,8 @@ function localToIso(v){ if(!v){ return null; } var d=new Date(v); return isNaN(d
 function clearIntegrityLog(examId, modal){
   if(!confirm('Clear ALL integrity flags and stored snapshots for this exam? This permanently deletes the proctoring records and webcam snapshots for every student on this exam. This cannot be undone.')){ return; }
   var btn=$('intgClear'); if(btn){ btn.disabled=true; btn.textContent='Clearing\u2026'; }
-
-  // 1) collect snapshot paths: list each student folder under {examId}/ then delete
-  sb.storage.from('proctor-snapshots').list(examId, { limit:1000 }).then(function(folders){
-    var dirs = folders.data ? folders.data : [];
-    var listPromises = dirs.map(function(d){
-      return sb.storage.from('proctor-snapshots').list(examId + '/' + d.name, { limit:1000 }).then(function(fl){
-        var files = fl.data ? fl.data : [];
-        return files.map(function(f){ return examId + '/' + d.name + '/' + f.name; });
-      });
-    });
-    return Promise.all(listPromises).then(function(lists){
-      var allPaths = [];
-      lists.forEach(function(arr){ allPaths = allPaths.concat(arr); });
-      if(allPaths.length === 0){ return Promise.resolve(); }
-      return sb.storage.from('proctor-snapshots').remove(allPaths);
-    });
-  }).then(function(){
-    // 2) delete the event rows for this exam
-    return sb.from('sa_proctor_events').delete().eq('exam_id', examId);
-  }).then(function(){
+  if(typeof MNProctor==='undefined'){ return; }
+  MNProctor.clearLog(examId).then(function(){
     if(modal && modal.parentNode){ document.body.removeChild(modal); }
     alert('Integrity log and snapshots cleared for this exam.');
   }, function(err){
@@ -1328,55 +1316,14 @@ function clearIntegrityLog(examId, modal){
 function openIntegrityLog(examId){
   var m=document.createElement('div'); m.className='modal-bg';
   m.innerHTML='<div class="modal" style="max-width:680px;"><h2>Exam integrity log</h2>'+
-    '<p style="font-size:12.5px;color:var(--text-muted);">Soft-proctoring flags recorded during this exam (fullscreen exits, tab switches, blocked copy/paste). Treat these as a signal worth a closer look \u2014 not proof of misconduct.</p>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);">Soft-proctoring flags recorded during this exam (fullscreen exits, tab switches, blocked copy/paste, webcam). Treat these as a signal worth a closer look \u2014 not proof of misconduct.</p>'+
     '<div id="intgBody">'+loadingCard()+'</div>'+
     '<div class="inline-actions" style="justify-content:space-between;margin-top:12px;"><button class="btn btn-danger btn-sm" id="intgClear">Clear log + snapshots</button><button class="btn btn-ghost btn-sm" id="intgClose">Close</button></div></div>';
   document.body.appendChild(m);
   $('intgClose').addEventListener('click', function(){ document.body.removeChild(m); });
   $('intgClear').addEventListener('click', function(){ clearIntegrityLog(examId, m); });
-  sb.from('sa_proctor_events').select('student_id,violations,events,updated_at').eq('exam_id',examId).order('violations',{ascending:false}).then(function(res){
-    if(res.error){ $('intgBody').innerHTML='<div class="card empty">'+esc(res.error.message)+'</div>'; return; }
-    var rows=res.data?res.data:[];
-    if(rows.length===0){ $('intgBody').innerHTML='<div class="card empty">No proctoring events recorded yet. Flags appear here after students take this exam.</div>'; return; }
-    var ids=rows.map(function(r){ return r.student_id; });
-    sb.from('sa_profiles').select('id,full_name,email').in('id',ids).then(function(pr){
-      var nameById={}; (pr.data||[]).forEach(function(p){ nameById[p.id]= p.full_name||p.email||p.id; });
-      var html='';
-      rows.forEach(function(r){
-        var sev = r.violations>=3 ? 'rose' : (r.violations>0?'amber':'green');
-        var evs='';
-        try{ var arr=JSON.parse(r.events||'[]'); evs=arr.map(function(e){ return '<div style="font-size:11.5px;color:var(--text-subtle);">'+esc((e.t||'').replace('T',' ').slice(0,19))+' \u2014 '+esc(e.reason||'')+'</div>'; }).join(''); }catch(e){ evs=''; }
-        html+='<div class="card" style="margin-bottom:8px;">'+
-          '<div style="display:flex;justify-content:space-between;align-items:center;">'+
-            '<div style="font-size:14px;color:var(--text-bright);">'+esc(nameById[r.student_id]||r.student_id)+'</div>'+
-            '<span class="tag '+sev+'">'+r.violations+' flag'+(r.violations===1?'':'s')+'</span></div>'+
-          (evs?('<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">'+evs+'</div>'):'')+
-          '<div class="snapWrap" data-snap="'+esc(examId)+'/'+esc(r.student_id)+'" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;"></div>'+
-          '</div>';
-      });
-      $('intgBody').innerHTML=html;
-      // load snapshots per student from storage
-      Array.prototype.forEach.call($('intgBody').querySelectorAll('.snapWrap'), function(w){
-        var prefix=w.getAttribute('data-snap');
-        sb.storage.from('proctor-snapshots').list(prefix, { limit:12, sortBy:{ column:'name', order:'desc' } }).then(function(lr){
-          var files=lr.data?lr.data:[];
-          if(files.length===0){ return; }
-          files.forEach(function(f){
-            var full=prefix+'/'+f.name;
-            sb.storage.from('proctor-snapshots').createSignedUrl(full, 3600).then(function(su){
-              if(su.data && su.data.signedUrl){
-                var img=document.createElement('img');
-                img.src=su.data.signedUrl;
-                img.style.cssText='width:80px;height:60px;object-fit:cover;border-radius:5px;border:1px solid var(--border);cursor:pointer;';
-                img.addEventListener('click', function(){ window.open(su.data.signedUrl,'_blank'); });
-                w.appendChild(img);
-              }
-            });
-          });
-        });
-      });
-    });
-  });
+  // delegate rendering to the shared proctoring module
+  if(typeof MNProctor!=='undefined'){ MNProctor.renderIntegrityLog(examId, $('intgBody')); }
 }
 
 function cloneExam(examId){
@@ -2374,216 +2321,7 @@ var ExamState = { exam:null, items:[], answers:{}, idx:0, courseId:null, submitt
    loss, blocks copy/paste/right-click, warns, logs, and auto-submits after
    repeated violations. The instructor sees an integrity flag afterward.
    ==================================================================== */
-var Proctor = {
-  active:false, violations:0, events:[], maxBeforeSubmit:4, _lastFlagAt:0, banner:null, handlers:{},
-  cam:{ stream:null, video:null, canvas:null, faceDetector:null, faceTimer:null, thumb:null, ready:false, lastSnap:0 },
-  enabled:function(){
-    // honor a per-exam toggle; default ON for published exams unless turned off
-    var e = ExamState.exam;
-    return !!(e && e.proctored !== false);
-  },
-  // camera is requested when the exam asks for it (camera_mode: 'block' or 'flag')
-  camMode:function(){ var e=ExamState.exam; return e && e.camera_mode ? e.camera_mode : 'off'; },
-  startCamera:function(onResult){
-    var self=this; var mode=this.camMode();
-    if(mode==='off'){ if(onResult){ onResult(true); } return; }
-    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      self.flag('camera not supported by browser');
-      if(onResult){ onResult(mode!=='block'); } return;
-    }
-    navigator.mediaDevices.getUserMedia({ video:{ width:320, height:240 }, audio:false }).then(function(stream){
-      self.cam.stream=stream;
-      var v=document.createElement('video'); v.autoplay=true; v.muted=true; v.playsInline=true; v.srcObject=stream;
-      v.style.cssText='width:120px;height:90px;border-radius:8px;object-fit:cover;display:block;';
-      self.cam.video=v;
-      var c=document.createElement('canvas'); c.width=320; c.height=240; self.cam.canvas=c;
-      // floating self-view
-      var thumb=document.createElement('div'); thumb.id='proctorCam';
-      thumb.style.cssText='position:fixed;bottom:14px;right:14px;z-index:9999;background:#0c0a18;border:1px solid #3a2f60;border-radius:10px;padding:5px;box-shadow:0 8px 24px rgba(0,0,0,.5);';
-      var lbl=document.createElement('div'); lbl.style.cssText='font:600 9px/1.3 system-ui;color:#9b87e0;text-align:center;margin-top:3px;'; lbl.textContent='\uD83D\uDD34 REC \u00b7 monitored';
-      thumb.appendChild(v); thumb.appendChild(lbl); document.body.appendChild(thumb); self.cam.thumb=thumb;
-      // detect camera being cut mid-exam
-      var track=stream.getVideoTracks()[0];
-      if(track){ track.onended=function(){ if(self.active){ self.flag('camera turned off mid-exam'); } }; }
-      // optional face detection (Chrome/Edge only)
-      if('FaceDetector' in window){
-        try{ self.cam.faceDetector=new window.FaceDetector({ fastMode:true, maxDetectedFaces:3 }); }catch(e){ self.cam.faceDetector=null; }
-      }
-      self.cam.ready=true;
-      self.startFaceLoop();
-      if(onResult){ onResult(true); }
-    }, function(err){
-      // denied or unavailable
-      self.flag('camera access denied');
-      if(onResult){ onResult(mode!=='block'); }
-    });
-  },
-  startFaceLoop:function(){
-    var self=this;
-    // take a baseline snapshot at start; then face checks every 8s
-    self.snapshot('exam start');
-    if(!self.cam.faceDetector){ return; } // presence-only on unsupported browsers
-    self.cam.faceTimer=setInterval(function(){
-      if(!self.active || !self.cam.video){ return; }
-      self.cam.faceDetector.detect(self.cam.video).then(function(faces){
-        if(!faces || faces.length===0){ self.flag('no face detected'); }
-        else if(faces.length>1){ self.flag('multiple faces detected'); }
-      }, function(){});
-    }, 8000);
-  },
-  snapshot:function(reason){
-    var self=this;
-    if(!self.cam.ready || !self.cam.video || !self.cam.canvas){ return; }
-    try{
-      var ctx=self.cam.canvas.getContext('2d');
-      ctx.drawImage(self.cam.video, 0, 0, self.cam.canvas.width, self.cam.canvas.height);
-      self.cam.canvas.toBlob(function(blob){
-        if(!blob || !State.user || !ExamState.exam){ return; }
-        var path=ExamState.exam.id + '/' + State.user.id + '/' + Date.now() + '.jpg';
-        sb.storage.from('proctor-snapshots').upload(path, blob, { contentType:'image/jpeg', upsert:true }).then(function(r){
-          if(r && r.error){ try{ console.error('proctor snapshot upload failed:', r.error.message); }catch(e){} Proctor._lastSnapError = r.error.message; }
-        }, function(e){ try{ console.error('proctor snapshot exception:', e); }catch(x){} Proctor._lastSnapError = (e&&e.message)?e.message:'unknown'; });
-      }, 'image/jpeg', 0.6);
-    }catch(e){ try{ console.error('proctor snapshot draw error:', e); }catch(x){} }
-  },
-  stopCamera:function(){
-    if(this.cam.faceTimer){ clearInterval(this.cam.faceTimer); this.cam.faceTimer=null; }
-    if(this.cam.stream){ this.cam.stream.getTracks().forEach(function(t){ try{ t.stop(); }catch(e){} }); }
-    if(this.cam.thumb && this.cam.thumb.parentNode){ this.cam.thumb.parentNode.removeChild(this.cam.thumb); }
-    this.cam={ stream:null, video:null, canvas:null, faceDetector:null, faceTimer:null, thumb:null, ready:false, lastSnap:0 };
-  },
-  start:function(){
-    if(!this.enabled()){ return; }
-    this.active=true; this.violations=0; this.events=[]; this._lastFlagAt=0;
-    var self=this;
-    // request fullscreen
-    this.goFullscreen();
-    // build a small status banner
-    var b=document.createElement('div');
-    b.id='proctorBanner';
-    b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#1a1430;color:#cdbcff;border-bottom:1px solid #3a2f60;font:600 12px/1.4 system-ui,sans-serif;padding:7px 14px;display:flex;justify-content:space-between;align-items:center;';
-    b.innerHTML='<span>\uD83D\uDD12 Proctored exam in progress \u2014 stay in fullscreen; leaving this tab is recorded.</span><span id="proctorCount" style="color:#9b87e0;"></span>';
-    document.body.appendChild(b); this.banner=b;
-    // handlers
-    this.handlers.vis=function(){ if(document.hidden){ self.flag('left the exam tab / minimized'); } };
-    this.handlers.blur=function(){ if(self.active){ self.flag('exam window lost focus'); } };
-    this.handlers.fs=function(){
-      if(self.active && !document.fullscreenElement){ self.flag('exited fullscreen'); self.askFullscreen(); }
-    };
-    this.handlers.copy=function(ev){ ev.preventDefault(); self.flag('copy blocked'); };
-    this.handlers.paste=function(ev){ ev.preventDefault(); self.flag('paste blocked'); };
-    this.handlers.ctx=function(ev){ ev.preventDefault(); };
-    this.handlers.beforeunload=function(ev){ if(self.active){ ev.preventDefault(); ev.returnValue=''; return ''; } };
-    document.addEventListener('visibilitychange', this.handlers.vis);
-    window.addEventListener('blur', this.handlers.blur);
-    window.addEventListener('beforeunload', this.handlers.beforeunload);
-    document.addEventListener('fullscreenchange', this.handlers.fs);
-    document.addEventListener('copy', this.handlers.copy);
-    document.addEventListener('paste', this.handlers.paste);
-    document.addEventListener('contextmenu', this.handlers.ctx);
-    // start webcam monitoring if the exam requires it
-    this.startCamera(function(){});
-  },
-  goFullscreen:function(){
-    var el=document.documentElement;
-    if(el.requestFullscreen){ el.requestFullscreen().then(function(){}, function(){}); }
-  },
-  askFullscreen:function(){
-    // gentle re-prompt; a click is needed to re-enter fullscreen
-    var self=this;
-    if($('proctorRefs')){ return; }
-    var d=document.createElement('div'); d.id='proctorRefs';
-    d.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(8,6,20,.92);display:flex;align-items:center;justify-content:center;';
-    d.innerHTML='<div style="max-width:420px;text-align:center;color:#e9e4ff;font-family:system-ui,sans-serif;padding:28px;">'+
-      '<div style="font-size:18px;font-weight:700;margin-bottom:8px;">Return to fullscreen</div>'+
-      '<div style="font-size:13px;color:#b3a9d6;margin-bottom:18px;">This is a proctored exam. Leaving fullscreen has been recorded. Click below to continue.</div>'+
-      '<button id="proctorResume" style="background:#7c5cff;color:#fff;border:none;border-radius:8px;padding:11px 20px;font-size:14px;font-weight:600;cursor:pointer;">Resume exam in fullscreen</button></div>';
-    document.body.appendChild(d);
-    $('proctorResume').addEventListener('click', function(){
-      self.goFullscreen();
-      if(d.parentNode){ document.body.removeChild(d); }
-    });
-  },
-  flag:function(reason){
-    if(!this.active){ return; }
-    // Debounce: opening another window fires BOTH visibilitychange and blur
-    // (and sometimes fullscreenchange). Collapse events within 1.2s into ONE
-    // strike so a single action doesn't burn multiple warnings.
-    var now = Date.now();
-    this.events.push({ t:new Date().toISOString(), reason:reason });   // always log the raw event
-    if(this.cam && this.cam.ready){ this.snapshot(reason); }
-    if(this._lastFlagAt && (now - this._lastFlagAt) < 1200){
-      return;   // same incident, already counted
-    }
-    this._lastFlagAt = now;
-    this.violations++;   // this is the strike count (distinct incidents) - internal only
-    var c=$('proctorCount'); if(c){ c.textContent = 'Activity flagged'; }
-    if(this.violations < this.maxBeforeSubmit){
-      // warn the student WITHOUT revealing how many are left (so they can't
-      // "spend" a known number of free violations).
-      if(this.banner){
-        this.banner.style.background='#3a1420';
-        this.banner.firstChild.textContent='\u26A0 Warning: leaving the exam is recorded. Continuing to do so will submit your exam automatically.';
-      }
-      this.toast('\u26A0 Warning: stay in the exam window. Repeated violations will end and submit your exam.');
-    } else {
-      this.flagSubmit();
-    }
-  },
-  toast:function(msg){
-    var t=document.createElement('div');
-    t.style.cssText='position:fixed;top:46px;left:50%;transform:translateX(-50%);z-index:10001;background:#3a1420;color:#ffd9e0;border:1px solid #7a2540;border-radius:8px;padding:11px 18px;font:600 13px/1.4 system-ui,sans-serif;max-width:520px;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.5);';
-    t.textContent=msg; document.body.appendChild(t);
-    setTimeout(function(){ if(t.parentNode){ t.parentNode.removeChild(t); } }, 4500);
-  },
-  flagSubmit:function(){
-    var self=this;
-    // persist the log FIRST (await it), then stop and submit, so the record
-    // is saved even though we're about to tear everything down.
-    this.persist().then(function(){
-      self.stop();
-      if(typeof gradeExam==='function' && !ExamState.finished && !ExamState.submitting){
-        alert('Your exam was auto-submitted after repeated proctoring flags. Your instructor will see the integrity log.');
-        gradeExam(true);
-      }
-    });
-  },
-  stop:function(){
-    if(!this.active){ return; }
-    this.active=false;
-    this.stopCamera();
-    document.removeEventListener('visibilitychange', this.handlers.vis);
-    window.removeEventListener('blur', this.handlers.blur);
-    window.removeEventListener('beforeunload', this.handlers.beforeunload);
-    document.removeEventListener('fullscreenchange', this.handlers.fs);
-    document.removeEventListener('copy', this.handlers.copy);
-    document.removeEventListener('paste', this.handlers.paste);
-    document.removeEventListener('contextmenu', this.handlers.ctx);
-    if(this.banner && this.banner.parentNode){ this.banner.parentNode.removeChild(this.banner); }
-    this.banner=null;
-    if($('proctorRefs')){ document.body.removeChild($('proctorRefs')); }
-    if(document.fullscreenElement && document.exitFullscreen){ document.exitFullscreen().then(function(){},function(){}); }
-  },
-  // persist the log against the exam's first attempt's student/exam pair
-  persist:function(){
-    if(!ExamState.exam){ return Promise.resolve(); }
-    var rec={
-      exam_id: ExamState.exam.id,
-      course_id: ExamState.courseId,
-      student_id: State.user ? State.user.id : null,
-      violations: this.violations,
-      events: JSON.stringify(this.events.slice(0,50))
-    };
-    if(!rec.student_id){ return Promise.resolve(); }
-    return sb.from('sa_proctor_events').upsert(rec, { onConflict:'exam_id,student_id' }).then(function(r){
-      if(r && r.error){ try{ console.error('proctor persist failed:', r.error.message); }catch(e){} Proctor._lastError = r.error.message; }
-      return r;
-    }, function(e){
-      try{ console.error('proctor persist exception:', e); }catch(x){}
-      Proctor._lastError = (e && e.message) ? e.message : 'unknown';
-    });
-  }
-};
+/* Proctoring is now provided by the shared MNProctor module (mn-proctor.js). */
 
 function openExamReview(examId){
   // The student Exams list lives in #myExamsBody (inside the visible
@@ -2713,113 +2451,22 @@ function loadMyExams() {
 function startExam(exam, accom) {
   ExamState._consented = false;   // require consent fresh for each exam start
   if (!exam.item_ids || exam.item_ids.length === 0) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
-  // If the exam requires a camera in BLOCK mode, get permission before anything else.
-  if (exam.camera_mode === 'block') {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      $('myExamsBody').innerHTML = errCard('This exam requires a webcam, but your browser does not support camera access. Try Chrome or Edge on a laptop.');
-      return;
-    }
-    $('myExamsBody').innerHTML = '<div class="card"><span class="spinner"></span> &nbsp;Requesting camera access (required for this exam)…</div>';
-    navigator.mediaDevices.getUserMedia({ video:true, audio:false }).then(function(s){
-      s.getTracks().forEach(function(t){ t.stop(); }); // release; Proctor re-acquires
-      proceedStartExam(exam, accom);
-    }, function(){
-      $('myExamsBody').innerHTML = errCard('This exam requires a webcam and it was blocked or unavailable. Enable camera access in your browser and try again.');
-    });
-    return;
-  }
+  // Camera permission + ID check-in are handled by the shared consent screen.
   proceedStartExam(exam, accom);
 }
 
 function proceedStartExam(exam, accom) {
   if (!exam.item_ids || exam.item_ids.length === 0) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
-  // For proctored exams, show a rules/consent screen first.
+  // For proctored exams, show the shared rules/consent + camera check-in first.
   var proctored = (exam.proctored !== false);
-  var cam = exam.camera_mode && exam.camera_mode !== 'off';
-  if (proctored && !ExamState._consented) {
-    showProctorConsent(exam, accom, cam);
+  if (proctored && !ExamState._consented && typeof MNProctor!=='undefined') {
+    window.__mnpUserId = State.user ? State.user.id : null;  // for ID capture upload
+    MNProctor.runConsent(exam, $('myExamsBody'),
+      function(){ ExamState._consented = true; reallyStartExam(exam, accom); },
+      function(){ loadMyExams(); });
     return;
   }
   reallyStartExam(exam, accom);
-}
-
-function showProctorConsent(exam, accom, cam){
-  var host = $('myExamsBody');
-  var rules = '';
-  rules += '<li>Stay in this browser window and in fullscreen for the whole exam.</li>';
-  rules += '<li>Do <b>not</b> open another window or tab, switch apps, or minimize.</li>';
-  rules += '<li>Copy, paste, and right-click are disabled.</li>';
-  if(cam){
-    rules += '<li>Your webcam stays on. A snapshot is saved whenever a rule is broken.' + (exam.camera_mode==='block'?' A working camera is required to start.':'') + '</li>';
-    rules += '<li>Hold your <b>photo ID</b> up to the camera and capture it below before starting.</li>';
-    rules += '<li>If you are using a <b>calculator</b>, show it to the camera now.</li>';
-    rules += '<li>One <b>blank sheet</b> for rough work is allowed \u2014 show both sides to the camera to prove it is blank before you begin.</li>';
-  }
-  rules += '<li>Leaving the exam is recorded. Repeated violations will <b>submit your exam automatically</b>.</li>';
-  var idBlock = cam ?
-    ('<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;margin:6px 0 14px;">'+
-      '<div style="font-size:13px;font-weight:700;color:var(--text-bright);margin-bottom:8px;">Camera check-in</div>'+
-      '<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">'+
-        '<div><video id="ciVideo" autoplay muted playsinline style="width:200px;height:150px;background:#000;border-radius:8px;object-fit:cover;"></video>'+
-          '<div id="ciStatus" style="font-size:11.5px;color:var(--text-muted);margin-top:5px;">Starting camera\u2026</div></div>'+
-        '<div style="flex:1;min-width:160px;font-size:12.5px;color:var(--text-muted);">'+
-          '<div style="margin-bottom:8px;">1. Hold your photo ID steady, facing the camera.</div>'+
-          '<div style="margin-bottom:8px;">2. Click <b>Capture ID</b> \u2014 the image is saved for your instructor.</div>'+
-          '<div style="margin-bottom:8px;">3. Briefly show your calculator (if any) and a blank sheet of scratch paper.</div>'+
-          '<button class="btn btn-ghost btn-sm" id="ciCapture" style="margin-top:6px;">\uD83D\uDCF7 Capture ID</button>'+
-          '<div id="ciCaptured" style="font-size:12px;color:var(--green);margin-top:6px;"></div>'+
-        '</div>'+
-      '</div>'+
-    '</div>') : '';
-  host.innerHTML =
-    '<div class="card" style="max-width:640px;margin:0 auto;">'+
-      '<h2 style="font-size:22px;margin-bottom:6px;">Before you begin \u2014 proctored exam</h2>'+
-      '<p style="font-size:13.5px;color:var(--text-muted);margin-bottom:12px;">This exam is monitored to protect academic integrity. Please read the rules:</p>'+
-      '<ul style="font-size:14px;line-height:1.7;color:var(--text-bright);padding-left:20px;margin-bottom:8px;">'+rules+'</ul>'+
-      idBlock+
-      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text-muted);margin:6px 0 16px;">Note: this is browser-based monitoring. It records and reacts to violations but does not physically lock your computer. By starting, you consent to this monitoring'+(cam?' and to webcam snapshots (including your ID photo) being stored and reviewed by your instructor':'')+'.</div>'+
-      '<div class="inline-actions" style="justify-content:flex-end;gap:10px;">'+
-        '<button class="btn btn-ghost btn-sm" id="pcCancel">Cancel</button>'+
-        '<button class="btn btn-primary btn-sm" id="pcBegin"'+(cam && exam.camera_mode==='block'?' disabled':'')+'>I understand \u2014 begin exam</button>'+
-      '</div>'+
-    '</div>';
-  $('pcCancel').addEventListener('click', function(){ if(window.__ciStream){ window.__ciStream.getTracks().forEach(function(t){t.stop();}); window.__ciStream=null; } loadMyExams(); });
-  $('pcBegin').addEventListener('click', function(){
-    if(window.__ciStream){ window.__ciStream.getTracks().forEach(function(t){t.stop();}); window.__ciStream=null; }
-    ExamState._consented = true;
-    reallyStartExam(exam, accom);
-  });
-
-  // camera check-in: start a preview stream and allow ID capture
-  if(cam && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-    navigator.mediaDevices.getUserMedia({ video:{ width:320, height:240 }, audio:false }).then(function(stream){
-      window.__ciStream = stream;
-      var v=$('ciVideo'); if(v){ v.srcObject=stream; }
-      if($('ciStatus')){ $('ciStatus').textContent='Camera on. Capture your ID to continue.'; }
-      var beginBtn=$('pcBegin');
-      if($('ciCapture')){
-        $('ciCapture').addEventListener('click', function(){
-          try{
-            var c=document.createElement('canvas'); c.width=320; c.height=240;
-            c.getContext('2d').drawImage(v,0,0,320,240);
-            c.toBlob(function(blob){
-              if(!blob || !State.user){ return; }
-              var path=exam.id + '/' + State.user.id + '/ID_' + Date.now() + '.jpg';
-              sb.storage.from('proctor-snapshots').upload(path, blob, { contentType:'image/jpeg', upsert:true }).then(function(r){
-                if(r && r.error){ if($('ciCaptured')){ $('ciCaptured').style.color='var(--rose)'; $('ciCaptured').textContent='Upload failed: '+r.error.message; } return; }
-                if($('ciCaptured')){ $('ciCaptured').textContent='\u2713 ID captured. You may begin.'; }
-                if(beginBtn){ beginBtn.disabled=false; }
-              }, function(e){ if($('ciCaptured')){ $('ciCaptured').style.color='var(--rose)'; $('ciCaptured').textContent='Upload error.'; } });
-            }, 'image/jpeg', 0.7);
-          }catch(e){}
-        });
-      }
-    }, function(){
-      if($('ciStatus')){ $('ciStatus').textContent='Camera blocked. Enable camera access to take this exam.'; }
-      // if flag mode (not block), still allow begin
-      if(exam.camera_mode!=='block' && $('pcBegin')){ $('pcBegin').disabled=false; }
-    });
-  }
 }
 
 function reallyStartExam(exam, accom) {
@@ -2861,7 +2508,10 @@ function reallyStartExam(exam, accom) {
     ExamState.items = issued;
     startExamTimer();
     renderExamQuestion();
-    Proctor.start();
+    if(typeof MNProctor!=='undefined'){
+      MNProctor.onAutoSubmit(function(){ if(!ExamState.finished && !ExamState.submitting){ gradeExam(true); } });
+      MNProctor.start(exam, State.user);
+    }
   });
 }
 
@@ -2977,7 +2627,7 @@ function gradeExam(auto) {
   if (ExamState.submitting || ExamState.finished) { return; }
   ExamState.submitting = true;
   if (ExamState.timer) { clearInterval(ExamState.timer); ExamState.timer = null; }
-  if (typeof Proctor !== 'undefined' && Proctor.active) { Proctor.persist(); Proctor.stop(); }
+  if (typeof MNProctor !== 'undefined' && MNProctor.isActive()) { MNProctor.finish(); }
   var host = $('myExamsBody');
   host.innerHTML = '<div class="card" style="text-align:center;"><span class="spinner"></span> &nbsp;' + (auto ? 'Time is up — grading your exam…' : 'Grading your exam…') + '</div>';
   var items = ExamState.items;
