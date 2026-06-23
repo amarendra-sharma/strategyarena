@@ -225,6 +225,10 @@
     </div>
     <button class="btn btn-primary" id="authSubmit" style="width:100%;">Sign in</button>
     <div class="auth-toggle" id="authToggle">No account yet? <b>Create one</b></div>
+    <div style="text-align:center;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+      <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px;">Just want to look around?</div>
+      <button class="btn btn-ghost btn-sm" id="guestBrowseBtn">Browse free chapters &amp; arenas \u2014 no account needed</button>
+    </div>
   </div>
 </div>
 
@@ -416,6 +420,11 @@ function hide(el){ if(el){el.classList.add('hidden');} }
 function setAuthMsg(t,k){ var m=$('authMsg'); m.textContent=t||''; m.className='msg '+(k?k:''); if(!t){m.className='msg';} }
 $('authToggle').addEventListener('click', function(){ State.signup=!State.signup; $('authSubmit').textContent=State.signup?'Create account':'Sign in'; $('authToggle').innerHTML=State.signup?'Already registered? <b>Sign in</b>':'No account yet? <b>Create one</b>'; setAuthMsg('',''); if(State.signup){ show($('signupRole')); } else { hide($('signupRole')); } });
 $('authSubmit').addEventListener('click', doAuth);
+if($('guestBrowseBtn')){ $('guestBrowseBtn').addEventListener('click', function(){
+  // Open the public curriculum sampler; free chapters (1-2) and the Prisoner's
+  // Dilemma arena are accessible without an account.
+  window.open('strategyarena-curriculum.html', '_blank');
+}); }
 if($('forgotLink')){ $('forgotLink').addEventListener('click', function(ev){
   ev.preventDefault();
   var email=$('authEmail').value.trim();
@@ -2740,24 +2749,77 @@ function showProctorConsent(exam, accom, cam){
   rules += '<li>Stay in this browser window and in fullscreen for the whole exam.</li>';
   rules += '<li>Do <b>not</b> open another window or tab, switch apps, or minimize.</li>';
   rules += '<li>Copy, paste, and right-click are disabled.</li>';
-  if(cam){ rules += '<li>Your webcam stays on. A snapshot is saved whenever a rule is broken.' + (exam.camera_mode==='block'?' A working camera is required to start.':'') + '</li>'; }
+  if(cam){
+    rules += '<li>Your webcam stays on. A snapshot is saved whenever a rule is broken.' + (exam.camera_mode==='block'?' A working camera is required to start.':'') + '</li>';
+    rules += '<li>Hold your <b>photo ID</b> up to the camera and capture it below before starting.</li>';
+    rules += '<li>If you are using a <b>calculator</b>, show it to the camera now.</li>';
+    rules += '<li>One <b>blank sheet</b> for rough work is allowed \u2014 show both sides to the camera to prove it is blank before you begin.</li>';
+  }
   rules += '<li>Leaving the exam is recorded. Repeated violations will <b>submit your exam automatically</b>.</li>';
+  var idBlock = cam ?
+    ('<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;margin:6px 0 14px;">'+
+      '<div style="font-size:13px;font-weight:700;color:var(--text-bright);margin-bottom:8px;">Camera check-in</div>'+
+      '<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">'+
+        '<div><video id="ciVideo" autoplay muted playsinline style="width:200px;height:150px;background:#000;border-radius:8px;object-fit:cover;"></video>'+
+          '<div id="ciStatus" style="font-size:11.5px;color:var(--text-muted);margin-top:5px;">Starting camera\u2026</div></div>'+
+        '<div style="flex:1;min-width:160px;font-size:12.5px;color:var(--text-muted);">'+
+          '<div style="margin-bottom:8px;">1. Hold your photo ID steady, facing the camera.</div>'+
+          '<div style="margin-bottom:8px;">2. Click <b>Capture ID</b> \u2014 the image is saved for your instructor.</div>'+
+          '<div style="margin-bottom:8px;">3. Briefly show your calculator (if any) and a blank sheet of scratch paper.</div>'+
+          '<button class="btn btn-ghost btn-sm" id="ciCapture" style="margin-top:6px;">\uD83D\uDCF7 Capture ID</button>'+
+          '<div id="ciCaptured" style="font-size:12px;color:var(--green);margin-top:6px;"></div>'+
+        '</div>'+
+      '</div>'+
+    '</div>') : '';
   host.innerHTML =
-    '<div class="card" style="max-width:620px;margin:0 auto;">'+
+    '<div class="card" style="max-width:640px;margin:0 auto;">'+
       '<h2 style="font-size:22px;margin-bottom:6px;">Before you begin \u2014 proctored exam</h2>'+
       '<p style="font-size:13.5px;color:var(--text-muted);margin-bottom:12px;">This exam is monitored to protect academic integrity. Please read the rules:</p>'+
       '<ul style="font-size:14px;line-height:1.7;color:var(--text-bright);padding-left:20px;margin-bottom:8px;">'+rules+'</ul>'+
-      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text-muted);margin:6px 0 16px;">Note: this is browser-based monitoring. It records and reacts to violations but does not physically lock your computer. By starting, you consent to this monitoring'+(cam?' and to webcam snapshots being stored and reviewed by your instructor':'')+'.</div>'+
+      idBlock+
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text-muted);margin:6px 0 16px;">Note: this is browser-based monitoring. It records and reacts to violations but does not physically lock your computer. By starting, you consent to this monitoring'+(cam?' and to webcam snapshots (including your ID photo) being stored and reviewed by your instructor':'')+'.</div>'+
       '<div class="inline-actions" style="justify-content:flex-end;gap:10px;">'+
         '<button class="btn btn-ghost btn-sm" id="pcCancel">Cancel</button>'+
-        '<button class="btn btn-primary btn-sm" id="pcBegin">I understand \u2014 begin exam</button>'+
+        '<button class="btn btn-primary btn-sm" id="pcBegin"'+(cam && exam.camera_mode==='block'?' disabled':'')+'>I understand \u2014 begin exam</button>'+
       '</div>'+
     '</div>';
-  $('pcCancel').addEventListener('click', function(){ loadMyExams(); });
+  $('pcCancel').addEventListener('click', function(){ if(window.__ciStream){ window.__ciStream.getTracks().forEach(function(t){t.stop();}); window.__ciStream=null; } loadMyExams(); });
   $('pcBegin').addEventListener('click', function(){
+    if(window.__ciStream){ window.__ciStream.getTracks().forEach(function(t){t.stop();}); window.__ciStream=null; }
     ExamState._consented = true;
     reallyStartExam(exam, accom);
   });
+
+  // camera check-in: start a preview stream and allow ID capture
+  if(cam && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+    navigator.mediaDevices.getUserMedia({ video:{ width:320, height:240 }, audio:false }).then(function(stream){
+      window.__ciStream = stream;
+      var v=$('ciVideo'); if(v){ v.srcObject=stream; }
+      if($('ciStatus')){ $('ciStatus').textContent='Camera on. Capture your ID to continue.'; }
+      var beginBtn=$('pcBegin');
+      if($('ciCapture')){
+        $('ciCapture').addEventListener('click', function(){
+          try{
+            var c=document.createElement('canvas'); c.width=320; c.height=240;
+            c.getContext('2d').drawImage(v,0,0,320,240);
+            c.toBlob(function(blob){
+              if(!blob || !State.user){ return; }
+              var path=exam.id + '/' + State.user.id + '/ID_' + Date.now() + '.jpg';
+              sb.storage.from('proctor-snapshots').upload(path, blob, { contentType:'image/jpeg', upsert:true }).then(function(r){
+                if(r && r.error){ if($('ciCaptured')){ $('ciCaptured').style.color='var(--rose)'; $('ciCaptured').textContent='Upload failed: '+r.error.message; } return; }
+                if($('ciCaptured')){ $('ciCaptured').textContent='\u2713 ID captured. You may begin.'; }
+                if(beginBtn){ beginBtn.disabled=false; }
+              }, function(e){ if($('ciCaptured')){ $('ciCaptured').style.color='var(--rose)'; $('ciCaptured').textContent='Upload error.'; } });
+            }, 'image/jpeg', 0.7);
+          }catch(e){}
+        });
+      }
+    }, function(){
+      if($('ciStatus')){ $('ciStatus').textContent='Camera blocked. Enable camera access to take this exam.'; }
+      // if flag mode (not block), still allow begin
+      if(exam.camera_mode!=='block' && $('pcBegin')){ $('pcBegin').disabled=false; }
+    });
+  }
 }
 
 function reallyStartExam(exam, accom) {
