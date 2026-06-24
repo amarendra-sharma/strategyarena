@@ -48,8 +48,16 @@ var MNProctor = (function () {
     active: false, violations: 0, events: [], maxBeforeSubmit: 4, lastFlagAt: 0,
     banner: null, handlers: {}, exam: null, user: null,
     cam: { stream: null, video: null, canvas: null, faceDetector: null, faceTimer: null, thumb: null, ready: false },
+    audio: { ctx: null, analyser: null, data: null, timer: null, speakingSince: 0, lastVoiceFlag: 0 },
+    rec: { recording: false },
     lastError: null, lastSnapError: null
   };
+  // tuning knobs
+  var VOICE_THRESHOLD = 0.045;   // RMS above this = sound present (0..1)
+  var VOICE_SUSTAIN_MS = 2500;   // must be sustained this long to count as talking
+  var VOICE_COOLDOWN_MS = 20000; // min gap between voice flags (avoids spamming)
+  var CLIP_MS = 9000;            // length of a recorded clip
+  var RETENTION_DAYS = 30;       // clips/snapshots auto-deleted after this
 
   function $(id){ return document.getElementById(id); }
   function esc(s){ if(s===null||s===undefined){return '';} return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -78,7 +86,7 @@ var MNProctor = (function () {
     rules += '<li>Do <b>not</b> open another window or tab, switch apps, or minimize.</li>';
     rules += '<li>Copy, paste, and right-click are disabled.</li>';
     if(cam){
-      rules += '<li>Your webcam stays on. A snapshot is saved whenever a rule is broken.' + (exam.camera_mode==='block'?' A working camera is required to start.':'') + '</li>';
+      rules += '<li>Your webcam <b>and microphone</b> stay on. A photo is saved when a rule is broken, and a short <b>video clip</b> is recorded if talking is detected during the exam.' + (exam.camera_mode==='block'?' A working camera is required to start.':'') + '</li>';
       rules += '<li>Hold your <b>photo ID</b> up to the camera and capture it below before starting.</li>';
       rules += '<li>If you are using a <b>calculator</b>, show it to the camera now.</li>';
       rules += '<li>One <b>blank sheet</b> for rough work is allowed \u2014 show both sides to the camera to prove it is blank before you begin.</li>';
@@ -107,7 +115,7 @@ var MNProctor = (function () {
         '<p style="font-size:13.5px;opacity:.75;margin-bottom:12px;">This exam is monitored to protect academic integrity. Please read the rules:</p>'+
         '<ul style="font-size:14px;line-height:1.7;padding-left:20px;margin-bottom:8px;">'+rules+'</ul>'+
         idBlock+
-        '<div style="background:rgba(0,0,0,.15);border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:10px 12px;font-size:12.5px;opacity:.8;margin:6px 0 16px;">Note: this is browser-based monitoring. It records and reacts to violations but does not physically lock your computer. By starting, you consent to this monitoring'+(cam?' and to webcam snapshots (including your ID photo) being stored and reviewed by your instructor':'')+'.</div>'+
+        '<div style="background:rgba(0,0,0,.15);border:1px solid rgba(128,128,128,.25);border-radius:8px;padding:10px 12px;font-size:12.5px;opacity:.8;margin:6px 0 16px;">Note: this is browser-based monitoring. It records and reacts to violations but does not physically lock your computer. By starting, you consent to this monitoring'+(cam?' and to webcam photos, your ID photo, and short video clips (with audio, recorded if talking is detected) being stored and reviewed by your instructor. Recordings are automatically deleted after 30 days':'')+'.</div>'+
         '<div style="display:flex;justify-content:flex-end;gap:10px;">'+
           '<button id="mnpCancel" style="cursor:pointer;padding:8px 14px;border-radius:7px;border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;">Cancel</button>'+
           '<button id="mnpBegin" style="cursor:pointer;padding:8px 16px;border-radius:7px;border:none;background:#7c5cff;color:#fff;font-weight:600;'+(cam && exam.camera_mode==='block'?'opacity:.5;':'')+'"'+(cam && exam.camera_mode==='block'?' disabled':'')+'>I understand \u2014 begin exam</button>'+
@@ -195,7 +203,12 @@ var MNProctor = (function () {
     if(!S.active){ return; }
     var now=Date.now();
     S.events.push({ t:new Date().toISOString(), reason:reason });
-    if(S.cam.ready){ snapshot(reason); }
+    // Voice flags capture a short VIDEO CLIP (to see/hear live-help cheating);
+    // all other flags keep the cheap photo snapshot.
+    if(S.cam.ready){
+      if(reason && reason.indexOf('voice')===0){ recordClip(reason); }
+      else { snapshot(reason); }
+    }
     if(S.lastFlagAt && (now - S.lastFlagAt) < 1200){ return; } // debounce one incident
     S.lastFlagAt=now;
     S.violations++;
@@ -227,7 +240,7 @@ var MNProctor = (function () {
   function startCamera(){
     if(camMode()==='off'){ return; }
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ flag('camera not supported by browser'); return; }
-    navigator.mediaDevices.getUserMedia({ video:{ width:320, height:240 }, audio:false }).then(function(stream){
+    navigator.mediaDevices.getUserMedia({ video:{ width:320, height:240 }, audio:true }).then(function(stream){
       S.cam.stream=stream;
       var v=document.createElement('video'); v.autoplay=true; v.muted=true; v.playsInline=true; v.srcObject=stream;
       v.style.cssText='width:120px;height:90px;border-radius:8px;object-fit:cover;display:block;';
@@ -235,13 +248,14 @@ var MNProctor = (function () {
       var c=document.createElement('canvas'); c.width=320; c.height=240; S.cam.canvas=c;
       var thumb=document.createElement('div'); thumb.id='mnpCam';
       thumb.style.cssText='position:fixed;bottom:14px;right:14px;z-index:9999;background:#0c0a18;border:1px solid #3a2f60;border-radius:10px;padding:5px;box-shadow:0 8px 24px rgba(0,0,0,.5);';
-      var lbl=document.createElement('div'); lbl.style.cssText='font:600 9px/1.3 system-ui;color:#9b87e0;text-align:center;margin-top:3px;'; lbl.textContent='\uD83D\uDD34 REC \u00b7 monitored';
+      var lbl=document.createElement('div'); lbl.style.cssText='font:600 9px/1.3 system-ui;color:#9b87e0;text-align:center;margin-top:3px;'; lbl.textContent='\uD83D\uDD34 REC \u00b7 audio + video monitored';
       thumb.appendChild(v); thumb.appendChild(lbl); document.body.appendChild(thumb); S.cam.thumb=thumb;
       var track=stream.getVideoTracks()[0];
       if(track){ track.onended=function(){ if(S.active){ flag('camera turned off mid-exam'); } }; }
       if('FaceDetector' in window){ try{ S.cam.faceDetector=new window.FaceDetector({ fastMode:true, maxDetectedFaces:3 }); }catch(e){ S.cam.faceDetector=null; } }
       S.cam.ready=true;
       snapshot('exam start');
+      startVoiceDetection(stream);
       if(S.cam.faceDetector){
         S.cam.faceTimer=setInterval(function(){
           if(!S.active || !S.cam.video){ return; }
@@ -252,6 +266,78 @@ var MNProctor = (function () {
         }, 8000);
       }
     }, function(){ flag('camera access denied'); });
+  }
+
+  // -- audio voice-activity detection (free, in-browser, stores nothing) -----
+  function startVoiceDetection(stream){
+    try{
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC){ return; }                // unsupported browser: skip silently
+      if(!stream.getAudioTracks || stream.getAudioTracks().length===0){ return; } // mic denied
+      S.audio.ctx = new AC();
+      var src = S.audio.ctx.createMediaStreamSource(stream);
+      S.audio.analyser = S.audio.ctx.createAnalyser();
+      S.audio.analyser.fftSize = 512;
+      S.audio.data = new Uint8Array(S.audio.analyser.fftSize);
+      src.connect(S.audio.analyser);    // analyser only; NOT connected to output (no echo)
+      S.audio.timer = setInterval(pollVoice, 400);
+    }catch(e){ try{ console.error('mnproctor audio init failed:', e); }catch(x){} }
+  }
+  function pollVoice(){
+    if(!S.active || !S.audio.analyser){ return; }
+    S.audio.analyser.getByteTimeDomainData(S.audio.data);
+    // RMS of the waveform around the 128 midpoint, normalized to 0..1
+    var sum=0, n=S.audio.data.length;
+    for(var i=0;i<n;i++){ var d=(S.audio.data[i]-128)/128; sum += d*d; }
+    var rms = Math.sqrt(sum/n);
+    var now = Date.now();
+    if(rms > VOICE_THRESHOLD){
+      if(!S.audio.speakingSince){ S.audio.speakingSince = now; }
+      else if((now - S.audio.speakingSince) >= VOICE_SUSTAIN_MS){
+        // sustained speech detected
+        if((now - S.audio.lastVoiceFlag) >= VOICE_COOLDOWN_MS){
+          S.audio.lastVoiceFlag = now;
+          S.audio.speakingSince = 0;
+          flag('voice activity detected');   // flag() will record a video clip
+        }
+      }
+    } else {
+      S.audio.speakingSince = 0;   // silence resets the sustain timer
+    }
+  }
+  function stopVoiceDetection(){
+    if(S.audio.timer){ clearInterval(S.audio.timer); S.audio.timer=null; }
+    if(S.audio.ctx){ try{ S.audio.ctx.close(); }catch(e){} S.audio.ctx=null; }
+    S.audio.analyser=null; S.audio.data=null; S.audio.speakingSince=0; S.audio.lastVoiceFlag=0;
+  }
+
+  // -- record a short video clip (used for voice flags) ----------------------
+  function recordClip(reason){
+    if(S.rec.recording || !S.cam.stream || !S.user || !S.exam){ return; }
+    if(typeof MediaRecorder === 'undefined'){ snapshot(reason); return; } // fallback to photo
+    var mime = '';
+    try{
+      if(MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')){ mime='video/webm;codecs=vp9,opus'; }
+      else if(MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')){ mime='video/webm;codecs=vp8,opus'; }
+      else if(MediaRecorder.isTypeSupported('video/webm')){ mime='video/webm'; }
+    }catch(e){}
+    var mr;
+    try{ mr = mime ? new MediaRecorder(S.cam.stream, { mimeType:mime }) : new MediaRecorder(S.cam.stream); }
+    catch(e){ snapshot(reason); return; }
+    var chunks=[];
+    S.rec.recording = true;
+    mr.ondataavailable = function(ev){ if(ev.data && ev.data.size>0){ chunks.push(ev.data); } };
+    mr.onstop = function(){
+      S.rec.recording = false;
+      var blob = new Blob(chunks, { type:'video/webm' });
+      if(!blob.size){ return; }
+      var path = S.exam.id + '/' + S.user.id + '/CLIP_' + Date.now() + '.webm';
+      SB.storage.from(BUCKET).upload(path, blob, { contentType:'video/webm', upsert:true }).then(function(r){
+        if(r && r.error){ try{ console.error('mnproctor clip upload failed:', r.error.message); }catch(e){} S.lastSnapError=r.error.message; }
+      }, function(e){ try{ console.error('mnproctor clip exception:', e); }catch(x){} });
+    };
+    try{ mr.start(); }catch(e){ S.rec.recording=false; snapshot(reason); return; }
+    setTimeout(function(){ try{ if(mr.state!=='inactive'){ mr.stop(); } }catch(e){ S.rec.recording=false; } }, CLIP_MS);
   }
   function snapshot(reason){
     if(!S.cam.ready || !S.cam.video || !S.cam.canvas){ return; }
@@ -268,6 +354,7 @@ var MNProctor = (function () {
     }catch(e){ try{ console.error('mnproctor snapshot draw error:', e); }catch(x){} }
   }
   function stopCamera(){
+    stopVoiceDetection();
     if(S.cam.faceTimer){ clearInterval(S.cam.faceTimer); S.cam.faceTimer=null; }
     if(S.cam.stream){ S.cam.stream.getTracks().forEach(function(t){ try{t.stop();}catch(e){} }); }
     if(S.cam.thumb && S.cam.thumb.parentNode){ S.cam.thumb.parentNode.removeChild(S.cam.thumb); }
@@ -336,13 +423,29 @@ var MNProctor = (function () {
         hostEl.innerHTML=html;
         Array.prototype.forEach.call(hostEl.querySelectorAll('.mnpSnap'), function(w){
           var prefix=w.getAttribute('data-snap');
-          SB.storage.from(BUCKET).list(prefix, { limit:16, sortBy:{ column:'name', order:'desc' } }).then(function(lr){
+          SB.storage.from(BUCKET).list(prefix, { limit:100, sortBy:{ column:'name', order:'desc' } }).then(function(lr){
             var files=lr.data?lr.data:[];
+            var cutoff = Date.now() - (RETENTION_DAYS*24*60*60*1000);
+            var stale=[]; var fresh=[];
             files.forEach(function(f){
+              var created = f.created_at ? new Date(f.created_at).getTime() : 0;
+              if(created && created < cutoff){ stale.push(prefix+'/'+f.name); } else { fresh.push(f); }
+            });
+            // 30-day retention: delete anything older than the cutoff
+            if(stale.length){ SB.storage.from(BUCKET).remove(stale).then(function(){}, function(){}); }
+            fresh.forEach(function(f){
               var full=prefix+'/'+f.name;
+              var isClip = f.name.indexOf('CLIP_')===0 || /\.webm$/.test(f.name);
+              var isId = f.name.indexOf('ID_')===0;
               SB.storage.from(BUCKET).createSignedUrl(full, 3600).then(function(su){
-                if(su.data && su.data.signedUrl){
-                  var isId = f.name.indexOf('ID_')===0;
+                if(!(su.data && su.data.signedUrl)){ return; }
+                if(isClip){
+                  var vid=document.createElement('video');
+                  vid.src=su.data.signedUrl; vid.controls=true; vid.preload='metadata';
+                  vid.title='voice-flag clip';
+                  vid.style.cssText='width:140px;height:105px;object-fit:cover;border-radius:5px;border:2px solid #e5484d;background:#000;cursor:pointer;';
+                  w.appendChild(vid);
+                } else {
                   var img=document.createElement('img'); img.src=su.data.signedUrl;
                   img.title = isId ? 'ID photo' : 'flag snapshot';
                   img.style.cssText='width:80px;height:60px;object-fit:cover;border-radius:5px;border:'+(isId?'2px solid #f5a623':'1px solid rgba(128,128,128,.4)')+';cursor:pointer;';
