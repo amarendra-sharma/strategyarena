@@ -253,6 +253,8 @@
       <div class="nav-item" data-view="dashboard"><span class="ico">&#9632;</span> Dashboard</div>
       <div class="nav-item" data-view="courses"><span class="ico">&#128218;</span> Courses</div>
       <div class="nav-item" data-view="roster"><span class="ico">&#128101;</span> Roster</div>
+      <div class="nav-item" data-view="materials"><span class="ico">&#127916;</span> Materials</div>
+      <div class="nav-item" data-view="announce"><span class="ico">&#128226;</span> Announcements</div>
       <div class="nav-item" data-view="gradebook"><span class="ico">&#128202;</span> Gradebook</div>
       <div class="nav-item" data-view="analytics"><span class="ico">&#128293;</span> Analytics</div>
       <div class="nav-item" data-view="exams"><span class="ico">&#128221;</span> Exams</div>
@@ -291,6 +293,8 @@
       <div class="page-sub">Your strategic-thinking workspace. Pick up where you left off.</div>
       <div class="stat-row" id="homeStats"></div>
       <div class="grid grid-3" id="homeQuick"></div>
+      <div id="homeAnnounce"></div>
+      <div id="homeMaterials"></div>
       <div id="homeCourses"></div>
     </section>
 
@@ -573,6 +577,8 @@ var VIEW_META = {
   dashboard:['Teaching Dashboard','Your teaching overview.',false],
   courses:['Courses','Create and configure your courses.',false],
   roster:['Roster','Students enrolled in this course.',true],
+  materials:['Course Materials','Share lecture videos and slides with your students.',true],
+  announce:['Announcements','Post announcements and email your students.',true],
   gradebook:['Gradebook','Weighted grades across all components.',true],
   analytics:['Analytics','Concept mastery and cohort engagement.',true],
   exams:['Exams','Assemble and publish midterms and finals.',true],
@@ -590,7 +596,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(it
   });
 });
 function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_VIEWS[i]===v){ return true; } } return false; }
-var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','gradebook','analytics','exams','grading'];
+var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','materials','announce','gradebook','analytics','exams','grading'];
 var ADMIN_VIEWS = ['platform','people','subscriptions','diagnostics'];
 function viewAllowed(view){
   if(isStudentView(view)){ return true; }
@@ -635,6 +641,8 @@ function rerenderCurrentView(){
   if(currentView==='dashboard'){ renderDashboard(host); }
   else if(currentView==='courses'){ renderCourses(host); }
   else if(currentView==='roster'){ renderRoster(host); }
+  else if(currentView==='materials'){ renderMaterials(host); }
+  else if(currentView==='announce'){ renderAnnounce(host); }
   else if(currentView==='gradebook'){ renderGradebook(host); }
   else if(currentView==='analytics'){ renderAnalytics(host); }
   else if(currentView==='exams'){ renderExams(host); }
@@ -771,6 +779,120 @@ function wInput(id,label,val){ return '<div><label style="font-size:10px;color:v
 /* ====================================================================
    ROSTER
    ==================================================================== */
+function renderMaterials(host){
+  if(!needCourse(host)){ return; }
+  host.innerHTML='<div class="card" style="margin-bottom:16px;">'+
+    '<h3 style="font-size:16px;margin-bottom:4px;">Add lecture material</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">Share a link to a video or slides (YouTube, Google Drive, Panopto, Dropbox, etc.). You name it; students get a clickable list. Nothing is uploaded here \u2014 just the link.</p>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;">'+
+      '<div class="field"><label>Title</label><input id="matTitle" placeholder="e.g. Week 3: Repeated Games lecture"></div>'+
+      '<div class="field"><label>Link (URL)</label><input id="matUrl" placeholder="https://\u2026"></div>'+
+      '<div class="field"><label>Type</label><select id="matKind"><option value="video">Video</option><option value="slides">Slides</option><option value="link">Other</option></select></div>'+
+    '</div>'+
+    '<div id="matMsg" class="msg"></div>'+
+    '<button class="btn btn-primary btn-sm" id="matAdd" style="margin-top:8px;">Add material</button></div>'+
+    '<div id="matList">'+loadingCard()+'</div>';
+  $('matAdd').addEventListener('click', function(){
+    var title=$('matTitle').value.trim(), url=$('matUrl').value.trim(), kind=$('matKind').value;
+    var e=$('matMsg');
+    if(!title || !url){ e.className='msg err'; e.textContent='Enter a title and a link.'; return; }
+    if(url.indexOf('http')!==0){ e.className='msg err'; e.textContent='Link must start with http:// or https://'; return; }
+    $('matAdd').disabled=true;
+    sb.from('sa_materials').insert({ course_id:State.teachCourseId, title:title, url:url, kind:kind, created_by:State.user.id }).then(function(r){
+      $('matAdd').disabled=false;
+      if(r.error){ e.className='msg err'; e.textContent=r.error.message; return; }
+      $('matTitle').value=''; $('matUrl').value=''; e.className='msg'; e.textContent='';
+      loadMaterialsList();
+    });
+  });
+  loadMaterialsList();
+}
+function matIcon(kind){ return kind==='video'?'\uD83C\uDFA5':(kind==='slides'?'\uD83D\uDC3D':'\uD83D\uDD17'); }
+function loadMaterialsList(){
+  sb.from('sa_materials').select('*').eq('course_id',State.teachCourseId).order('created_at',{ascending:false}).then(function(r){
+    var rows=r.data?r.data:[];
+    if(rows.length===0){ $('matList').innerHTML='<div class="card empty">No materials yet. Add a lecture video or slide link above.</div>'; return; }
+    var html='<div class="card"><h3 style="font-size:15px;margin-bottom:10px;">Shared with students</h3>';
+    rows.forEach(function(m){
+      html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">'+
+        '<div style="flex:1;"><span style="margin-right:6px;">'+matIcon(m.kind)+'</span><a href="'+esc(m.url)+'" target="_blank" rel="noopener" style="color:var(--violet);text-decoration:none;">'+esc(m.title)+'</a>'+
+        '<div style="font-size:11px;color:var(--text-subtle);margin-top:2px;">'+esc(m.url)+'</div></div>'+
+        '<button class="btn btn-danger btn-sm" data-delmat="'+m.id+'">Remove</button></div>';
+    });
+    html+='</div>';
+    $('matList').innerHTML=html;
+    Array.prototype.forEach.call($('matList').querySelectorAll('[data-delmat]'), function(b){ b.addEventListener('click', function(){
+      if(!confirm('Remove this material?')){ return; }
+      sb.from('sa_materials').delete().eq('id',b.getAttribute('data-delmat')).then(loadMaterialsList);
+    }); });
+  });
+}
+
+function renderAnnounce(host){
+  if(!needCourse(host)){ return; }
+  host.innerHTML='<div class="card" style="margin-bottom:16px;">'+
+    '<h3 style="font-size:16px;margin-bottom:4px;">Post an announcement</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">Students see announcements on their Home page. You can also open your email client pre-addressed to all enrolled students.</p>'+
+    '<div class="field"><label>Title</label><input id="annTitle" placeholder="e.g. Midterm moved to Friday"></div>'+
+    '<div class="field"><label>Message</label><textarea id="annBody" rows="4" placeholder="Write your announcement\u2026"></textarea></div>'+
+    '<div id="annMsg" class="msg"></div>'+
+    '<div class="inline-actions" style="margin-top:8px;"><button class="btn btn-primary btn-sm" id="annPost">Post announcement</button>'+
+    '<button class="btn btn-ghost btn-sm" id="annEmail">\u2709 Email students this</button></div></div>'+
+    '<div id="annList">'+loadingCard()+'</div>';
+  $('annPost').addEventListener('click', function(){
+    var title=$('annTitle').value.trim(), body=$('annBody').value.trim();
+    var e=$('annMsg');
+    if(!title || !body){ e.className='msg err'; e.textContent='Enter a title and a message.'; return; }
+    $('annPost').disabled=true;
+    sb.from('sa_announcements').insert({ course_id:State.teachCourseId, title:title, body:body, created_by:State.user.id }).then(function(r){
+      $('annPost').disabled=false;
+      if(r.error){ e.className='msg err'; e.textContent=r.error.message; return; }
+      $('annTitle').value=''; $('annBody').value=''; e.className='msg ok'; e.textContent='Posted. Students will see it on their Home page.';
+      loadAnnounceList();
+    });
+  });
+  $('annEmail').addEventListener('click', function(){ emailStudents($('annTitle').value.trim(), $('annBody').value.trim()); });
+  loadAnnounceList();
+}
+function emailStudents(subject, body){
+  // open the professor's own email client, BCC all enrolled students
+  sb.from('sa_enrollments').select('sa_profiles(email)').eq('course_id',State.teachCourseId).eq('status','active').then(function(r){
+    var rows=r.data?r.data:[];
+    var emails=[];
+    rows.forEach(function(x){ if(x.sa_profiles && x.sa_profiles.email){ emails.push(x.sa_profiles.email); } });
+    if(emails.length===0){ alert('No enrolled students with email addresses yet.'); return; }
+    var c=findCourse(State.teachCourseId);
+    var subj = subject || ('Announcement: '+(c?c.title:'your course'));
+    var mailto='mailto:?bcc='+encodeURIComponent(emails.join(','))+'&subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body||'');
+    if(mailto.length>1900){ // some clients cap URL length; warn
+      alert('Opening your email app with '+emails.length+' students in BCC. If it does not open, your list may be too long for a mailto link \u2014 post it as an announcement instead.');
+    }
+    window.location.href=mailto;
+  });
+}
+function loadAnnounceList(){
+  sb.from('sa_announcements').select('*').eq('course_id',State.teachCourseId).order('created_at',{ascending:false}).then(function(r){
+    var rows=r.data?r.data:[];
+    if(rows.length===0){ $('annList').innerHTML='<div class="card empty">No announcements yet.</div>'; return; }
+    var html='<div class="card"><h3 style="font-size:15px;margin-bottom:10px;">Posted announcements</h3>';
+    rows.forEach(function(a){
+      var when=a.created_at?new Date(a.created_at).toLocaleString():'';
+      html+='<div style="padding:10px 0;border-bottom:1px solid var(--border);">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'+
+          '<div style="flex:1;"><div style="font-size:14px;font-weight:600;color:var(--text-bright);">'+esc(a.title)+'</div>'+
+          '<div style="font-size:13px;color:var(--text-muted);margin-top:3px;white-space:pre-wrap;">'+esc(a.body)+'</div>'+
+          '<div style="font-size:11px;color:var(--text-subtle);margin-top:4px;">'+esc(when)+'</div></div>'+
+          '<button class="btn btn-danger btn-sm" data-delann="'+a.id+'">Delete</button></div></div>';
+    });
+    html+='</div>';
+    $('annList').innerHTML=html;
+    Array.prototype.forEach.call($('annList').querySelectorAll('[data-delann]'), function(b){ b.addEventListener('click', function(){
+      if(!confirm('Delete this announcement?')){ return; }
+      sb.from('sa_announcements').delete().eq('id',b.getAttribute('data-delann')).then(loadAnnounceList);
+    }); });
+  });
+}
+
 function renderRoster(host){
   if(!needCourse(host)){ return; }
   var c=findCourse(State.teachCourseId);
@@ -2141,6 +2263,48 @@ function loadHome() {
   if (jc) { jc.addEventListener('click', openJoinCourse); }
   // show the student's enrolled professor courses (if any)
   loadMyCourses();
+  loadStudentAnnouncements();
+  loadStudentMaterials();
+}
+function loadStudentAnnouncements(){
+  var box=$('homeAnnounce'); if(!box || !State.user){ return; }
+  sb.from('sa_enrollments').select('course_id').eq('student_id',State.user.id).eq('status','active').then(function(en){
+    var ids=(en.data?en.data:[]).map(function(x){ return x.course_id; });
+    if(ids.length===0){ box.innerHTML=''; return; }
+    sb.from('sa_announcements').select('*').in('course_id',ids).order('created_at',{ascending:false}).limit(5).then(function(r){
+      var rows=r.data?r.data:[];
+      if(rows.length===0){ box.innerHTML=''; return; }
+      var html='<div class="card" style="margin-top:8px;"><h3 style="font-size:15px;margin-bottom:10px;">\uD83D\uDCE2 Announcements</h3>';
+      rows.forEach(function(a){
+        var when=a.created_at?new Date(a.created_at).toLocaleDateString():'';
+        html+='<div style="padding:8px 0;border-bottom:1px solid var(--border);">'+
+          '<div style="font-size:14px;font-weight:600;color:var(--text-bright);">'+esc(a.title)+'</div>'+
+          '<div style="font-size:13px;color:var(--text-muted);margin-top:3px;white-space:pre-wrap;">'+esc(a.body)+'</div>'+
+          '<div style="font-size:11px;color:var(--text-subtle);margin-top:3px;">'+esc(when)+'</div></div>';
+      });
+      html+='</div>';
+      box.innerHTML=html;
+    });
+  });
+}
+function loadStudentMaterials(){
+  var box=$('homeMaterials'); if(!box || !State.user){ return; }
+  sb.from('sa_enrollments').select('course_id').eq('student_id',State.user.id).eq('status','active').then(function(en){
+    var ids=(en.data?en.data:[]).map(function(x){ return x.course_id; });
+    if(ids.length===0){ box.innerHTML=''; return; }
+    sb.from('sa_materials').select('*').in('course_id',ids).order('created_at',{ascending:false}).then(function(r){
+      var rows=r.data?r.data:[];
+      if(rows.length===0){ box.innerHTML=''; return; }
+      var html='<div class="card" style="margin-top:8px;"><h3 style="font-size:15px;margin-bottom:10px;">\uD83C\uDFA5 Lecture materials</h3>';
+      rows.forEach(function(m){
+        html+='<div style="padding:7px 0;border-bottom:1px solid var(--border);">'+
+          '<span style="margin-right:6px;">'+matIcon(m.kind)+'</span>'+
+          '<a href="'+esc(m.url)+'" target="_blank" rel="noopener" style="color:var(--violet);text-decoration:none;">'+esc(m.title)+'</a></div>';
+      });
+      html+='</div>';
+      box.innerHTML=html;
+    });
+  });
 }
 
 function openJoinCourse() {
