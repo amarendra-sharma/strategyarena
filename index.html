@@ -1036,7 +1036,7 @@ function renderGradebook(host){
   host.innerHTML=loadingCard();
   var c=findCourse(State.teachCourseId);
   var weights={reading:c.weight_reading,quizzes:c.weight_quizzes,arenas:c.weight_arenas,midterm:c.weight_midterm,final:c.weight_final};
-  // 1) gradebook view rows, 2) published exams, 3) exam attempts
+  // 1) gradebook view rows, 2) published exams, 3) exam attempts, + assignments/overrides
   Promise.all([
     sb.from('sa_gradebook_v').select('*').eq('course_id',State.teachCourseId),
     sb.from('sa_exams').select('id,kind,total_points,is_published,attempt_scoring').eq('course_id',State.teachCourseId).eq('is_published',true)
@@ -1076,11 +1076,34 @@ function renderGradebook(host){
           if(key){ examScore[sid][key]=total; }
         });
       });
-      buildGradebook(host,c,weights,rows,midterm,fin,examScore);
+      // assignment averages + manual overrides
+      Promise.all([
+        sb.from('sa_assignments').select('id,points').eq('course_id',State.teachCourseId).eq('is_published',true),
+        sb.from('sa_submissions').select('assignment_id,student_id,score').eq('course_id',State.teachCourseId),
+        sb.from('sa_grade_overrides').select('student_id,override_pct,note').eq('course_id',State.teachCourseId)
+      ]).then(function(ar){
+        var aRows=ar[0].data?ar[0].data:[];
+        var subs=ar[1].data?ar[1].data:[];
+        var ovr=ar[2].data?ar[2].data:[];
+        var ptsOf={}; aRows.forEach(function(a){ ptsOf[a.id]=a.points||0; });
+        // per student: sum(score)/sum(points over graded assignments)
+        var earn={}, poss={};
+        subs.forEach(function(s){
+          if(s.score===null||s.score===undefined){ return; }
+          if(!earn[s.student_id]){ earn[s.student_id]=0; poss[s.student_id]=0; }
+          earn[s.student_id]+=Number(s.score);
+          poss[s.student_id]+=(ptsOf[s.assignment_id]||0);
+        });
+        var asgScore={};
+        Object.keys(earn).forEach(function(sid){ asgScore[sid]= poss[sid]>0 ? (earn[sid]/poss[sid]) : null; });
+        var overrideOf={}; ovr.forEach(function(o){ overrideOf[o.student_id]={ pct:o.override_pct, note:o.note }; });
+        buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf);
+      });
     });
   });
 }
-function buildGradebook(host,c,weights,rows,midterm,fin,examScore){
+function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf){
+  asgScore = asgScore || {}; overrideOf = overrideOf || {};
   if(rows.length===0){ host.innerHTML='<div class="card empty">No enrolled students yet. Share the join code <span class="pill-code">'+esc(c.join_code)+'</span> so students can join.</div>'; return; }
   var computed=rows.map(function(r){
     var reading=r.chapters_read/14;
@@ -1094,33 +1117,50 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore){
     if(finScore!==null){ comps.push(['final',finScore,weights.final]); }
     var wsum=comps.reduce(function(s,x){return s+x[2];},0);
     var total=wsum>0?comps.reduce(function(s,x){return s+x[1]*x[2];},0)/wsum:0;
-    return { email:r.email, name:r.full_name, sub:r.sub_status, reading:reading, quizzes:quizzes, arenas:arenas,
+    var asg=(asgScore[r.student_id]!==undefined&&asgScore[r.student_id]!==null)?asgScore[r.student_id]:null;
+    var ovr=overrideOf[r.student_id]?overrideOf[r.student_id]:null;
+    var finalPct = ovr ? (Number(ovr.pct)/100) : total;
+    return { sid:r.student_id, email:r.email, name:r.full_name, sub:r.sub_status, reading:reading, quizzes:quizzes, arenas:arenas,
       practice:(r.practice_attempts>0?r.practice_correct/r.practice_attempts:null),
-      midterm:midScore, final:finScore, total:total };
+      midterm:midScore, final:finScore, assignments:asg, computed:total, override:ovr, finalPct:finalPct };
   });
   var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
-    '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data, so untaken or unpublished exams are excluded (not counted as zero). This differs from a student\u2019s &ldquo;Course completion,&rdquo; which counts the whole course including exams not yet taken.</div>'+
+    '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data. <b>Assignments</b> are shown for reference; to fold them (or participation) into a student\u2019s final grade, use the <b>Override</b> column \u2014 an entered override becomes the Final grade and is what the CSV exports.</div>'+
     '<button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div>';
-  html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Student</th><th>Sub</th><th>Reading</th><th>Quizzes</th><th>Arenas</th><th>Practice</th><th>Midterm</th><th>Final</th><th>Weighted</th></tr></thead><tbody>';
+  html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col"></th></tr></thead><tbody>';
   computed.forEach(function(g){
-    html+='<tr><td>'+esc(g.name||g.email)+'</td><td>'+subTag(g.sub)+'</td>'+
+    html+='<tr><th scope="row" style="font-weight:500;">'+esc(g.name||g.email)+'</th><td>'+subTag(g.sub)+'</td>'+
       '<td>'+pct(g.reading)+'</td><td>'+pct(g.quizzes)+'</td><td>'+pct(g.arenas)+'</td>'+
-      '<td>'+(g.practice===null?'<span class="tag dim">--</span>':pct(g.practice))+'</td>'+
+      '<td>'+(g.assignments===null?'<span class="tag dim">--</span>':pct(g.assignments))+'</td>'+
       '<td>'+(g.midterm===null?'<span class="tag dim">--</span>':pct(g.midterm))+'</td>'+
       '<td>'+(g.final===null?'<span class="tag dim">--</span>':pct(g.final))+'</td>'+
-      '<td style="font-weight:600;color:var(--text-bright);">'+pct(g.total)+'</td></tr>';
+      '<td>'+pct(g.computed)+'</td>'+
+      '<td><label class="sr-only" for="ovr-'+g.sid+'">Override percent for '+esc(g.name||g.email)+'</label><input id="ovr-'+g.sid+'" type="number" min="0" max="100" step="0.1" placeholder="\u2014" value="'+(g.override?g.override.pct:'')+'" style="width:64px;"></td>'+
+      '<td style="font-weight:600;color:var(--text-bright);">'+pct(g.finalPct)+(g.override?' <span class="tag violet" title="manual override">ovr</span>':'')+'</td>'+
+      '<td><button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button></td></tr>';
   });
   html+='</tbody></table></div>';
   host.innerHTML=html;
   $('csvBtn').addEventListener('click', function(){ exportCSV(c,computed); });
+  Array.prototype.forEach.call(host.querySelectorAll('[data-saveovr]'), function(b){ b.addEventListener('click', function(){
+    var sid=b.getAttribute('data-saveovr');
+    var v=$('ovr-'+sid).value;
+    b.disabled=true; b.textContent='Saving\u2026';
+    var done=function(rr){ b.disabled=false; b.textContent= (rr&&rr.error)?'Retry':'Saved'; if(!(rr&&rr.error)){ setTimeout(function(){ b.textContent='Save'; }, 1500); renderGradebook(host); } };
+    if(v===''){ sb.from('sa_grade_overrides').delete().eq('course_id',State.teachCourseId).eq('student_id',sid).then(done); }
+    else { var pctv=parseFloat(v); if(isNaN(pctv)){ b.disabled=false; b.textContent='Save'; return; }
+      sb.from('sa_grade_overrides').upsert({ course_id:State.teachCourseId, student_id:sid, override_pct:pctv, set_by:State.user.id, updated_at:new Date().toISOString() }, { onConflict:'course_id,student_id' }).then(done); }
+  }); });
 }
 function subTag(s){ if(s==='active'){return '<span class="tag green">active</span>';} if(s==='pending'){return '<span class="tag amber">pending</span>';} if(s==='expired'){return '<span class="tag rose">expired</span>';} if(s==='comped'){return '<span class="tag violet">comped</span>';} return '<span class="tag dim">'+esc(s)+'</span>'; }
 function exportCSV(c,rows){
-  var head=['Student','Email','Subscription','Reading%','Quizzes%','Arenas%','Practice%','Midterm%','Final%','Weighted%'];
+  var head=['Student','Email','Subscription','Reading%','Quizzes%','Arenas%','Assignments%','Midterm%','Final exam%','Weighted%','Override%','Final grade%'];
   var lines=[head.join(',')];
   rows.forEach(function(g){
-    function p(x){ return x===null?'':Math.round(x*100); }
-    var line=[ '"'+(g.name||'').replace(/"/g,'""')+'"', '"'+(g.email||'')+'"', g.sub, p(g.reading),p(g.quizzes),p(g.arenas),p(g.practice),p(g.midterm),p(g.final),p(g.total) ];
+    function p(x){ return x===null||x===undefined?'':Math.round(x*100); }
+    var ovr = g.override ? g.override.pct : '';
+    var line=[ '"'+(g.name||'').replace(/"/g,'""')+'"', '"'+(g.email||'')+'"', g.sub,
+      p(g.reading),p(g.quizzes),p(g.arenas),p(g.assignments),p(g.midterm),p(g.final),p(g.computed), ovr, p(g.finalPct) ];
     lines.push(line.join(','));
   });
   var blob=new Blob([lines.join('\n')],{type:'text/csv'});
@@ -1187,7 +1227,7 @@ function renderAssignments(host){
   if(!needCourse(host)){ return; }
   host.innerHTML='<div class="card" style="margin-bottom:16px;">'+
     '<h3 style="font-size:16px;margin-bottom:4px;">Create an assignment</h3>'+
-    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">Students submit a written response and/or a link to their work. You grade with a score and feedback.</p>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">Students submit a written response and/or a link to their work. You grade with a score and feedback. <strong>You can attach files (PDFs, datasets) after you click Create</strong> &mdash; the file area opens automatically below.</p>'+
     '<div class="field"><label for="asgTitle">Title</label><input id="asgTitle" placeholder="e.g. Problem Set 2: Nash equilibria"></div>'+
     '<div class="field"><label for="asgInstr">Instructions</label><textarea id="asgInstr" rows="3" placeholder="What students need to do\u2026"></textarea></div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'+
@@ -1204,16 +1244,17 @@ function renderAssignments(host){
     var e=$('asgMsg');
     if(!title){ e.className='msg err'; e.textContent='Enter a title.'; $('asgTitle').focus(); return; }
     $('asgCreate').disabled=true;
-    sb.from('sa_assignments').insert({ course_id:State.teachCourseId, title:title, instructions:instr, points:pts, due_at:due, created_by:State.user.id, is_published:true }).then(function(r){
+    sb.from('sa_assignments').insert({ course_id:State.teachCourseId, title:title, instructions:instr, points:pts, due_at:due, created_by:State.user.id, is_published:true }).select().then(function(r){
       $('asgCreate').disabled=false;
       if(r.error){ e.className='msg err'; e.textContent=r.error.message; return; }
-      $('asgTitle').value=''; $('asgInstr').value=''; $('asgDue').value=''; e.className='msg ok'; e.textContent='Assignment published.';
-      loadAssignmentsList();
+      $('asgTitle').value=''; $('asgInstr').value=''; $('asgDue').value=''; e.className='msg ok'; e.textContent='Assignment published. Attach files below (optional).';
+      var newId = (r.data && r.data[0]) ? r.data[0].id : null;
+      loadAssignmentsList(newId);
     });
   });
   loadAssignmentsList();
 }
-function loadAssignmentsList(){
+function loadAssignmentsList(openFilesFor){
   sb.from('sa_assignments').select('*').eq('course_id',State.teachCourseId).order('created_at',{ascending:false}).then(function(r){
     var rows=r.data?r.data:[];
     if(rows.length===0){ $('asgList').innerHTML='<div class="card empty">No assignments yet.</div>'; return; }
@@ -1254,6 +1295,11 @@ function loadAssignmentsList(){
         sb.from('sa_assignments').delete().eq('id',aid).then(loadAssignmentsList);
       });
     }); });
+    // after creating a new assignment, auto-open its Files panel and scroll to it
+    if(openFilesFor){
+      var fp=$('files-'+openFilesFor);
+      if(fp){ openAsgFiles(openFilesFor); fp.scrollIntoView({ behavior:'smooth', block:'center' }); }
+    }
   });
 }
 function openAsgFiles(asgId){
