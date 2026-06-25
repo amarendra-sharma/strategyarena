@@ -253,6 +253,7 @@
       <div class="nav-group-label">Track</div>
       <div class="nav-item" data-view="myexams"><span class="ico">&#128221;</span> Exams</div>
       <div class="nav-item" data-view="myassignments"><span class="ico">&#128206;</span> Assignments</div>
+      <div class="nav-item" data-view="mygrades"><span class="ico">&#127891;</span> My Grades</div>
       <div class="nav-item" data-view="progress"><span class="ico">&#128202;</span> My Progress</div>
     </div>
     <div class="nav-group hidden" id="teachGroup">
@@ -341,6 +342,11 @@
       <h1 class="page-title" id="myAsgTitle">Assignments</h1>
       <div class="page-sub">Problem sets and assignments from your instructor. Submit a written response and/or a link to your work.</div>
       <div id="myAsgBody" style="margin-top:16px;"></div>
+    </section>
+    <section id="view-mygrades" class="hidden" aria-labelledby="myGradesTitle">
+      <h1 class="page-title" id="myGradesTitle">My Grades</h1>
+      <div class="page-sub">All your exam and assignment scores and instructor feedback in one place.</div>
+      <div id="myGradesBody" style="margin-top:16px;"></div>
     </section>
 
     <!-- PROGRESS -->
@@ -578,7 +584,7 @@ $('coursePick').addEventListener('change', function(){ State.teachCourseId=$('co
 /* ====================================================================
    NAV
    ==================================================================== */
-var STUDENT_VIEWS = ['home','chapters','arenas','practice','myexams','myassignments','progress'];
+var STUDENT_VIEWS = ['home','chapters','arenas','practice','myexams','myassignments','mygrades','progress'];
 var VIEW_META = {
   home:['Home','Your strategic-thinking workspace.',false],
   chapters:['Chapters','Read the textbook.',false],
@@ -586,6 +592,7 @@ var VIEW_META = {
   practice:['Practice','Server-graded questions, generated just for you.',false],
   myexams:['Exams','Take exams assigned by your instructor.',false],
   myassignments:['Assignments','Submit assignments and see your grades and feedback.',false],
+  mygrades:['My Grades','Your exam and assignment scores and feedback in one place.',false],
   progress:['My Progress','Pulled live from your account.',false],
   diagnostics:['Diagnostics','Backend connection checks.',false],
   dashboard:['Teaching Dashboard','Your teaching overview.',false],
@@ -646,6 +653,7 @@ function switchView(view){
     if(view==='home'){ loadHome(); }
     if(view==='myexams'){ loadMyExams(); }
     if(view==='myassignments'){ loadMyAssignments(); }
+    if(view==='mygrades'){ loadMyGrades(); }
     if(view==='practice'){ var pa=$('practiceArea'); if(pa && pa.innerHTML.trim()===''){ loadNewQuestion(); } }
     return;
   }
@@ -1217,13 +1225,18 @@ function loadAssignmentsList(){
           '<div style="flex:1;"><div style="font-size:15px;font-weight:600;color:var(--text-bright);">'+esc(a.title)+'</div>'+
           '<div style="font-size:12px;color:var(--text-subtle);margin-top:2px;">'+esc(due)+' \u00b7 '+a.points+' pts'+(a.is_published?'':' \u00b7 unpublished')+'</div></div>'+
           '<div class="inline-actions"><button class="btn btn-ghost btn-sm" data-grade="'+a.id+'" data-title="'+esc(a.title)+'" data-pts="'+a.points+'">Submissions &amp; grading</button>'+
+          '<button class="btn btn-ghost btn-sm" data-files="'+a.id+'">Files</button>'+
           '<button class="btn btn-ghost btn-sm" data-pubasg="'+a.id+'" data-on="'+(a.is_published?'1':'0')+'">'+(a.is_published?'Unpublish':'Publish')+'</button>'+
           '<button class="btn btn-danger btn-sm" data-delasg="'+a.id+'">Delete</button></div></div>'+
+        '<div id="files-'+a.id+'" class="hidden" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;"></div>'+
         '<div id="grade-'+a.id+'" class="hidden" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;"></div></div>';
     });
     $('asgList').innerHTML=html;
     Array.prototype.forEach.call($('asgList').querySelectorAll('[data-grade]'), function(b){ b.addEventListener('click', function(){
       openSubmissions(b.getAttribute('data-grade'), b.getAttribute('data-title'), parseInt(b.getAttribute('data-pts'),10));
+    }); });
+    Array.prototype.forEach.call($('asgList').querySelectorAll('[data-files]'), function(b){ b.addEventListener('click', function(){
+      openAsgFiles(b.getAttribute('data-files'));
     }); });
     Array.prototype.forEach.call($('asgList').querySelectorAll('[data-pubasg]'), function(b){ b.addEventListener('click', function(){
       var on=b.getAttribute('data-on')==='1';
@@ -1231,10 +1244,71 @@ function loadAssignmentsList(){
     }); });
     Array.prototype.forEach.call($('asgList').querySelectorAll('[data-delasg]'), function(b){ b.addEventListener('click', function(){
       if(!confirm('Delete this assignment and all its submissions?')){ return; }
-      sb.from('sa_assignments').delete().eq('id',b.getAttribute('data-delasg')).then(loadAssignmentsList);
+      var aid=b.getAttribute('data-delasg');
+      // remove attached files from storage first (avoid orphans)
+      sb.storage.from('assignment-files').list(aid, { limit:100 }).then(function(lr){
+        var paths=(lr.data?lr.data:[]).map(function(f){ return aid+'/'+f.name; });
+        var rm = paths.length ? sb.storage.from('assignment-files').remove(paths) : Promise.resolve();
+        return rm;
+      }).then(function(){
+        sb.from('sa_assignments').delete().eq('id',aid).then(loadAssignmentsList);
+      });
     }); });
   });
 }
+function openAsgFiles(asgId){
+  var panel=$('files-'+asgId);
+  if(!panel){ return; }
+  if(!panel.classList.contains('hidden')){ panel.classList.add('hidden'); panel.innerHTML=''; return; }
+  panel.classList.remove('hidden');
+  panel.innerHTML='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'+
+    '<label class="sr-only" for="asgfile-'+asgId+'">Choose a file to attach</label>'+
+    '<input type="file" id="asgfile-'+asgId+'">'+
+    '<button class="btn btn-primary btn-sm" id="asgfileup-'+asgId+'">Upload file</button>'+
+    '<span id="asgfilemsg-'+asgId+'" class="msg" role="status" aria-live="polite"></span></div>'+
+    '<div id="asgfilelist-'+asgId+'">'+loadingCard()+'</div>';
+  $('asgfileup-'+asgId).addEventListener('click', function(){
+    var inp=$('asgfile-'+asgId); var msg=$('asgfilemsg-'+asgId);
+    if(!inp.files || inp.files.length===0){ msg.className='msg err'; msg.textContent='Choose a file first.'; return; }
+    var f=inp.files[0];
+    if(f.size > 25*1024*1024){ msg.className='msg err'; msg.textContent='File too large (max 25 MB).'; return; }
+    var safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    var path=asgId+'/'+Date.now()+'_'+safe;
+    msg.className='msg'; msg.textContent='Uploading\u2026'; $('asgfileup-'+asgId).disabled=true;
+    sb.storage.from('assignment-files').upload(path, f, { upsert:false }).then(function(r){
+      $('asgfileup-'+asgId).disabled=false;
+      if(r.error){ msg.className='msg err'; msg.textContent=r.error.message; return; }
+      msg.className='msg ok'; msg.textContent='Uploaded.'; inp.value='';
+      loadAsgFiles(asgId);
+    }, function(e){ $('asgfileup-'+asgId).disabled=false; msg.className='msg err'; msg.textContent='Upload failed.'; });
+  });
+  loadAsgFiles(asgId);
+}
+function loadAsgFiles(asgId){
+  var box=$('asgfilelist-'+asgId); if(!box){ return; }
+  sb.storage.from('assignment-files').list(asgId, { limit:100, sortBy:{ column:'name', order:'asc' } }).then(function(r){
+    var files=r.data?r.data:[];
+    if(files.length===0){ box.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">No files attached yet.</div>'; return; }
+    var html='<ul style="list-style:none;padding:0;margin:0;">';
+    files.forEach(function(f){
+      var nicename=f.name.replace(/^\d+_/,'');
+      html+='<li style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);">'+
+        '<span style="font-size:13px;">\uD83D\uDCCE '+esc(nicename)+'</span>'+
+        '<span class="inline-actions"><button class="btn btn-ghost btn-sm" data-dlfile="'+esc(asgId+'/'+f.name)+'">Download</button>'+
+        '<button class="btn btn-danger btn-sm" data-rmfile="'+esc(asgId+'/'+f.name)+'">Remove</button></span></li>';
+    });
+    html+='</ul>';
+    box.innerHTML=html;
+    Array.prototype.forEach.call(box.querySelectorAll('[data-dlfile]'), function(b){ b.addEventListener('click', function(){
+      sb.storage.from('assignment-files').createSignedUrl(b.getAttribute('data-dlfile'), 3600).then(function(su){ if(su.data&&su.data.signedUrl){ window.open(su.data.signedUrl,'_blank'); } });
+    }); });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-rmfile]'), function(b){ b.addEventListener('click', function(){
+      if(!confirm('Remove this file?')){ return; }
+      sb.storage.from('assignment-files').remove([b.getAttribute('data-rmfile')]).then(function(){ loadAsgFiles(asgId); });
+    }); });
+  });
+}
+
 function openSubmissions(asgId, title, points){
   var panel=$('grade-'+asgId);
   if(!panel){ return; }
@@ -2673,7 +2747,8 @@ function loadMyAssignments(){
         html+='<div class="card" style="margin-bottom:12px;">'+
           '<div style="font-size:16px;font-weight:600;color:var(--text-bright);">'+esc(a.title)+'</div>'+
           '<div style="font-size:12px;color:var(--text-subtle);margin:2px 0 8px;">'+esc(due)+' \u00b7 '+a.points+' pts</div>'+
-          (a.instructions?'<div style="font-size:13px;color:var(--text-muted);white-space:pre-wrap;margin-bottom:10px;">'+esc(a.instructions)+'</div>':'');
+          (a.instructions?'<div style="font-size:13px;color:var(--text-muted);white-space:pre-wrap;margin-bottom:10px;">'+esc(a.instructions)+'</div>':'')+
+          '<div id="stu-files-'+a.id+'" class="asg-files"></div>';
         if(graded){
           html+='<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;">'+
             '<div style="font-size:14px;font-weight:600;color:var(--green);">Score: '+s.score+' / '+a.points+'</div>'+
@@ -2693,6 +2768,7 @@ function loadMyAssignments(){
         html+='</div>';
       });
       host.innerHTML=html;
+      asgs.forEach(function(a){ loadStudentAsgFiles(a.id); });
       Array.prototype.forEach.call(host.querySelectorAll('[data-submit]'), function(b){ b.addEventListener('click', function(){
         var aid=b.getAttribute('data-submit');
         var text=$('sub-text-'+aid).value.trim();
@@ -2713,6 +2789,106 @@ function loadMyAssignments(){
       }); });
     });
   });
+}
+
+function loadStudentAsgFiles(asgId){
+  var box=$('stu-files-'+asgId); if(!box){ return; }
+  sb.storage.from('assignment-files').list(asgId, { limit:100, sortBy:{ column:'name', order:'asc' } }).then(function(r){
+    var files=r.data?r.data:[];
+    if(files.length===0){ return; }
+    var html='<div style="font-size:12.5px;font-weight:600;color:var(--text-bright);margin:4px 0 4px;">Attached files</div><ul style="list-style:none;padding:0;margin:0 0 8px;">';
+    files.forEach(function(f){
+      var nicename=f.name.replace(/^\d+_/,'');
+      html+='<li style="padding:3px 0;"><button class="btn btn-ghost btn-sm" data-stdl="'+esc(asgId+'/'+f.name)+'">\uD83D\uDCCE '+esc(nicename)+'</button></li>';
+    });
+    html+='</ul>';
+    box.innerHTML=html;
+    Array.prototype.forEach.call(box.querySelectorAll('[data-stdl]'), function(b){ b.addEventListener('click', function(){
+      sb.storage.from('assignment-files').createSignedUrl(b.getAttribute('data-stdl'), 3600).then(function(su){ if(su.data&&su.data.signedUrl){ window.open(su.data.signedUrl,'_blank'); } });
+    }); });
+  });
+}
+
+function loadMyGrades(){
+  var host=$('myGradesBody'); if(!host || !State.user){ return; }
+  host.innerHTML=loadingCard();
+  var uid=State.user.id;
+  sb.from('sa_enrollments').select('course_id').eq('student_id',uid).eq('status','active').then(function(en){
+    var courseIds=(en.data?en.data:[]).map(function(x){ return x.course_id; });
+    if(courseIds.length===0){ host.innerHTML='<div class="card empty">No graded work yet. When you take exams or submit assignments, your grades appear here.</div>'; return; }
+    Promise.all([
+      sb.from('sa_exams').select('id,course_id,kind,title,total_points,attempt_scoring').in('course_id',courseIds).eq('is_published',true),
+      sb.from('sa_assignments').select('id,course_id,title,points').in('course_id',courseIds).eq('is_published',true),
+      sb.from('sa_submissions').select('assignment_id,score,feedback,submitted_at,graded_at').eq('student_id',uid)
+    ]).then(function(res){
+      var exams=res[0].data?res[0].data:[];
+      var asgs=res[1].data?res[1].data:[];
+      var subs=res[2].data?res[2].data:[];
+      var subBy={}; subs.forEach(function(s){ subBy[s.assignment_id]=s; });
+      var examIds=exams.map(function(e){ return e.id; });
+      var attemptsP = examIds.length ? sb.from('sa_attempts').select('exam_id,item_id,points_earned,created_at,graded_at').eq('student_id',uid).in('exam_id',examIds).not('graded_at','is',null) : Promise.resolve({data:[]});
+      attemptsP.then(function(at){
+        var attempts=at.data?at.data:[];
+        // group attempts: exam -> item -> [points in time order]
+        attempts.sort(function(a,b){ return new Date(a.created_at)-new Date(b.created_at); });
+        var grp={};
+        attempts.forEach(function(a){
+          if(!grp[a.exam_id]){ grp[a.exam_id]={}; }
+          if(!grp[a.exam_id][a.item_id]){ grp[a.exam_id][a.item_id]=[]; }
+          grp[a.exam_id][a.item_id].push(a.points_earned?Number(a.points_earned):0);
+        });
+        var examScore={};
+        exams.forEach(function(e){
+          if(!grp[e.id]){ return; }
+          var policy=e.attempt_scoring||'highest'; var total=0;
+          Object.keys(grp[e.id]).forEach(function(iid){
+            var arr=grp[e.id][iid]; var v=0;
+            if(policy==='latest'){ v=arr[arr.length-1]; }
+            else if(policy==='average'){ var s=0; for(var k=0;k<arr.length;k++){s+=arr[k];} v=s/arr.length; }
+            else { v=Math.max.apply(null,arr); }
+            total+=v;
+          });
+          examScore[e.id]=total;
+        });
+        renderMyGrades(host, exams, examScore, asgs, subBy);
+      });
+    });
+  });
+}
+function fmtPts(n){ if(n===null||n===undefined){ return '\u2014'; } var r=Math.round(n*10)/10; return (r===Math.floor(r))?String(Math.floor(r)):String(r); }
+function renderMyGrades(host, exams, examScore, asgs, subBy){
+  var html='';
+  // Exams table
+  html+='<div class="card" style="margin-bottom:16px;"><h3 style="font-size:15px;margin-bottom:10px;">Exams</h3>';
+  if(exams.length===0){ html+='<div style="font-size:13px;color:var(--text-subtle);">No exams yet.</div>'; }
+  else {
+    html+='<table class="data-table"><caption class="sr-only">Your exam scores</caption><thead><tr><th scope="col">Exam</th><th scope="col">Score</th><th scope="col">Status</th></tr></thead><tbody>';
+    exams.forEach(function(e){
+      var taken = examScore.hasOwnProperty(e.id);
+      var score = taken ? (fmtPts(examScore[e.id])+' / '+e.total_points) : '\u2014';
+      var status = taken ? 'Graded' : 'Not taken yet';
+      html+='<tr><th scope="row" style="font-weight:500;">'+esc(e.title||e.kind)+'</th><td>'+score+'</td><td>'+status+'</td></tr>';
+    });
+    html+='</tbody></table>';
+  }
+  html+='</div>';
+  // Assignments table
+  html+='<div class="card"><h3 style="font-size:15px;margin-bottom:10px;">Assignments</h3>';
+  if(asgs.length===0){ html+='<div style="font-size:13px;color:var(--text-subtle);">No assignments yet.</div>'; }
+  else {
+    html+='<table class="data-table"><caption class="sr-only">Your assignment scores and feedback</caption><thead><tr><th scope="col">Assignment</th><th scope="col">Score</th><th scope="col">Status</th><th scope="col">Feedback</th></tr></thead><tbody>';
+    asgs.forEach(function(a){
+      var s=subBy[a.id];
+      var graded = s && s.score!==null && s.score!==undefined;
+      var score = graded ? (s.score+' / '+a.points) : '\u2014';
+      var status = !s ? 'Not submitted' : (graded ? 'Graded' : 'Submitted \u00b7 awaiting grade');
+      var fb = graded && s.feedback ? esc(s.feedback) : '\u2014';
+      html+='<tr><th scope="row" style="font-weight:500;">'+esc(a.title)+'</th><td>'+score+'</td><td>'+status+'</td><td style="max-width:280px;white-space:pre-wrap;">'+fb+'</td></tr>';
+    });
+    html+='</tbody></table>';
+  }
+  html+='</div>';
+  host.innerHTML=html;
 }
 
 function loadMyExams() {
