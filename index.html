@@ -194,6 +194,12 @@
     .assembler-wrap { grid-template-columns:1fr; }
     .row2 { grid-template-columns:1fr; }
   }
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+.data-table{width:100%;border-collapse:collapse;font-size:13px;}
+.data-table caption{text-align:left;}
+.data-table th,.data-table td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+.data-table thead th{font-weight:600;color:var(--text-bright);}
+:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
 </style>
 </head>
 <body>
@@ -246,6 +252,7 @@
     <div class="nav-group">
       <div class="nav-group-label">Track</div>
       <div class="nav-item" data-view="myexams"><span class="ico">&#128221;</span> Exams</div>
+      <div class="nav-item" data-view="myassignments"><span class="ico">&#128206;</span> Assignments</div>
       <div class="nav-item" data-view="progress"><span class="ico">&#128202;</span> My Progress</div>
     </div>
     <div class="nav-group hidden" id="teachGroup">
@@ -258,6 +265,7 @@
       <div class="nav-item" data-view="gradebook"><span class="ico">&#128202;</span> Gradebook</div>
       <div class="nav-item" data-view="analytics"><span class="ico">&#128293;</span> Analytics</div>
       <div class="nav-item" data-view="exams"><span class="ico">&#128221;</span> Exams</div>
+      <div class="nav-item" data-view="assignments"><span class="ico">&#128206;</span> Assignments</div>
       <div class="nav-item" data-view="grading"><span class="ico">&#9999;</span> Grade Written</div>
     </div>
     <div class="nav-group hidden" id="adminGroup">
@@ -328,6 +336,11 @@
       <h1 class="page-title">Exams</h1>
       <div class="page-sub">Exams your instructor has assigned. Each is server-graded; you can take a published exam once.</div>
       <div id="myExamsBody" style="margin-top:16px;"></div>
+    </section>
+    <section id="view-myassignments" class="hidden" aria-labelledby="myAsgTitle">
+      <h1 class="page-title" id="myAsgTitle">Assignments</h1>
+      <div class="page-sub">Problem sets and assignments from your instructor. Submit a written response and/or a link to your work.</div>
+      <div id="myAsgBody" style="margin-top:16px;"></div>
     </section>
 
     <!-- PROGRESS -->
@@ -565,13 +578,14 @@ $('coursePick').addEventListener('change', function(){ State.teachCourseId=$('co
 /* ====================================================================
    NAV
    ==================================================================== */
-var STUDENT_VIEWS = ['home','chapters','arenas','practice','myexams','progress'];
+var STUDENT_VIEWS = ['home','chapters','arenas','practice','myexams','myassignments','progress'];
 var VIEW_META = {
   home:['Home','Your strategic-thinking workspace.',false],
   chapters:['Chapters','Read the textbook.',false],
   arenas:['Arenas','Play the games against AI opponents.',false],
   practice:['Practice','Server-graded questions, generated just for you.',false],
   myexams:['Exams','Take exams assigned by your instructor.',false],
+  myassignments:['Assignments','Submit assignments and see your grades and feedback.',false],
   progress:['My Progress','Pulled live from your account.',false],
   diagnostics:['Diagnostics','Backend connection checks.',false],
   dashboard:['Teaching Dashboard','Your teaching overview.',false],
@@ -582,6 +596,7 @@ var VIEW_META = {
   gradebook:['Gradebook','Weighted grades across all components.',true],
   analytics:['Analytics','Concept mastery and cohort engagement.',true],
   exams:['Exams','Assemble and publish midterms and finals.',true],
+  assignments:['Assignments','Create assignments, then grade submissions with feedback.',true],
   grading:['Grade Written','Review and finalize written answers, with optional AI assistance.',true],
   subscriptions:['Subscriptions','Manage paid access for this course.',true],
   platform:['Platform & Pricing','Global price, Stripe link, and author bio.',false],
@@ -596,7 +611,7 @@ Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(it
   });
 });
 function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_VIEWS[i]===v){ return true; } } return false; }
-var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','materials','announce','gradebook','analytics','exams','grading'];
+var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','materials','announce','gradebook','analytics','exams','assignments','grading'];
 var ADMIN_VIEWS = ['platform','people','subscriptions','diagnostics'];
 function viewAllowed(view){
   if(isStudentView(view)){ return true; }
@@ -630,6 +645,7 @@ function switchView(view){
     if(view==='progress'){ loadProgress(); }
     if(view==='home'){ loadHome(); }
     if(view==='myexams'){ loadMyExams(); }
+    if(view==='myassignments'){ loadMyAssignments(); }
     if(view==='practice'){ var pa=$('practiceArea'); if(pa && pa.innerHTML.trim()===''){ loadNewQuestion(); } }
     return;
   }
@@ -646,6 +662,7 @@ function rerenderCurrentView(){
   else if(currentView==='gradebook'){ renderGradebook(host); }
   else if(currentView==='analytics'){ renderAnalytics(host); }
   else if(currentView==='exams'){ renderExams(host); }
+  else if(currentView==='assignments'){ renderAssignments(host); }
   else if(currentView==='grading'){ renderGrading(host); }
   else if(currentView==='subscriptions'){ renderSubscriptions(host); }
   else if(currentView==='platform'){ renderPlatform(host); }
@@ -1158,6 +1175,109 @@ function heatColor(acc){
 /* ====================================================================
    EXAMS — list + assembler
    ==================================================================== */
+function renderAssignments(host){
+  if(!needCourse(host)){ return; }
+  host.innerHTML='<div class="card" style="margin-bottom:16px;">'+
+    '<h3 style="font-size:16px;margin-bottom:4px;">Create an assignment</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">Students submit a written response and/or a link to their work. You grade with a score and feedback.</p>'+
+    '<div class="field"><label for="asgTitle">Title</label><input id="asgTitle" placeholder="e.g. Problem Set 2: Nash equilibria"></div>'+
+    '<div class="field"><label for="asgInstr">Instructions</label><textarea id="asgInstr" rows="3" placeholder="What students need to do\u2026"></textarea></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">'+
+      '<div class="field"><label for="asgPoints">Points</label><input id="asgPoints" type="number" min="0" value="100"></div>'+
+      '<div class="field"><label for="asgDue">Due (optional)</label><input id="asgDue" type="datetime-local"></div>'+
+    '</div>'+
+    '<div id="asgMsg" class="msg" role="status" aria-live="polite"></div>'+
+    '<button class="btn btn-primary btn-sm" id="asgCreate">Create &amp; publish</button></div>'+
+    '<div id="asgList" aria-live="polite">'+loadingCard()+'</div>';
+  $('asgCreate').addEventListener('click', function(){
+    var title=$('asgTitle').value.trim(), instr=$('asgInstr').value.trim();
+    var pts=parseInt($('asgPoints').value,10); if(isNaN(pts)||pts<0){ pts=100; }
+    var due=$('asgDue').value ? new Date($('asgDue').value).toISOString() : null;
+    var e=$('asgMsg');
+    if(!title){ e.className='msg err'; e.textContent='Enter a title.'; $('asgTitle').focus(); return; }
+    $('asgCreate').disabled=true;
+    sb.from('sa_assignments').insert({ course_id:State.teachCourseId, title:title, instructions:instr, points:pts, due_at:due, created_by:State.user.id, is_published:true }).then(function(r){
+      $('asgCreate').disabled=false;
+      if(r.error){ e.className='msg err'; e.textContent=r.error.message; return; }
+      $('asgTitle').value=''; $('asgInstr').value=''; $('asgDue').value=''; e.className='msg ok'; e.textContent='Assignment published.';
+      loadAssignmentsList();
+    });
+  });
+  loadAssignmentsList();
+}
+function loadAssignmentsList(){
+  sb.from('sa_assignments').select('*').eq('course_id',State.teachCourseId).order('created_at',{ascending:false}).then(function(r){
+    var rows=r.data?r.data:[];
+    if(rows.length===0){ $('asgList').innerHTML='<div class="card empty">No assignments yet.</div>'; return; }
+    var html='';
+    rows.forEach(function(a){
+      var due=a.due_at?('Due '+new Date(a.due_at).toLocaleString()):'No due date';
+      html+='<div class="card" style="margin-bottom:10px;">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">'+
+          '<div style="flex:1;"><div style="font-size:15px;font-weight:600;color:var(--text-bright);">'+esc(a.title)+'</div>'+
+          '<div style="font-size:12px;color:var(--text-subtle);margin-top:2px;">'+esc(due)+' \u00b7 '+a.points+' pts'+(a.is_published?'':' \u00b7 unpublished')+'</div></div>'+
+          '<div class="inline-actions"><button class="btn btn-ghost btn-sm" data-grade="'+a.id+'" data-title="'+esc(a.title)+'" data-pts="'+a.points+'">Submissions &amp; grading</button>'+
+          '<button class="btn btn-ghost btn-sm" data-pubasg="'+a.id+'" data-on="'+(a.is_published?'1':'0')+'">'+(a.is_published?'Unpublish':'Publish')+'</button>'+
+          '<button class="btn btn-danger btn-sm" data-delasg="'+a.id+'">Delete</button></div></div>'+
+        '<div id="grade-'+a.id+'" class="hidden" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;"></div></div>';
+    });
+    $('asgList').innerHTML=html;
+    Array.prototype.forEach.call($('asgList').querySelectorAll('[data-grade]'), function(b){ b.addEventListener('click', function(){
+      openSubmissions(b.getAttribute('data-grade'), b.getAttribute('data-title'), parseInt(b.getAttribute('data-pts'),10));
+    }); });
+    Array.prototype.forEach.call($('asgList').querySelectorAll('[data-pubasg]'), function(b){ b.addEventListener('click', function(){
+      var on=b.getAttribute('data-on')==='1';
+      sb.from('sa_assignments').update({is_published:!on}).eq('id',b.getAttribute('data-pubasg')).then(loadAssignmentsList);
+    }); });
+    Array.prototype.forEach.call($('asgList').querySelectorAll('[data-delasg]'), function(b){ b.addEventListener('click', function(){
+      if(!confirm('Delete this assignment and all its submissions?')){ return; }
+      sb.from('sa_assignments').delete().eq('id',b.getAttribute('data-delasg')).then(loadAssignmentsList);
+    }); });
+  });
+}
+function openSubmissions(asgId, title, points){
+  var panel=$('grade-'+asgId);
+  if(!panel){ return; }
+  if(!panel.classList.contains('hidden')){ panel.classList.add('hidden'); panel.innerHTML=''; return; }
+  panel.classList.remove('hidden');
+  panel.innerHTML=loadingCard();
+  Promise.all([
+    sb.from('sa_submissions').select('*').eq('assignment_id',asgId),
+    sb.from('sa_enrollments').select('student_id,sa_profiles(email,full_name)').eq('course_id',State.teachCourseId).eq('status','active')
+  ]).then(function(res){
+    var subs=res[0].data?res[0].data:[];
+    var enr=res[1].data?res[1].data:[];
+    var subBy={}; subs.forEach(function(s){ subBy[s.student_id]=s; });
+    if(enr.length===0){ panel.innerHTML='<div class="card empty">No enrolled students yet.</div>'; return; }
+    var html='<table class="data-table"><caption class="sr-only">Submissions for '+esc(title)+'</caption><thead><tr><th scope="col">Student</th><th scope="col">Submission</th><th scope="col">Score (/'+points+')</th><th scope="col">Feedback</th><th scope="col"></th></tr></thead><tbody>';
+    enr.forEach(function(e){
+      var p=e.sa_profiles?e.sa_profiles:{};
+      var s=subBy[e.student_id];
+      var who=esc(p.full_name||p.email||e.student_id);
+      var submitted = s ? ('<div style="white-space:pre-wrap;font-size:12.5px;max-width:240px;">'+esc(s.text_response||'')+'</div>'+(s.link_url?'<a href="'+esc(s.link_url)+'" target="_blank" rel="noopener">Open link</a>':'')+'<div style="font-size:11px;color:var(--text-subtle);">'+(s.submitted_at?new Date(s.submitted_at).toLocaleString():'')+'</div>') : '<span style="color:var(--text-subtle);">Not submitted</span>';
+      var sid = s ? s.id : '';
+      html+='<tr><th scope="row" style="font-weight:500;">'+who+'</th><td>'+submitted+'</td>'+
+        '<td>'+(s?('<label class="sr-only" for="sc-'+e.student_id+'">Score for '+who+'</label><input id="sc-'+e.student_id+'" type="number" min="0" max="'+points+'" value="'+(s.score!==null&&s.score!==undefined?s.score:'')+'" style="width:70px;" data-sid="'+sid+'">'):'\u2014')+'</td>'+
+        '<td>'+(s?('<label class="sr-only" for="fb-'+e.student_id+'">Feedback for '+who+'</label><textarea id="fb-'+e.student_id+'" rows="2" style="width:200px;" data-sid="'+sid+'">'+esc(s.feedback||'')+'</textarea>'):'\u2014')+'</td>'+
+        '<td>'+(s?('<button class="btn btn-primary btn-sm" data-savegrade="'+e.student_id+'">Save</button>'):'')+'</td></tr>';
+    });
+    html+='</tbody></table>';
+    panel.innerHTML=html;
+    Array.prototype.forEach.call(panel.querySelectorAll('[data-savegrade]'), function(b){ b.addEventListener('click', function(){
+      var sidKey=b.getAttribute('data-savegrade');
+      var scEl=$('sc-'+sidKey), fbEl=$('fb-'+sidKey);
+      var sid=scEl.getAttribute('data-sid');
+      var score=scEl.value===''?null:parseInt(scEl.value,10);
+      var fb=fbEl.value;
+      b.disabled=true; b.textContent='Saving\u2026';
+      sb.from('sa_submissions').update({ score:score, feedback:fb, graded_at:new Date().toISOString(), graded_by:State.user.id }).eq('id',sid).then(function(rr){
+        b.disabled=false; b.textContent= rr.error?'Retry':'Saved';
+        if(!rr.error){ setTimeout(function(){ b.textContent='Save'; }, 1500); }
+      });
+    }); });
+  });
+}
+
 function renderExams(host){
   if(!needCourse(host)){ return; }
   host.innerHTML='<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-primary" id="newExamBtn">+ Assemble exam</button><button class="btn btn-ghost" id="libBtn">\uD83D\uDCDA Use a ready-made exam</button></div><div id="examList">'+loadingCard()+'</div>';
@@ -2528,6 +2648,70 @@ function openExamReview(examId){
     html += '<button class="btn btn-primary btn-sm" id="rvBack" style="margin-top:8px;">Back to exams</button></div>';
     box.innerHTML = html;
     if($('rvBack')){ $('rvBack').addEventListener('click', loadMyExams); }
+  });
+}
+
+function loadMyAssignments(){
+  var host=$('myAsgBody'); if(!host || !State.user){ return; }
+  host.innerHTML=loadingCard();
+  sb.from('sa_enrollments').select('course_id').eq('student_id',State.user.id).eq('status','active').then(function(en){
+    var ids=(en.data?en.data:[]).map(function(x){ return x.course_id; });
+    if(ids.length===0){ host.innerHTML='<div class="card empty">You are not enrolled in a course with assignments yet.</div>'; return; }
+    Promise.all([
+      sb.from('sa_assignments').select('*').in('course_id',ids).eq('is_published',true).order('created_at',{ascending:false}),
+      sb.from('sa_submissions').select('*').eq('student_id',State.user.id)
+    ]).then(function(res){
+      var asgs=res[0].data?res[0].data:[];
+      var subs=res[1].data?res[1].data:[];
+      var subBy={}; subs.forEach(function(s){ subBy[s.assignment_id]=s; });
+      if(asgs.length===0){ host.innerHTML='<div class="card empty">No assignments posted yet.</div>'; return; }
+      var html='';
+      asgs.forEach(function(a){
+        var s=subBy[a.id];
+        var due=a.due_at?('Due '+new Date(a.due_at).toLocaleString()):'No due date';
+        var graded = s && s.score!==null && s.score!==undefined;
+        html+='<div class="card" style="margin-bottom:12px;">'+
+          '<div style="font-size:16px;font-weight:600;color:var(--text-bright);">'+esc(a.title)+'</div>'+
+          '<div style="font-size:12px;color:var(--text-subtle);margin:2px 0 8px;">'+esc(due)+' \u00b7 '+a.points+' pts</div>'+
+          (a.instructions?'<div style="font-size:13px;color:var(--text-muted);white-space:pre-wrap;margin-bottom:10px;">'+esc(a.instructions)+'</div>':'');
+        if(graded){
+          html+='<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;">'+
+            '<div style="font-size:14px;font-weight:600;color:var(--green);">Score: '+s.score+' / '+a.points+'</div>'+
+            (s.feedback?'<div style="font-size:13px;color:var(--text-muted);margin-top:6px;white-space:pre-wrap;"><strong>Feedback:</strong> '+esc(s.feedback)+'</div>':'')+
+            '<div style="font-size:11px;color:var(--text-subtle);margin-top:6px;">Your submission is below.</div>'+
+            '<div style="font-size:12.5px;color:var(--text-muted);margin-top:4px;white-space:pre-wrap;">'+esc(s.text_response||'')+'</div>'+
+            (s.link_url?'<div style="margin-top:4px;"><a href="'+esc(s.link_url)+'" target="_blank" rel="noopener">'+esc(s.link_url)+'</a></div>':'')+
+          '</div>';
+        } else {
+          var submittedNote = s ? '<div class="msg ok" role="status">Submitted '+(s.submitted_at?new Date(s.submitted_at).toLocaleString():'')+'. You can resubmit until it is graded.</div>' : '';
+          html+=submittedNote+
+            '<div class="field"><label for="sub-text-'+a.id+'">Your response</label><textarea id="sub-text-'+a.id+'" rows="4" placeholder="Type your answer here\u2026">'+esc(s&&s.text_response?s.text_response:'')+'</textarea></div>'+
+            '<div class="field"><label for="sub-link-'+a.id+'">Link to your work (optional)</label><input id="sub-link-'+a.id+'" type="url" placeholder="https://\u2026 (Google Doc, PDF, notebook)" value="'+esc(s&&s.link_url?s.link_url:'')+'"></div>'+
+            '<div id="sub-msg-'+a.id+'" class="msg" role="status" aria-live="polite"></div>'+
+            '<button class="btn btn-primary btn-sm" data-submit="'+a.id+'">'+(s?'Resubmit':'Submit')+'</button>';
+        }
+        html+='</div>';
+      });
+      host.innerHTML=html;
+      Array.prototype.forEach.call(host.querySelectorAll('[data-submit]'), function(b){ b.addEventListener('click', function(){
+        var aid=b.getAttribute('data-submit');
+        var text=$('sub-text-'+aid).value.trim();
+        var link=$('sub-link-'+aid).value.trim();
+        var courseId=null;
+        asgs.forEach(function(a){ if(a.id===aid){ courseId=a.course_id; } });
+        var e=$('sub-msg-'+aid);
+        if(!text && !link){ e.className='msg err'; e.textContent='Enter a response or a link before submitting.'; $('sub-text-'+aid).focus(); return; }
+        if(link && link.indexOf('http')!==0){ e.className='msg err'; e.textContent='Link must start with http:// or https://'; return; }
+        b.disabled=true;
+        var rec={ assignment_id:aid, course_id:courseId, student_id:State.user.id, text_response:text, link_url:link, submitted_at:new Date().toISOString() };
+        sb.from('sa_submissions').upsert(rec, { onConflict:'assignment_id,student_id' }).then(function(r){
+          b.disabled=false;
+          if(r.error){ e.className='msg err'; e.textContent=r.error.message; return; }
+          e.className='msg ok'; e.textContent='Submitted.';
+          loadMyAssignments();
+        });
+      }); });
+    });
   });
 }
 
