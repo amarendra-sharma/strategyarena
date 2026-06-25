@@ -245,6 +245,8 @@
     <div class="nav-group">
       <div class="nav-group-label">Learn</div>
       <div class="nav-item active" data-view="home"><span class="ico">&#8962;</span> Home</div>
+      <div class="nav-item" data-view="myannounce"><span class="ico">&#128226;</span> Announcements</div>
+      <div class="nav-item" data-view="mymaterials"><span class="ico">&#127916;</span> Materials</div>
       <div class="nav-item" data-view="chapters"><span class="ico">&#128214;</span> Chapters</div>
       <div class="nav-item" data-view="arenas"><span class="ico">&#127918;</span> Arenas</div>
       <div class="nav-item" data-view="practice"><span class="ico">&#9997;</span> Practice</div>
@@ -302,9 +304,17 @@
       <div class="page-sub">Your strategic-thinking workspace. Pick up where you left off.</div>
       <div class="stat-row" id="homeStats"></div>
       <div class="grid grid-3" id="homeQuick"></div>
-      <div id="homeAnnounce"></div>
-      <div id="homeMaterials"></div>
       <div id="homeCourses"></div>
+    </section>
+    <section id="view-myannounce" class="hidden" aria-labelledby="myAnnTitle">
+      <h1 class="page-title" id="myAnnTitle">Announcements</h1>
+      <div class="page-sub">The latest announcements from your instructors.</div>
+      <div id="myAnnBody" style="margin-top:16px;"></div>
+    </section>
+    <section id="view-mymaterials" class="hidden" aria-labelledby="myMatTitle">
+      <h1 class="page-title" id="myMatTitle">Materials</h1>
+      <div class="page-sub">Lecture videos and slides shared by your instructors.</div>
+      <div id="myMatBody" style="margin-top:16px;"></div>
     </section>
 
     <!-- CHAPTERS -->
@@ -584,9 +594,11 @@ $('coursePick').addEventListener('change', function(){ State.teachCourseId=$('co
 /* ====================================================================
    NAV
    ==================================================================== */
-var STUDENT_VIEWS = ['home','chapters','arenas','practice','myexams','myassignments','mygrades','progress'];
+var STUDENT_VIEWS = ['home','myannounce','mymaterials','chapters','arenas','practice','myexams','myassignments','mygrades','progress'];
 var VIEW_META = {
   home:['Home','Your strategic-thinking workspace.',false],
+  myannounce:['Announcements','The latest announcements from your instructors.',false],
+  mymaterials:['Materials','Lecture videos and slides from your instructors.',false],
   chapters:['Chapters','Read the textbook.',false],
   arenas:['Arenas','Play the games against AI opponents.',false],
   practice:['Practice','Server-graded questions, generated just for you.',false],
@@ -651,6 +663,8 @@ function switchView(view){
   if(stu){
     if(view==='progress'){ loadProgress(); }
     if(view==='home'){ loadHome(); }
+    if(view==='myannounce'){ loadMyAnnounce(); }
+    if(view==='mymaterials'){ loadMyMaterials(); }
     if(view==='myexams'){ loadMyExams(); }
     if(view==='myassignments'){ loadMyAssignments(); }
     if(view==='mygrades'){ loadMyGrades(); }
@@ -834,15 +848,19 @@ function renderMaterials(host){
 }
 function matIcon(kind){ return kind==='video'?'\uD83C\uDFA5':(kind==='slides'?'\uD83D\uDC3D':'\uD83D\uDD17'); }
 function loadMaterialsList(){
-  sb.from('sa_materials').select('*').eq('course_id',State.teachCourseId).order('created_at',{ascending:false}).then(function(r){
+  sb.from('sa_materials').select('*').eq('course_id',State.teachCourseId).order('position',{ascending:true}).order('created_at',{ascending:true}).then(function(r){
     var rows=r.data?r.data:[];
     if(rows.length===0){ $('matList').innerHTML='<div class="card empty">No materials yet. Add a lecture video or slide link above.</div>'; return; }
-    var html='<div class="card"><h3 style="font-size:15px;margin-bottom:10px;">Shared with students</h3>';
-    rows.forEach(function(m){
+    var html='<div class="card"><h3 style="font-size:15px;margin-bottom:4px;">Shared with students</h3>'+
+      '<p style="font-size:11.5px;color:var(--text-subtle);margin-bottom:10px;">Use \u2191 / \u2193 to set the order students see.</p>';
+    rows.forEach(function(m,i){
       html+='<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">'+
         '<div style="flex:1;"><span style="margin-right:6px;">'+matIcon(m.kind)+'</span><a href="'+esc(m.url)+'" target="_blank" rel="noopener" style="color:var(--violet);text-decoration:none;">'+esc(m.title)+'</a>'+
         '<div style="font-size:11px;color:var(--text-subtle);margin-top:2px;">'+esc(m.url)+'</div></div>'+
-        '<button class="btn btn-danger btn-sm" data-delmat="'+m.id+'">Remove</button></div>';
+        '<span class="inline-actions">'+
+          '<button class="btn btn-ghost btn-sm" data-mup="'+i+'"'+(i===0?' disabled aria-disabled="true"':'')+' aria-label="Move '+esc(m.title)+' up">\u2191</button>'+
+          '<button class="btn btn-ghost btn-sm" data-mdown="'+i+'"'+(i===rows.length-1?' disabled aria-disabled="true"':'')+' aria-label="Move '+esc(m.title)+' down">\u2193</button>'+
+          '<button class="btn btn-danger btn-sm" data-delmat="'+m.id+'">Remove</button></span></div>';
     });
     html+='</div>';
     $('matList').innerHTML=html;
@@ -850,7 +868,19 @@ function loadMaterialsList(){
       if(!confirm('Remove this material?')){ return; }
       sb.from('sa_materials').delete().eq('id',b.getAttribute('data-delmat')).then(loadMaterialsList);
     }); });
+    Array.prototype.forEach.call($('matList').querySelectorAll('[data-mup]'), function(b){ b.addEventListener('click', function(){ moveMaterial(rows, parseInt(b.getAttribute('data-mup'),10), -1); }); });
+    Array.prototype.forEach.call($('matList').querySelectorAll('[data-mdown]'), function(b){ b.addEventListener('click', function(){ moveMaterial(rows, parseInt(b.getAttribute('data-mdown'),10), 1); }); });
   });
+}
+function moveMaterial(rows, idx, dir){
+  var other=idx+dir;
+  if(other<0 || other>=rows.length){ return; }
+  // normalize positions to current visible order, then swap the two
+  var ordered=rows.slice();
+  var tmp=ordered[idx]; ordered[idx]=ordered[other]; ordered[other]=tmp;
+  // write new positions (0..n) for all rows to keep them consistent
+  var updates=ordered.map(function(m,i){ return sb.from('sa_materials').update({ position:i }).eq('id',m.id); });
+  Promise.all(updates).then(loadMaterialsList);
 }
 
 function renderAnnounce(host){
@@ -2503,43 +2533,42 @@ function loadHome() {
   if (jc) { jc.addEventListener('click', openJoinCourse); }
   // show the student's enrolled professor courses (if any)
   loadMyCourses();
-  loadStudentAnnouncements();
-  loadStudentMaterials();
 }
-function loadStudentAnnouncements(){
-  var box=$('homeAnnounce'); if(!box || !State.user){ return; }
+function loadMyAnnounce(){
+  var box=$('myAnnBody'); if(!box || !State.user){ return; }
+  box.innerHTML=loadingCard();
   sb.from('sa_enrollments').select('course_id').eq('student_id',State.user.id).eq('status','active').then(function(en){
     var ids=(en.data?en.data:[]).map(function(x){ return x.course_id; });
-    if(ids.length===0){ box.innerHTML=''; return; }
-    sb.from('sa_announcements').select('*').in('course_id',ids).order('created_at',{ascending:false}).limit(5).then(function(r){
+    if(ids.length===0){ box.innerHTML='<div class="card empty">No announcements yet. When your instructor posts one, it appears here.</div>'; return; }
+    sb.from('sa_announcements').select('*').in('course_id',ids).order('created_at',{ascending:false}).then(function(r){
       var rows=r.data?r.data:[];
-      if(rows.length===0){ box.innerHTML=''; return; }
-      var html='<div class="card" style="margin-top:8px;"><h3 style="font-size:15px;margin-bottom:10px;">\uD83D\uDCE2 Announcements</h3>';
+      if(rows.length===0){ box.innerHTML='<div class="card empty">No announcements yet.</div>'; return; }
+      var html='';
       rows.forEach(function(a){
-        var when=a.created_at?new Date(a.created_at).toLocaleDateString():'';
-        html+='<div style="padding:8px 0;border-bottom:1px solid var(--border);">'+
-          '<div style="font-size:14px;font-weight:600;color:var(--text-bright);">'+esc(a.title)+'</div>'+
-          '<div style="font-size:13px;color:var(--text-muted);margin-top:3px;white-space:pre-wrap;">'+esc(a.body)+'</div>'+
-          '<div style="font-size:11px;color:var(--text-subtle);margin-top:3px;">'+esc(when)+'</div></div>';
+        var when=a.created_at?new Date(a.created_at).toLocaleString():'';
+        html+='<div class="card" style="margin-bottom:12px;">'+
+          '<div style="font-size:16px;font-weight:600;color:var(--text-bright);">'+esc(a.title)+'</div>'+
+          '<div style="font-size:14px;color:var(--text-muted);margin-top:6px;white-space:pre-wrap;">'+esc(a.body)+'</div>'+
+          '<div style="font-size:11px;color:var(--text-subtle);margin-top:6px;">'+esc(when)+'</div></div>';
       });
-      html+='</div>';
       box.innerHTML=html;
     });
   });
 }
-function loadStudentMaterials(){
-  var box=$('homeMaterials'); if(!box || !State.user){ return; }
+function loadMyMaterials(){
+  var box=$('myMatBody'); if(!box || !State.user){ return; }
+  box.innerHTML=loadingCard();
   sb.from('sa_enrollments').select('course_id').eq('student_id',State.user.id).eq('status','active').then(function(en){
     var ids=(en.data?en.data:[]).map(function(x){ return x.course_id; });
-    if(ids.length===0){ box.innerHTML=''; return; }
-    sb.from('sa_materials').select('*').in('course_id',ids).order('created_at',{ascending:false}).then(function(r){
+    if(ids.length===0){ box.innerHTML='<div class="card empty">No materials yet. When your instructor shares lecture videos or slides, they appear here.</div>'; return; }
+    sb.from('sa_materials').select('*').in('course_id',ids).order('position',{ascending:true}).order('created_at',{ascending:false}).then(function(r){
       var rows=r.data?r.data:[];
-      if(rows.length===0){ box.innerHTML=''; return; }
-      var html='<div class="card" style="margin-top:8px;"><h3 style="font-size:15px;margin-bottom:10px;">\uD83C\uDFA5 Lecture materials</h3>';
+      if(rows.length===0){ box.innerHTML='<div class="card empty">No materials yet.</div>'; return; }
+      var html='<div class="card">';
       rows.forEach(function(m){
-        html+='<div style="padding:7px 0;border-bottom:1px solid var(--border);">'+
-          '<span style="margin-right:6px;">'+matIcon(m.kind)+'</span>'+
-          '<a href="'+esc(m.url)+'" target="_blank" rel="noopener" style="color:var(--violet);text-decoration:none;">'+esc(m.title)+'</a></div>';
+        html+='<div style="padding:9px 0;border-bottom:1px solid var(--border);">'+
+          '<span style="margin-right:8px;font-size:16px;">'+matIcon(m.kind)+'</span>'+
+          '<a href="'+esc(m.url)+'" target="_blank" rel="noopener" style="color:var(--violet);text-decoration:none;font-size:15px;">'+esc(m.title)+'</a></div>';
       });
       html+='</div>';
       box.innerHTML=html;
