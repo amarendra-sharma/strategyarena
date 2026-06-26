@@ -2143,36 +2143,82 @@ function renderSubscriptions(host){
     '<div style="font-size:22px;color:var(--text-bright);font-family:JetBrains Mono,monospace;">'+money(price,State.settings?State.settings.currency:'usd')+' <span style="font-size:13px;color:var(--text-muted);">per student / course</span></div></div>'+
     (link?('<a class="btn btn-ghost btn-sm" href="'+esc(link)+'" target="_blank">Open Stripe payment link</a>'):'<span style="font-size:12.5px;color:var(--text-subtle);">No Stripe link set yet (admin → Platform).</span>')+
     '</div></div>'+
+    '<div class="card" style="margin-bottom:16px;" id="courseWaiverCard"><div style="font-size:13px;color:var(--text-muted);">Loading waiver status…</div></div>'+
     '<div id="subBody">'+loadingCard()+'</div>';
+  loadCourseWaiver(c);
   loadSubs(c);
+}
+function loadCourseWaiver(c){
+  sb.from('sa_fee_waivers').select('id,student_id').eq('course_id',State.teachCourseId).is('student_id',null).maybeSingle().then(function(res){
+    var waived = !!(res.data && res.data.id);
+    var card=$('courseWaiverCard'); if(!card){ return; }
+    card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
+      '<div><div style="font-size:14px;font-weight:600;color:var(--text-bright);">Course-wide fee waiver</div>'+
+      '<div style="font-size:12.5px;color:var(--text-muted);">'+(waived?'This entire course is currently <b>free for all students</b> (fee waived).':'Waive the fee for <b>every student</b> in this course at once.')+'</div></div>'+
+      (waived
+        ? '<button class="btn btn-danger btn-sm" id="courseWaiveToggle">Remove course waiver</button>'
+        : '<button class="btn btn-primary btn-sm" id="courseWaiveToggle">Waive fee for whole course</button>')+
+      '</div>';
+    $('courseWaiveToggle').addEventListener('click', function(){
+      if(waived){
+        if(!confirm('Remove the course-wide fee waiver? Students will need a subscription (or individual waiver) again.')){ return; }
+        sb.from('sa_fee_waivers').delete().eq('course_id',State.teachCourseId).is('student_id',null).then(function(){ loadCourseWaiver(c); });
+      } else {
+        sb.from('sa_fee_waivers').insert({ course_id:State.teachCourseId, student_id:null, waived_by:State.user.id, note:'course-wide waiver' }).then(function(r){
+          if(r.error){ alert('Could not waive: '+r.error.message); return; }
+          loadCourseWaiver(c);
+        });
+      }
+    });
+  });
 }
 function loadSubs(c){
   // build from roster joined to subscriptions
   Promise.all([
     sb.from('sa_enrollments').select('student_id,sa_profiles(email,full_name)').eq('course_id',State.teachCourseId).eq('status','active'),
-    sb.from('sa_subscriptions').select('*').eq('course_id',State.teachCourseId)
+    sb.from('sa_subscriptions').select('*').eq('course_id',State.teachCourseId),
+    sb.from('sa_fee_waivers').select('student_id').eq('course_id',State.teachCourseId).not('student_id','is',null)
   ]).then(function(r){
     var roster=r[0].data?r[0].data:[];
     var subs=r[1].data?r[1].data:[];
+    var waivers=r[2].data?r[2].data:[];
+    var waivedSet={}; waivers.forEach(function(w){ waivedSet[w.student_id]=true; });
     var subByStudent={}; subs.forEach(function(s){ subByStudent[s.student_id]=s; });
     if(roster.length===0){ $('subBody').innerHTML='<div class="card empty">No active students to manage yet.</div>'; return; }
-    var html='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Student</th><th>Status</th><th>Source</th><th>Expires</th><th>Set access</th></tr></thead><tbody>';
+    var html='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Status</th><th scope="col">Source</th><th scope="col">Expires</th><th scope="col">Set access</th><th scope="col">Fee</th></tr></thead><tbody>';
     roster.forEach(function(e){
       var p=e.sa_profiles?e.sa_profiles:{};
       var s=subByStudent[e.student_id];
       var status=s?s.status:'none';
-      html+='<tr><td>'+esc(p.email||e.student_id)+'</td><td>'+subTag(status)+'</td>'+
+      var isWaived=!!waivedSet[e.student_id];
+      html+='<tr><th scope="row" style="font-weight:500;">'+esc(p.email||e.student_id)+'</th><td>'+subTag(status)+'</td>'+
         '<td>'+esc(s&&s.source?s.source:'-')+'</td><td>'+esc(s&&s.expires_at?new Date(s.expires_at).toLocaleDateString():'-')+'</td>'+
         '<td class="inline-actions">'+
         '<button class="btn btn-ghost btn-sm" data-act="active" data-sid="'+e.student_id+'">Activate</button>'+
         '<button class="btn btn-ghost btn-sm" data-act="comped" data-sid="'+e.student_id+'">Comp</button>'+
         '<button class="btn btn-danger btn-sm" data-act="expired" data-sid="'+e.student_id+'">Revoke</button>'+
+        '</td>'+
+        '<td>'+(isWaived
+          ? '<span class="tag green">waived</span> <button class="btn btn-ghost btn-sm" data-unwaive="'+e.student_id+'">Undo</button>'
+          : '<button class="btn btn-ghost btn-sm" data-waive="'+e.student_id+'">Waive fee</button>')+
         '</td></tr>';
     });
     html+='</tbody></table></div>';
     $('subBody').innerHTML=html;
     Array.prototype.forEach.call($('subBody').querySelectorAll('[data-act]'), function(b){
       b.addEventListener('click', function(){ setSub(c, b.getAttribute('data-sid'), b.getAttribute('data-act')); });
+    });
+    Array.prototype.forEach.call($('subBody').querySelectorAll('[data-waive]'), function(b){
+      b.addEventListener('click', function(){
+        sb.from('sa_fee_waivers').insert({ course_id:State.teachCourseId, student_id:b.getAttribute('data-waive'), waived_by:State.user.id, note:'per-student waiver' }).then(function(r){
+          if(r.error){ alert('Could not waive: '+r.error.message); return; } loadSubs(c);
+        });
+      });
+    });
+    Array.prototype.forEach.call($('subBody').querySelectorAll('[data-unwaive]'), function(b){
+      b.addEventListener('click', function(){
+        sb.from('sa_fee_waivers').delete().eq('course_id',State.teachCourseId).eq('student_id',b.getAttribute('data-unwaive')).then(function(){ loadSubs(c); });
+      });
     });
   });
 }
@@ -2302,11 +2348,27 @@ var FREE_CHAPTERS = { 1:true, 2:true };
 var FREE_ARENAS = { 'prisoners-dilemma':true };
 function resolveAccess() {
   // Cache on State.hasAccess. Staff always have access. Otherwise true if the
-  // student has an active, non-expired subscription in any enrolled course.
+  // student has an active, non-expired subscription OR a super-admin fee waiver
+  // (course-wide or per-student) in any enrolled course.
   if (State.role === 'admin' || State.role === 'instructor') { State.hasAccess = true; return Promise.resolve(true); }
   var uid = State.user.id;
-  return sb.from('sa_subscriptions').select('status,expires_at').eq('student_id', uid).eq('status','active').then(function(res){
-    var rows = res.data ? res.data : [];
+  var enrolledCourseIds = (State.courses || []).map(function(c){ return c.id; });
+  var waiverP = enrolledCourseIds.length
+    ? sb.from('sa_fee_waivers').select('course_id,student_id').in('course_id', enrolledCourseIds)
+    : Promise.resolve({ data: [] });
+  return Promise.all([
+    sb.from('sa_subscriptions').select('status,expires_at').eq('student_id', uid).eq('status','active'),
+    waiverP
+  ]).then(function(res){
+    // 1) waiver check
+    var waivers = res[1] && res[1].data ? res[1].data : [];
+    for (var w = 0; w < waivers.length; w++) {
+      if (waivers[w].student_id === null || waivers[w].student_id === undefined || String(waivers[w].student_id) === String(uid)) {
+        State.hasAccess = true; return true;
+      }
+    }
+    // 2) subscription check
+    var rows = res[0] && res[0].data ? res[0].data : [];
     var now = Date.now();
     var ok = false, i;
     for (i = 0; i < rows.length; i++) {
