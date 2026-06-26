@@ -575,17 +575,41 @@ function loadPlatformSettings(){
   });
 }
 function loadCourses(){
-  return sb.from('sa_courses').select('*').eq('owner_id', State.user.id).order('created_at',{ascending:false}).then(function(res){
+  // The pinned super-admin sees EVERY course on the platform (read-everywhere +
+  // waivers/subscriptions). Everyone else sees only their own.
+  var isPlatformAdmin = State.user && State.user.email && (State.user.email.toLowerCase() === 'sharmaaa9@yahoo.com');
+  var q = isPlatformAdmin
+    ? sb.from('sa_courses').select('*').order('created_at',{ascending:false})
+    : sb.from('sa_courses').select('*').eq('owner_id', State.user.id).order('created_at',{ascending:false});
+  return q.then(function(res){
     State.courses = res.data ? res.data : [];
-    var sel=$('coursePick'); sel.innerHTML='';
-    if(State.courses.length===0){
-      var o=document.createElement('option'); o.value=''; o.textContent='(no courses yet)'; sel.appendChild(o);
-      State.teachCourseId=null;
-    } else {
-      State.courses.forEach(function(c){ var o=document.createElement('option'); o.value=c.id; o.textContent=c.title+(c.term?(' · '+c.term):''); sel.appendChild(o); });
-      if(!State.teachCourseId || !findCourse(State.teachCourseId)){ State.teachCourseId=State.courses[0].id; }
-      sel.value=State.teachCourseId;
-    }
+    var ownerNames = {};
+    var finish = function(){
+      var sel=$('coursePick'); sel.innerHTML='';
+      if(State.courses.length===0){
+        var o=document.createElement('option'); o.value=''; o.textContent='(no courses yet)'; sel.appendChild(o);
+        State.teachCourseId=null;
+      } else {
+        State.courses.forEach(function(c){
+          var o=document.createElement('option'); o.value=c.id;
+          var label=c.title+(c.term?(' · '+c.term):'');
+          if(isPlatformAdmin && c.owner_id !== State.user.id){
+            var who = ownerNames[c.owner_id] ? ownerNames[c.owner_id] : 'another professor';
+            label += '  — ' + who;
+          }
+          o.textContent=label; sel.appendChild(o);
+        });
+        if(!State.teachCourseId || !findCourse(State.teachCourseId)){ State.teachCourseId=State.courses[0].id; }
+        sel.value=State.teachCourseId;
+      }
+    };
+    if(isPlatformAdmin && State.courses.length){
+      var ownerIds = State.courses.map(function(c){ return c.owner_id; }).filter(function(v,i,a){ return v && a.indexOf(v)===i; });
+      sb.from('sa_profiles').select('id,email,full_name').in('id', ownerIds).then(function(pr){
+        (pr.data||[]).forEach(function(p){ ownerNames[p.id]= p.full_name || p.email || 'professor'; });
+        finish();
+      }, finish);
+    } else { finish(); }
   });
 }
 function findCourse(id){ for(var i=0;i<State.courses.length;i++){ if(State.courses[i].id===id){ return State.courses[i]; } } return null; }
