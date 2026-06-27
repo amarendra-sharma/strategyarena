@@ -200,6 +200,18 @@
 .data-table th,.data-table td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
 .data-table thead th{font-weight:600;color:var(--text-bright);}
 :focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+.pm-wrap{margin:14px 0;display:inline-block;}
+.pm-colp{text-align:center;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px;letter-spacing:.02em;}
+.pm-table{border-collapse:collapse;margin:0 auto;font-variant-numeric:tabular-nums;}
+.pm-table th,.pm-table td{border:1px solid var(--border);padding:10px 16px;text-align:center;min-width:64px;}
+.pm-table thead th{background:var(--bg2);font-weight:600;color:var(--text-bright);}
+.pm-table tbody th{background:var(--bg2);font-weight:600;color:var(--text-bright);}
+.pm-corner{background:transparent !important;border:none !important;position:relative;}
+.pm-rowp{font-size:12px;color:var(--text-muted);font-weight:600;}
+.pm-table td{font-size:15px;color:var(--text-bright);}
+.pm-p1{color:var(--violet);font-weight:600;}
+.pm-p2{color:var(--gold,#c9920a);font-weight:600;}
+.pm-legend{font-size:11.5px;color:var(--text-subtle);margin-top:6px;text-align:center;}
 </style>
 </head>
 <body>
@@ -2754,11 +2766,42 @@ function loadNewQuestion() {
     });
 }
 
+function renderFigure(fig) {
+  if (!fig || !fig.type) { return ''; }
+  if (fig.type === 'matrix') { return renderMatrixFigure(fig); }
+  // future: if (fig.type === 'tree') { return renderTreeFigure(fig); }
+  return '';
+}
+function renderMatrixFigure(fig) {
+  var rs = fig.rowStrategies || [];
+  var cs = fig.colStrategies || [];
+  var cells = fig.cells || [];
+  var rowP = fig.rowPlayer || 'Player 1';
+  var colP = fig.colPlayer || 'Player 2';
+  var h = '<div class="pm-wrap" role="group" aria-label="Payoff matrix">';
+  h += '<div class="pm-colp">' + esc(colP) + '</div>';
+  h += '<table class="pm-table"><thead><tr><th class="pm-corner"><span class="pm-rowp">' + esc(rowP) + '</span></th>';
+  for (var c = 0; c < cs.length; c++) { h += '<th scope="col">' + esc(cs[c]) + '</th>'; }
+  h += '</tr></thead><tbody>';
+  for (var r = 0; r < rs.length; r++) {
+    h += '<tr><th scope="row">' + esc(rs[r]) + '</th>';
+    for (var k = 0; k < cs.length; k++) {
+      var pair = (cells[r] && cells[r][k]) ? cells[r][k] : ['', ''];
+      h += '<td><span class="pm-p1">' + esc(String(pair[0])) + '</span>, <span class="pm-p2">' + esc(String(pair[1])) + '</span></td>';
+    }
+    h += '</tr>';
+  }
+  h += '</tbody></table>';
+  h += '<div class="pm-legend">Each cell shows (<span class="pm-p1">' + esc(rowP) + '\u2019s payoff</span>, <span class="pm-p2">' + esc(colP) + '\u2019s payoff</span>).</div>';
+  h += '</div>';
+  return h;
+}
 function renderQuestion(item) {
   var area = $('practiceArea');
   var html = '<div class="q-card">';
   html += '<div class="q-meta">' + esc(item.item_type) + ' · ' + (item.points || 1) + ' pt</div>';
   html += '<div class="q-prompt">' + esc(item.prompt) + '</div>';
+  if (item.figure) { html += renderFigure(item.figure); }
 
   if (item.item_type === 'multiple_choice' && item.options) {
     html += '<div class="q-options" id="optWrap">';
