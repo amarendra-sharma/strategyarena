@@ -2843,13 +2843,13 @@ function renderTreeFigure(fig) {
   var H = PAD * 2 + totalLeaves * LEAF_DY;
   var parts = [];
   // colors: Player 1 violet, Player 2 gold
-  function nodeColor(player) { return (player && player.indexOf('2') >= 0) ? 'var(--gold,#c9920a)' : 'var(--violet)'; }
+  function nodeColor(player) { return (player && player.indexOf('2') >= 0) ? 'var(--amber)' : 'var(--violet)'; }
   // draw edges + nodes recursively
   function draw(n) {
     if (!n) { return; }
     if (n.payoff) {
-      parts.push('<circle cx="' + n._x + '" cy="' + n._y + '" r="4" fill="var(--text-subtle)"></circle>');
-      parts.push('<text x="' + (n._x + 10) + '" y="' + (n._y + 4) + '" font-size="13" fill="var(--text-bright)"><tspan fill="var(--violet)">' + esc(String(n.payoff[0])) + '</tspan>, <tspan fill="var(--gold,#c9920a)">' + esc(String(n.payoff[1])) + '</tspan></text>');
+      parts.push('<circle cx="' + n._x + '" cy="' + n._y + '" r="4" fill="var(--text-bright)"></circle>');
+      parts.push('<text x="' + (n._x + 10) + '" y="' + (n._y + 4) + '" font-size="13" font-weight="600" fill="var(--text-bright)"><tspan fill="var(--violet)">' + esc(String(n.payoff[0])) + '</tspan>, <tspan fill="var(--amber)">' + esc(String(n.payoff[1])) + '</tspan></text>');
       return;
     }
     var ch = n.children || [];
@@ -2857,15 +2857,17 @@ function renderTreeFigure(fig) {
       var c = ch[i];
       var cn = c.node;
       // edge
-      parts.push('<line x1="' + n._x + '" y1="' + n._y + '" x2="' + cn._x + '" y2="' + cn._y + '" stroke="var(--border)" stroke-width="1.5"></line>');
-      // action label at midpoint
+      parts.push('<line x1="' + n._x + '" y1="' + n._y + '" x2="' + cn._x + '" y2="' + cn._y + '" stroke="var(--violet)" stroke-width="2.5" stroke-linecap="round"></line>');
+      // action label at midpoint (bright, with a small dark backing rect for legibility over lines)
       var mx = (n._x + cn._x) / 2, my = (n._y + cn._y) / 2 - 4;
-      parts.push('<text x="' + mx + '" y="' + my + '" font-size="12" fill="var(--text-muted)" text-anchor="middle">' + esc(c.action) + '</text>');
+      var lw = (String(c.action).length * 7) + 8;
+      parts.push('<rect x="' + (mx - lw / 2) + '" y="' + (my - 11) + '" width="' + lw + '" height="15" rx="3" fill="var(--bg2)"></rect>');
+      parts.push('<text x="' + mx + '" y="' + my + '" font-size="12" font-weight="600" fill="var(--text-bright)" text-anchor="middle">' + esc(c.action) + '</text>');
       draw(cn);
     }
     // node marker + player label (drawn after edges so it's on top)
-    parts.push('<circle cx="' + n._x + '" cy="' + n._y + '" r="6" fill="' + nodeColor(n.player) + '"></circle>');
-    parts.push('<text x="' + n._x + '" y="' + (n._y - 11) + '" font-size="11" fill="var(--text-muted)" text-anchor="middle">' + esc(n.player || '') + '</text>');
+    parts.push('<circle cx="' + n._x + '" cy="' + n._y + '" r="7" fill="' + nodeColor(n.player) + '" stroke="var(--bg)" stroke-width="1.5"></circle>');
+    parts.push('<text x="' + n._x + '" y="' + (n._y - 13) + '" font-size="11" font-weight="600" fill="var(--text-bright)" text-anchor="middle">' + esc(n.player || '') + '</text>');
   }
   draw(fig.root);
   var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + Math.min(W, 640) + '" role="img" aria-label="Game tree" style="max-width:100%;height:auto;">' + parts.join('') + '</svg>';
