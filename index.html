@@ -408,6 +408,7 @@
    CONFIG
    ==================================================================== */
 var SUPABASE_URL = 'https://qgelvmefyexyzpwqupev.supabase.co';
+var SA_BUILD = 'figures+trees-2026-06';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZWx2bWVmeWV4eXpwd3F1cGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDY5ODAsImV4cCI6MjA5NjAyMjk4MH0.AR55GBLefKHfs9ncWWzEFks_VISPjJtbW8SezyjM3lc';
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Shared MacroNations proctoring engine. Point it at StrategyArena's existing
@@ -3895,6 +3896,7 @@ sb.auth.onAuthStateChange(function(event, session){
     }
   }
 });
+try { console.log('%cStrategyArena build: ' + SA_BUILD + ' | tree renderer present: ' + (typeof renderTreeFigure !== 'undefined') + ' | matrix renderer present: ' + (typeof renderMatrixFigure !== 'undefined'), 'color:#7c6df2;font-weight:bold'); } catch(e){}
 </script>
 </body>
 </html>
