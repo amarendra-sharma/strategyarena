@@ -2637,7 +2637,8 @@ function renderChapters() {
   var g = $('chapterGrid'); g.innerHTML = '';
   var uid = State.user ? State.user.id : null;
   var courseId = State.payCourseId || State.selfCourseId;
-  // Load which chapters this student has already marked read, so cards reflect it.
+  // Reflect reading completion that was earned in the textbook reader (enforced by
+  // scroll-depth + dwell-time in sa-progress.js -- not a self-serve "mark read").
   var readMap = {};
   function paint(){
     g.innerHTML = '';
@@ -2650,33 +2651,13 @@ function renderChapters() {
       div.innerHTML =
         '<div class="c-eyebrow">Chapter ' + c.n + (FREE_CHAPTERS[c.n] ? ' · Free' : '') + (isRead ? ' · ✓ Read' : '') + '</div>' +
         '<div class="c-title">' + esc(c.title) + '</div>' +
-        '<div class="c-meta">' + c.mins + ' min read</div>' + pill +
-        (locked ? '' : '<button class="btn btn-ghost btn-sm" data-markread="'+c.n+'" style="margin-top:10px;">'+(isRead?'✓ Marked read':'Mark as read')+'</button>');
+        '<div class="c-meta">' + c.mins + ' min read</div>' + pill;
       if (locked) { div.style.opacity = '.7'; }
-      div.addEventListener('click', function(ev) {
-        if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-markread')) { return; } // let the button handle it
+      div.addEventListener('click', function() {
         if (chapterLocked(c.n)) { openSubscribePrompt('Chapter ' + c.n + ', ' + c.title); return; }
         window.open('strategyarena-curriculum.html#chapter-' + c.n, '_blank');
       });
       g.appendChild(div);
-    });
-    // wire mark-as-read buttons
-    Array.prototype.forEach.call(g.querySelectorAll('[data-markread]'), function(b){
-      b.addEventListener('click', function(ev){
-        ev.stopPropagation();
-        var ch = parseInt(b.getAttribute('data-markread'),10);
-        if (!uid || !courseId) { return; }
-        if (readMap[ch]) { return; }   // already read
-        b.disabled = true; b.textContent = 'Saving…';
-        sb.from('sa_chapter_progress').upsert(
-          { student_id:uid, course_id:courseId, chapter:ch, reading_done:true },
-          { onConflict:'student_id,course_id,chapter' }
-        ).then(function(res){
-          b.disabled = false;
-          if (res.error) { b.textContent = 'Mark as read'; return; }
-          readMap[ch] = true; paint();
-        });
-      });
     });
   }
   if (uid && courseId) {

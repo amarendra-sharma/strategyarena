@@ -9211,6 +9211,15 @@ function navigateTo(chapterNum) {
 
   // Close mobile sidebar
   $('#sidebar').classList.remove('open');
+
+  // --- Reading enforcement: start tracking genuine reading of this chapter.
+  // Completion (scroll-coverage + dwell-time) is recorded to Supabase by
+  // sa-progress.js. Only real chapters (n >= 1) count toward Reading %.
+  if (chapterNum >= 1 && window.SAProgress && window.SAProgress.trackReading) {
+    var _chEl = document.querySelector('.chapter[data-chapter="' + chapterNum + '"]');
+    var _mins = parseInt((readTimes[chapterNum] || '').replace(/[^0-9]/g, ''), 10);
+    if (_chEl) { window.SAProgress.trackReading(_chEl, chapterNum, isNaN(_mins) ? 6 : _mins); }
+  }
 }
 
 function bindNav() {
