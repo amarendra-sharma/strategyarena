@@ -351,6 +351,7 @@
       <div class="practice-bar">
         <select class="sel" id="practiceChapter"></select>
         <button class="btn btn-primary" id="newQuestionBtn" style="width:auto;">New question</button>
+        <button class="btn btn-ghost" id="takeQuizBtn" style="width:auto;" title="A short graded quiz for this chapter. Counts toward your grade. Answers are never shown.">Take graded quiz</button>
       </div>
       <div id="practiceArea"></div>
     </section>
@@ -2842,6 +2843,166 @@ function fillPracticeChapters() {
     btn.addEventListener('click', loadNewQuestion);
     s.addEventListener('change', loadNewQuestion);
   }
+  var qbtn = $('takeQuizBtn');
+  if (qbtn && !qbtn.getAttribute('data-wired')) {
+    qbtn.setAttribute('data-wired', '1');
+    qbtn.addEventListener('click', function(){ startGradedQuiz(parseInt($('practiceChapter').value, 10)); });
+  }
+}
+
+/* ====================================================================
+   GRADED PER-CHAPTER QUIZ
+   --------------------------------------------------------------------
+   A short, defensible quiz drawn from the chapter's server-validated
+   item bank. Reuses the exam pipeline: the edge function ISSUES each
+   item (no answer leaves the server) and GRADES each submission. The
+   quiz NEVER reveals which answers were right -- only the final score --
+   so it cannot be farmed by resubmitting. Auto-gradable items only
+   (numeric + multiple choice; free-response is excluded since it can't
+   be machine-scored). On completion the score is written via
+   SAProgress.recordQuiz so it flows to the gradebook and My Progress.
+   Attempt-limited and "best score kept" (a retake only helps).
+   ==================================================================== */
+var QUIZ_LEN = 5;            // items per chapter quiz
+var QUIZ_PASS = 0.70;       // 70% to pass
+var QUIZ_MAX_ATTEMPTS = 2;  // attempts allowed per chapter
+var QuizState = null;
+
+function startGradedQuiz(chapter) {
+  if (!chapter) { return; }
+  var area = $('practiceArea');
+  var uid = State.user ? State.user.id : null;
+  var courseId = State.payCourseId || State.selfCourseId;
+  if (!uid || !courseId) { area.innerHTML = errCard('Please sign in to take a graded quiz.'); return; }
+  area.innerHTML = '<div class="q-card"><span class="spinner"></span> &nbsp;Checking your attempts…</div>';
+
+  // 1) enforce attempt limit: count prior recorded quiz attempts for this chapter.
+  sb.from('sa_chapter_progress').select('chapter,quiz_score,quiz_attempts').eq('student_id', uid).eq('course_id', courseId).eq('chapter', chapter).maybeSingle().then(function(pr){
+    var prior = pr && pr.data ? pr.data : null;
+    var used = prior && prior.quiz_attempts ? Number(prior.quiz_attempts) : 0;
+    var bestPrior = prior && prior.quiz_score !== null && prior.quiz_score !== undefined ? Number(prior.quiz_score) : null;
+    if (used >= QUIZ_MAX_ATTEMPTS) {
+      area.innerHTML = errCard('You have used all ' + QUIZ_MAX_ATTEMPTS + ' attempts for the Chapter ' + chapter + ' quiz.' + (bestPrior !== null ? ' Your recorded score is ' + Math.round(bestPrior * 100) + '%.' : ''));
+      return;
+    }
+    // 2) draw QUIZ_LEN auto-gradable items from the chapter bank.
+    sb.from('sa_assessment_items').select('id,item_type').eq('chapter', chapter).eq('is_active', true).in('item_type', ['parameterized_numeric','multiple_choice']).then(function(res){
+      var pool = res.data ? res.data : [];
+      if (pool.length === 0) { area.innerHTML = errCard('No graded quiz items for this chapter yet.'); return; }
+      // shuffle, take QUIZ_LEN
+      for (var i = pool.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+      var picks = pool.slice(0, Math.min(QUIZ_LEN, pool.length));
+      // 3) issue each item via the edge function (no answers come back).
+      var chain = Promise.resolve();
+      var issued = [];
+      var failed = false;
+      picks.forEach(function(p){
+        chain = chain.then(function(){
+          return sb.functions.invoke('grade-attempt', { body: { action:'issue', item_id:p.id, course_id:courseId } }).then(function(fn){
+            if (fn.error || !fn.data || fn.data.error) { failed = true; return; }
+            issued.push({ attempt_id:fn.data.attempt_id, item_type:fn.data.item_type, prompt:fn.data.prompt, options:fn.data.options, points:fn.data.points, figure:fn.data.figure });
+          });
+        });
+      });
+      chain.then(function(){
+        if (issued.length === 0) { area.innerHTML = errCard('Could not start the quiz. Please try again.'); return; }
+        QuizState = { chapter:chapter, courseId:courseId, items:issued, idx:0, answers:{}, attemptsUsed:used, bestPrior:bestPrior, submitting:false };
+        renderQuizQuestion();
+      });
+    });
+  });
+}
+
+function renderQuizQuestion() {
+  var area = $('practiceArea');
+  var q = QuizState.items[QuizState.idx];
+  var n = QuizState.items.length;
+  var html = '<div class="q-card">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
+  html += '<span class="tag violet">Graded quiz · Chapter ' + QuizState.chapter + '</span>';
+  html += '<span style="color:var(--text-muted);font-size:12.5px;">Question ' + (QuizState.idx + 1) + ' of ' + n + '</span></div>';
+  html += '<div class="q-prompt" style="margin-bottom:12px;">' + esc(q.prompt) + '</div>';
+  if (q.figure) { html += renderFigure(q.figure); }
+  if (q.item_type === 'multiple_choice') {
+    var opts = q.options || [];
+    html += '<div class="q-options">';
+    for (var k = 0; k < opts.length; k++) {
+      var savedM = (QuizState.answers[QuizState.idx] !== undefined && Number(QuizState.answers[QuizState.idx]) === k) ? ' selected' : '';
+      html += '<button class="q-option' + savedM + '" data-qopt="' + k + '">' + esc(opts[k]) + '</button>';
+    }
+    html += '</div>';
+  } else {
+    var savedN = (QuizState.answers[QuizState.idx] !== undefined) ? esc(QuizState.answers[QuizState.idx]) : '';
+    html += '<input type="text" class="num-input" id="quizNum" placeholder="Your answer" value="' + savedN + '" style="margin-top:8px;">';
+  }
+  html += '<div class="inline-actions" style="margin-top:16px;justify-content:space-between;">';
+  html += '<button class="btn btn-ghost" id="quizPrev"' + (QuizState.idx === 0 ? ' disabled' : '') + '>Back</button>';
+  if (QuizState.idx < n - 1) {
+    html += '<button class="btn btn-primary" id="quizNext">Next</button>';
+  } else {
+    html += '<button class="btn btn-primary" id="quizSubmit">Submit quiz</button>';
+  }
+  html += '</div>';
+  html += '<div style="margin-top:10px;font-size:12px;color:var(--text-subtle);">Your score is recorded. Correct answers are not shown. ' + (QUIZ_MAX_ATTEMPTS - QuizState.attemptsUsed) + ' attempt' + ((QUIZ_MAX_ATTEMPTS - QuizState.attemptsUsed) === 1 ? '' : 's') + ' remaining (best score kept).</div>';
+  html += '</div>';
+  area.innerHTML = html;
+
+  // wire option/select
+  Array.prototype.forEach.call(area.querySelectorAll('[data-qopt]'), function(b){
+    b.addEventListener('click', function(){
+      QuizState.answers[QuizState.idx] = parseInt(b.getAttribute('data-qopt'), 10);
+      Array.prototype.forEach.call(area.querySelectorAll('[data-qopt]'), function(x){ x.classList.remove('selected'); });
+      b.classList.add('selected');
+    });
+  });
+  function saveNum(){ var ni = $('quizNum'); if (ni) { var v = ni.value.trim(); if (v !== '') { QuizState.answers[QuizState.idx] = v; } } }
+  if ($('quizPrev')) { $('quizPrev').addEventListener('click', function(){ saveNum(); if (QuizState.idx > 0) { QuizState.idx--; renderQuizQuestion(); } }); }
+  if ($('quizNext')) { $('quizNext').addEventListener('click', function(){ saveNum(); if (QuizState.idx < n - 1) { QuizState.idx++; renderQuizQuestion(); } }); }
+  if ($('quizSubmit')) { $('quizSubmit').addEventListener('click', function(){ saveNum(); submitGradedQuiz(); }); }
+}
+
+function submitGradedQuiz() {
+  if (QuizState.submitting) { return; }
+  QuizState.submitting = true;
+  var area = $('practiceArea');
+  area.innerHTML = '<div class="q-card"><span class="spinner"></span> &nbsp;Grading your quiz…</div>';
+  var earned = 0, possible = 0;
+  var chain = Promise.resolve();
+  QuizState.items.forEach(function(it, i){
+    possible += (it.points ? Number(it.points) : 1);
+    chain = chain.then(function(){
+      var submitted = (QuizState.answers[i] !== undefined) ? QuizState.answers[i] : '-999999';
+      return sb.functions.invoke('grade-attempt', { body: { action:'grade', attempt_id: it.attempt_id, submitted_value: submitted } }).then(function(fn){
+        if (fn.data && fn.data.points_earned) { earned += Number(fn.data.points_earned); }
+      });
+    });
+  });
+  chain.then(function(){
+    var frac = possible > 0 ? (earned / possible) : 0;
+    var percent = Math.round(frac * 100);
+    var passed = frac >= QUIZ_PASS;
+    var attemptsUsed = QuizState.attemptsUsed + 1;
+    var keepFrac = (QuizState.bestPrior !== null && QuizState.bestPrior > frac) ? QuizState.bestPrior : frac;
+    // Write score + attempts to sa_chapter_progress (best score kept). Reading is
+    // also implied done by completing a graded quiz on the chapter.
+    var uid = State.user.id;
+    sb.from('sa_chapter_progress').upsert({
+      student_id: uid, course_id: QuizState.courseId, chapter: QuizState.chapter,
+      quiz_score: keepFrac, quiz_passed: (keepFrac >= QUIZ_PASS), quiz_attempts: attemptsUsed, reading_done: true
+    }, { onConflict: 'student_id,course_id,chapter' }).then(function(){
+      var kept = Math.round(keepFrac * 100);
+      var html = '<div class="q-card" style="text-align:center;">';
+      html += '<div style="font-size:40px;margin-bottom:6px;">' + (passed ? '\u2705' : '\uD83D\uDCDD') + '</div>';
+      html += '<h2 style="margin:0 0 4px;">You scored ' + percent + '%</h2>';
+      html += '<div style="color:var(--text-muted);margin-bottom:10px;">' + earned + ' of ' + possible + ' points' + (passed ? ' · Passed' : ' · Below 70%') + '</div>';
+      if (kept !== percent) { html += '<div style="color:var(--text-muted);font-size:13px;margin-bottom:10px;">Your best recorded score for this chapter is ' + kept + '% (kept).</div>'; }
+      html += '<div style="font-size:13px;color:var(--text-subtle);">Recorded to your grade. ' + Math.max(0, QUIZ_MAX_ATTEMPTS - attemptsUsed) + ' attempt' + ((QUIZ_MAX_ATTEMPTS - attemptsUsed) === 1 ? '' : 's') + ' remaining.</div>';
+      html += '<div class="inline-actions" style="justify-content:center;margin-top:16px;"><button class="btn btn-ghost" id="quizDone">Back to practice</button></div>';
+      html += '</div>';
+      area.innerHTML = html;
+      if ($('quizDone')) { $('quizDone').addEventListener('click', function(){ QuizState = null; area.innerHTML = ''; loadNewQuestion(); }); }
+    });
+  });
 }
 
 function loadNewQuestion() {

@@ -47,12 +47,23 @@
       var session = (res && res.data) ? res.data.session : null;
       if (!session || !session.user) { ctx = null; return null; }
       var user = session.user;
-      // find this student's course (the shell creates a self-study course).
-      return sb.from('sa_enrollments').select('course_id')
-        .eq('student_id', user.id).limit(1)
+      // Resolve the student's PRIMARY course the SAME way the app shell does, so
+      // reading/quiz writes land on the course the progress view reads from.
+      // Preference: a professor's course the student joined, else their self-study
+      // course, else any enrollment. (The shell uses payCourseId || selfCourseId,
+      // where payCourseId is the professor course when joined.)
+      return sb.from('sa_enrollments').select('course_id, sa_courses(owner_id)')
+        .eq('student_id', user.id)
         .then(function (enr) {
-          var courseId = null;
-          if (enr && enr.data && enr.data.length > 0) { courseId = enr.data[0].course_id; }
+          var rows = (enr && enr.data) ? enr.data : [];
+          var profCourse = null, selfCourse = null, anyCourse = null, i;
+          for (i = 0; i < rows.length; i++) {
+            anyCourse = rows[i].course_id;
+            var oc = rows[i].sa_courses ? rows[i].sa_courses.owner_id : null;
+            if (oc === user.id) { selfCourse = rows[i].course_id; }
+            else if (oc && !profCourse) { profCourse = rows[i].course_id; }
+          }
+          var courseId = profCourse ? profCourse : (selfCourse ? selfCourse : anyCourse);
           ctx = { user: user, courseId: courseId };
           return ctx;
         });
