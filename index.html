@@ -2099,17 +2099,31 @@ function openAssembler(){
   // ---- random-by-topic ----
   function loadTopics(){
     $('axTopics').innerHTML=loadingCard();
-    sb.from('sa_assessment_items').select('concept_tag,chapter').eq('is_active',true).then(function(res){
+    sb.from('sa_assessment_items').select('concept_tag,chapter,points').eq('is_active',true).then(function(res){
       var items=res.data?res.data:[];
-      var byTag={};
-      items.forEach(function(it){ var t=it.concept_tag||'(untagged)'; if(!byTag[t]){ byTag[t]={n:0,ch:it.chapter}; } byTag[t].n++; });
-      var tags=Object.keys(byTag).sort(function(a,b){ return byTag[a].ch-byTag[b].ch; });
-      if(tags.length===0){ $('axTopics').innerHTML='<div class="empty">No topics found.</div>'; return; }
+      // Group by concept_tag + points so each slot draws items of ONE point value.
+      // This makes a per-student exam's total EXACT: n items from a slot always
+      // sum to n * points, identical for every student.
+      var byKey={};
+      items.forEach(function(it){
+        var tag=it.concept_tag||'(untagged)';
+        var pts=(it.points===null||it.points===undefined)?1:Number(it.points);
+        var key=tag+'||'+pts;
+        if(!byKey[key]){ byKey[key]={n:0,ch:it.chapter,tag:tag,pts:pts}; }
+        byKey[key].n++;
+      });
+      var keys=Object.keys(byKey).sort(function(a,b){
+        if(byKey[a].ch!==byKey[b].ch){ return byKey[a].ch-byKey[b].ch; }
+        if(byKey[a].tag!==byKey[b].tag){ return byKey[a].tag<byKey[b].tag?-1:1; }
+        return byKey[a].pts-byKey[b].pts;
+      });
+      if(keys.length===0){ $('axTopics').innerHTML='<div class="empty">No topics found.</div>'; return; }
       var html='';
-      tags.forEach(function(t){
+      keys.forEach(function(k){
+        var g=byKey[k];
         html+='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);">'+
-          '<label style="font-size:13px;display:flex;align-items:center;gap:8px;"><input type="checkbox" class="ax-topic" data-tag="'+esc(t)+'"> '+esc(t)+' <span style="color:var(--text-subtle);font-size:11px;">(Ch'+byTag[t].ch+' · '+byTag[t].n+' available)</span></label>'+
-          '<input type="number" class="ax-topic-n" data-tag="'+esc(t)+'" min="1" max="'+byTag[t].n+'" value="2" style="width:64px;padding:5px;">'+
+          '<label style="font-size:13px;display:flex;align-items:center;gap:8px;"><input type="checkbox" class="ax-topic" data-key="'+esc(k)+'" data-tag="'+esc(g.tag)+'" data-pts="'+g.pts+'"> '+esc(g.tag)+' <span class="tag dim" style="font-size:10.5px;">'+g.pts+' pt</span> <span style="color:var(--text-subtle);font-size:11px;">(Ch'+g.ch+' · '+g.n+' available)</span></label>'+
+          '<input type="number" class="ax-topic-n" data-key="'+esc(k)+'" min="1" max="'+g.n+'" value="2" style="width:64px;padding:5px;">'+
         '</div>';
       });
       $('axTopics').innerHTML=html;
@@ -2120,25 +2134,38 @@ function openAssembler(){
     });
   }
   function updateRandTotal(){
-    var total=0;
+    var totalQ=0, totalPts=0;
     Array.prototype.forEach.call($('axTopics').querySelectorAll('.ax-topic'), function(cb){
-      if(cb.checked){ var nIn=$('axTopics').querySelector('.ax-topic-n[data-tag="'+cb.getAttribute('data-tag').replace(/"/g,'')+'"]'); var n=nIn?parseInt(nIn.value,10):0; total+=isNaN(n)?0:n; }
+      if(cb.checked){
+        var key=cb.getAttribute('data-key');
+        var pts=parseInt(cb.getAttribute('data-pts'),10)||1;
+        var nIn=$('axTopics').querySelector('.ax-topic-n[data-key="'+key.replace(/"/g,'')+'"]');
+        var n=nIn?parseInt(nIn.value,10):0; if(isNaN(n)){ n=0; }
+        totalQ+=n; totalPts+=n*pts;
+      }
     });
-    $('axRandTotal').textContent = total>0 ? (total+' questions will be drawn') : '';
+    $('axRandTotal').textContent = totalQ>0 ? (totalQ+' questions · '+totalPts+' points (exact, same for every student)') : '';
   }
   $('axBuildRandom') && $('axBuildRandom').addEventListener('click', function(){
     var picks=[];
     Array.prototype.forEach.call($('axTopics').querySelectorAll('.ax-topic'), function(cb){
-      if(cb.checked){ var tag=cb.getAttribute('data-tag'); var nIn=$('axTopics').querySelector('.ax-topic-n[data-tag="'+tag.replace(/"/g,'')+'"]'); picks.push({tag:tag, n:nIn?parseInt(nIn.value,10):1}); }
+      if(cb.checked){
+        var key=cb.getAttribute('data-key');
+        var tag=cb.getAttribute('data-tag');
+        var pts=parseInt(cb.getAttribute('data-pts'),10)||1;
+        var nIn=$('axTopics').querySelector('.ax-topic-n[data-key="'+key.replace(/"/g,'')+'"]');
+        picks.push({tag:tag, n:nIn?parseInt(nIn.value,10):1, pts:pts});
+      }
     });
     if(picks.length===0){ axErr('Pick at least one topic.'); return; }
-    // remember the recipe (used if "fresh per student" is enabled)
-    ExamRecipe = picks.map(function(p){ return { tag:p.tag, n:p.n }; });
-    // fetch items per topic and randomly select n
+    // remember the recipe (used if "fresh per student" is enabled). Each slot pins
+    // tag + points, so every student's draw sums to the SAME exact total.
+    ExamRecipe = picks.map(function(p){ return { tag:p.tag, n:p.n, pts:p.pts }; });
+    // fetch items per topic+points slot and randomly select n
     var chain=Promise.resolve(); assemblerSel={};
     picks.forEach(function(p){
       chain=chain.then(function(){
-        return sb.from('sa_assessment_items').select('id,points,chapter').eq('is_active',true).eq('concept_tag',p.tag).then(function(res){
+        return sb.from('sa_assessment_items').select('id,points,chapter').eq('is_active',true).eq('concept_tag',p.tag).eq('points',p.pts).then(function(res){
           var pool=res.data?res.data:[];
           // shuffle pool
           for(var i=pool.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var tmp=pool[i]; pool[i]=pool[j]; pool[j]=tmp; }
@@ -2175,14 +2202,10 @@ function openAssembler(){
     var closesV=$('axCloses').value?new Date($('axCloses').value).toISOString():null;
     var pts, payloadIds, recipe;
     if(perStudent){
-      // recipe drives the draw; item_ids left empty. Estimate points = sum over
-      // recipe of n * (avg points of that topic's current pool), from assemblerSel
-      // built during "Build random selection" (a representative sample).
-      var sampleByCount=Object.keys(assemblerSel).reduce(function(s,id){return s+(assemblerSel[id].points?assemblerSel[id].points:1);},0);
-      var sampleN=Object.keys(assemblerSel).length;
-      var totalN=ExamRecipe.reduce(function(s,r){return s+(r.n||0);},0);
-      var avg=sampleN>0?(sampleByCount/sampleN):1;
-      pts=Math.round(avg*totalN);
+      // recipe drives the draw; item_ids left empty. Points are EXACT: each slot
+      // pins a point value, so the total = sum of n*pts over the recipe, identical
+      // for every student regardless of which items are randomly drawn.
+      pts=ExamRecipe.reduce(function(s,r){ return s + (r.n||0)*(r.pts||1); },0);
       payloadIds=[];           // no frozen items
       recipe=ExamRecipe;
     } else {
@@ -2195,11 +2218,36 @@ function openAssembler(){
       max_attempts:att, shuffle_questions:$('axShuffle').checked, attempt_scoring:$('axScoring').value,
       opens_at:opensV, closes_at:closesV, random_per_student:perStudent, random_recipe:recipe };
     $('axSave').disabled=true;
-    sb.from('sa_exams').insert(payload).then(function(res){
-      $('axSave').disabled=false;
-      if(res.error){ axErr(res.error.message); return; }
-      close(); loadExams();
-    });
+    function doInsert(){
+      sb.from('sa_exams').insert(payload).then(function(res){
+        $('axSave').disabled=false;
+        if(res.error){ axErr(res.error.message); return; }
+        close(); loadExams();
+      });
+    }
+    if(perStudent){
+      // Verify every recipe slot has at least n items in its tag+points pool, so
+      // each student can always draw exactly n (and totals stay exact). Otherwise
+      // a thin pool would yield a short exam for some students.
+      var checks=ExamRecipe.map(function(r){
+        return sb.from('sa_assessment_items').select('id', { count:'exact', head:true })
+          .eq('is_active',true).eq('concept_tag',r.tag).eq('points',r.pts).then(function(res){
+            return { r:r, available:(typeof res.count==='number')?res.count:0 };
+          });
+      });
+      Promise.all(checks).then(function(results){
+        var bad=results.filter(function(x){ return x.available < (x.r.n||0); });
+        if(bad.length>0){
+          $('axSave').disabled=false;
+          var b=bad[0];
+          axErr('Not enough questions for a fresh-per-student draw: "'+b.r.tag+'" ('+b.r.pts+' pt) has only '+b.available+' active items but the recipe asks for '+b.r.n+'. Lower the count or add items.');
+          return;
+        }
+        doInsert();
+      });
+    } else {
+      doInsert();
+    }
   });
   function axErr(t){ var e=$('axMsg'); e.textContent=t; e.className='msg err'; }
 }
@@ -2587,22 +2635,59 @@ function ensureProfileAndCourse() {
 
 function renderChapters() {
   var g = $('chapterGrid'); g.innerHTML = '';
-  STUDENT_CHAPTERS.forEach(function(c) {
-    var locked = chapterLocked(c.n);
-    var div = document.createElement('div');
-    div.className = 'card launch';
-    var pill = locked ? '<div class="pill soon">🔒 Subscribe to unlock</div>' : '<div class="pill">Open textbook →</div>';
-    div.innerHTML =
-      '<div class="c-eyebrow">Chapter ' + c.n + (FREE_CHAPTERS[c.n] ? ' · Free' : '') + '</div>' +
-      '<div class="c-title">' + esc(c.title) + '</div>' +
-      '<div class="c-meta">' + c.mins + ' min read</div>' + pill;
-    if (locked) { div.style.opacity = '.7'; }
-    div.addEventListener('click', function() {
-      if (chapterLocked(c.n)) { openSubscribePrompt('Chapter ' + c.n + ', ' + c.title); return; }
-      window.open('strategyarena-curriculum.html#chapter-' + c.n, '_blank');
+  var uid = State.user ? State.user.id : null;
+  var courseId = State.payCourseId || State.selfCourseId;
+  // Load which chapters this student has already marked read, so cards reflect it.
+  var readMap = {};
+  function paint(){
+    g.innerHTML = '';
+    STUDENT_CHAPTERS.forEach(function(c) {
+      var locked = chapterLocked(c.n);
+      var isRead = !!readMap[c.n];
+      var div = document.createElement('div');
+      div.className = 'card launch';
+      var pill = locked ? '<div class="pill soon">🔒 Subscribe to unlock</div>' : '<div class="pill">Open textbook →</div>';
+      div.innerHTML =
+        '<div class="c-eyebrow">Chapter ' + c.n + (FREE_CHAPTERS[c.n] ? ' · Free' : '') + (isRead ? ' · ✓ Read' : '') + '</div>' +
+        '<div class="c-title">' + esc(c.title) + '</div>' +
+        '<div class="c-meta">' + c.mins + ' min read</div>' + pill +
+        (locked ? '' : '<button class="btn btn-ghost btn-sm" data-markread="'+c.n+'" style="margin-top:10px;">'+(isRead?'✓ Marked read':'Mark as read')+'</button>');
+      if (locked) { div.style.opacity = '.7'; }
+      div.addEventListener('click', function(ev) {
+        if (ev.target && ev.target.getAttribute && ev.target.getAttribute('data-markread')) { return; } // let the button handle it
+        if (chapterLocked(c.n)) { openSubscribePrompt('Chapter ' + c.n + ', ' + c.title); return; }
+        window.open('strategyarena-curriculum.html#chapter-' + c.n, '_blank');
+      });
+      g.appendChild(div);
     });
-    g.appendChild(div);
-  });
+    // wire mark-as-read buttons
+    Array.prototype.forEach.call(g.querySelectorAll('[data-markread]'), function(b){
+      b.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        var ch = parseInt(b.getAttribute('data-markread'),10);
+        if (!uid || !courseId) { return; }
+        if (readMap[ch]) { return; }   // already read
+        b.disabled = true; b.textContent = 'Saving…';
+        sb.from('sa_chapter_progress').upsert(
+          { student_id:uid, course_id:courseId, chapter:ch, reading_done:true },
+          { onConflict:'student_id,course_id,chapter' }
+        ).then(function(res){
+          b.disabled = false;
+          if (res.error) { b.textContent = 'Mark as read'; return; }
+          readMap[ch] = true; paint();
+        });
+      });
+    });
+  }
+  if (uid && courseId) {
+    sb.from('sa_chapter_progress').select('chapter,reading_done').eq('student_id',uid).eq('course_id',courseId).then(function(res){
+      var rows = res.data ? res.data : [];
+      rows.forEach(function(p){ if(p.reading_done){ readMap[p.chapter]=true; } });
+      paint();
+    });
+  } else {
+    paint();
+  }
 }
 
 function renderArenas() {
@@ -3325,6 +3410,7 @@ function drawRecipeItems(exam){
   recipe.forEach(function(r){
     chain = chain.then(function(){
       var qy = sb.from('sa_assessment_items').select('id').eq('is_active', true).eq('concept_tag', r.tag);
+      if (r.pts) { qy = qy.eq('points', r.pts); }   // pin point value so totals are exact
       if (r.chapter) { qy = qy.eq('chapter', r.chapter); }
       return qy.then(function(res){
         var pool = res.data ? res.data.map(function(x){ return x.id; }) : [];
