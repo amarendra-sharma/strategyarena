@@ -1480,7 +1480,13 @@ function loadExams(){
     var html='<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Title</th><th>Kind</th><th>Items</th><th>Points</th><th>Status</th><th></th></tr></thead><tbody>';
     rows.forEach(function(e){
       var nItems=e.item_ids?e.item_ids.length:0;
-      html+='<tr><td>'+esc(e.title)+'</td><td><span class="tag violet">'+esc(e.kind)+'</span></td><td>'+nItems+'</td><td>'+esc(e.total_points||0)+'</td>'+
+      var perStudentBadge='';
+      if(e.random_per_student){
+        var ps=0; if(e.random_recipe){ e.random_recipe.forEach(function(r){ ps+=(r&&r.n)?Number(r.n):0; }); }
+        nItems=ps;
+        perStudentBadge=' <span class="tag amber" title="Each student gets a different random draw">per-student random</span>';
+      }
+      html+='<tr><td>'+esc(e.title)+perStudentBadge+'</td><td><span class="tag violet">'+esc(e.kind)+'</span></td><td>'+nItems+'</td><td>'+esc(e.total_points||0)+'</td>'+
         '<td>'+(e.is_published?'<span class="tag green">published</span>':'<span class="tag dim">draft</span>')+'</td>'+
         '<td class="inline-actions"><button class="btn btn-ghost btn-sm" data-edit="'+e.id+'">Edit</button><button class="btn btn-ghost btn-sm" data-clone="'+e.id+'">Clone</button><button class="btn btn-ghost btn-sm" data-integrity="'+e.id+'">Integrity</button><button class="btn btn-ghost btn-sm" data-pub="'+e.id+'" data-on="'+(e.is_published?'1':'0')+'">'+(e.is_published?'Unpublish':'Publish')+'</button>'+
         '<button class="btn btn-danger btn-sm" data-del="'+e.id+'">Delete</button></td></tr>';
@@ -1506,6 +1512,7 @@ function loadExams(){
   });
 }
 var assemblerSel={};
+var ExamRecipe=null;
 /* ====================================================================
    GRADE WRITTEN  (AI-assisted, instructor-reviewed)
    ==================================================================== */
@@ -1962,6 +1969,7 @@ function openExamLibrary(){
 
 function openAssembler(){
   assemblerSel={};
+  ExamRecipe=null;
   var m=document.createElement('div'); m.className='modal-bg';
   m.innerHTML='<div class="modal" style="max-width:880px;"><h2>Assemble exam</h2><div id="axMsg" class="msg"></div>'+
     '<div class="row2"><div class="field"><label>Title</label><input id="axTitle" placeholder="Midterm Exam"></div>'+
@@ -1997,6 +2005,10 @@ function openAssembler(){
     '<div id="axRandom" style="display:none;">'+
       '<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px;">Choose topics and how many questions to draw from each. The assembler will randomly select them when you build.</p>'+
       '<div id="axTopics" class="card" style="max-height:300px;overflow-y:auto;padding:6px 12px;">'+loadingCard()+'</div>'+
+      '<label style="display:flex;align-items:flex-start;gap:8px;margin:12px 0 6px;font-size:13px;cursor:pointer;">'+
+        '<input type="checkbox" id="axPerStudent" style="margin-top:3px;">'+
+        '<span><b>Draw a fresh random set for each student.</b> When on, every student receives a different random selection from these topics when they start the exam (drawn live). When off, one random set is built now and all students see the same questions.</span>'+
+      '</label>'+
       '<div class="inline-actions" style="margin-top:10px;"><button class="btn btn-ghost btn-sm" id="axBuildRandom">Build random selection</button><span id="axRandTotal" style="font-size:12.5px;color:var(--text-muted);align-self:center;"></span></div>'+
     '</div>'+
     '<div class="inline-actions" style="justify-content:flex-end;margin-top:18px;"><button class="btn btn-ghost" id="axCancel">Cancel</button><button class="btn btn-primary" id="axSave">Save exam</button></div></div>';
@@ -2120,6 +2132,8 @@ function openAssembler(){
       if(cb.checked){ var tag=cb.getAttribute('data-tag'); var nIn=$('axTopics').querySelector('.ax-topic-n[data-tag="'+tag.replace(/"/g,'')+'"]'); picks.push({tag:tag, n:nIn?parseInt(nIn.value,10):1}); }
     });
     if(picks.length===0){ axErr('Pick at least one topic.'); return; }
+    // remember the recipe (used if "fresh per student" is enabled)
+    ExamRecipe = picks.map(function(p){ return { tag:p.tag, n:p.n }; });
     // fetch items per topic and randomly select n
     var chain=Promise.resolve(); assemblerSel={};
     picks.forEach(function(p){
@@ -2146,17 +2160,40 @@ function openAssembler(){
   $('axSave').addEventListener('click', function(){
     var title=$('axTitle').value.trim();
     var ids=Object.keys(assemblerSel);
+    var perStudent=$('axPerStudent')?$('axPerStudent').checked:false;
     if(!title){ axErr('Title is required.'); return; }
-    if(ids.length===0){ axErr('Select or build at least one question.'); return; }
-    var pts=ids.reduce(function(s,id){return s+(assemblerSel[id].points?assemblerSel[id].points:1);},0);
+    // In per-student mode the exam stores a topic recipe and draws fresh items for
+    // each student at start, so a frozen selection is not required -- but a recipe is.
+    if(perStudent){
+      if(!ExamRecipe || ExamRecipe.length===0){ axErr('For a fresh-per-student exam, choose topics and click "Build random selection" first so the recipe is captured.'); return; }
+    } else {
+      if(ids.length===0){ axErr('Select or build at least one question.'); return; }
+    }
     var tl=$('axTime').value?parseInt($('axTime').value,10):0; if(!tl||tl<=0){ tl=null; }
     var att=$('axAttempts').value!==''?parseInt($('axAttempts').value,10):1; if(isNaN(att)||att<0){ att=1; }
     var opensV=$('axOpens').value?new Date($('axOpens').value).toISOString():null;
     var closesV=$('axCloses').value?new Date($('axCloses').value).toISOString():null;
-    var payload={ course_id:State.teachCourseId, kind:$('axKind').value, title:title, item_ids:ids,
+    var pts, payloadIds, recipe;
+    if(perStudent){
+      // recipe drives the draw; item_ids left empty. Estimate points = sum over
+      // recipe of n * (avg points of that topic's current pool), from assemblerSel
+      // built during "Build random selection" (a representative sample).
+      var sampleByCount=Object.keys(assemblerSel).reduce(function(s,id){return s+(assemblerSel[id].points?assemblerSel[id].points:1);},0);
+      var sampleN=Object.keys(assemblerSel).length;
+      var totalN=ExamRecipe.reduce(function(s,r){return s+(r.n||0);},0);
+      var avg=sampleN>0?(sampleByCount/sampleN):1;
+      pts=Math.round(avg*totalN);
+      payloadIds=[];           // no frozen items
+      recipe=ExamRecipe;
+    } else {
+      pts=ids.reduce(function(s,id){return s+(assemblerSel[id].points?assemblerSel[id].points:1);},0);
+      payloadIds=ids;
+      recipe=null;
+    }
+    var payload={ course_id:State.teachCourseId, kind:$('axKind').value, title:title, item_ids:payloadIds,
       total_points:pts, time_limit_minutes:tl, instructions:$('axInstr').value.trim(), is_published:false,
       max_attempts:att, shuffle_questions:$('axShuffle').checked, attempt_scoring:$('axScoring').value,
-      opens_at:opensV, closes_at:closesV };
+      opens_at:opensV, closes_at:closesV, random_per_student:perStudent, random_recipe:recipe };
     $('axSave').disabled=true;
     sb.from('sa_exams').insert(payload).then(function(res){
       $('axSave').disabled=false;
@@ -3183,7 +3220,7 @@ function loadMyExams() {
     var titleById = {}; rows.forEach(function(r){ titleById[r.course_id] = r.sa_courses ? r.sa_courses.title : 'Course'; });
     if (courseIds.length === 0) { host.innerHTML = '<div class="card empty">You are not enrolled in a course with exams yet. Join a course from Home.</div>'; return; }
     Promise.all([
-      sb.from('sa_exams').select('id,course_id,kind,title,total_points,time_limit_minutes,instructions,item_ids,is_published,max_attempts,shuffle_questions,attempt_scoring,opens_at,closes_at,proctored,camera_mode').in('course_id', courseIds).eq('is_published', true).order('created_at',{ascending:true}),
+      sb.from('sa_exams').select('id,course_id,kind,title,total_points,time_limit_minutes,instructions,item_ids,is_published,max_attempts,shuffle_questions,attempt_scoring,opens_at,closes_at,proctored,camera_mode,random_per_student,random_recipe').in('course_id', courseIds).eq('is_published', true).order('created_at',{ascending:true}),
       sb.from('sa_attempts').select('exam_id,item_id,points_earned,graded_at,submitted_value').eq('student_id', uid).not('exam_id','is',null),
       sb.from('sa_accommodations').select('course_id,time_multiplier,extra_attempts').eq('student_id', uid)
     ]).then(function(r) {
@@ -3197,18 +3234,35 @@ function loadMyExams() {
       var sittingsBy = {}; var lastPts = {};
       exams.forEach(function(e){ sittingsBy[e.id]=0; });
       var firstItemOf = {}; exams.forEach(function(e){ firstItemOf[e.id]=(e.item_ids&&e.item_ids.length)?e.item_ids[0]:null; });
+      // per-sitting item count for per-student random exams (sum of recipe n's)
+      var perSittingOf = {}; exams.forEach(function(e){
+        var ps=0; if(e.random_per_student && e.random_recipe){ e.random_recipe.forEach(function(r){ ps+=(r&&r.n)?Number(r.n):0; }); }
+        perSittingOf[e.id]=ps>0?ps:1;
+      });
       // best score per exam (for display)
       var bestPctBy = {};
       var examPtsAcc = {}; // exam -> {sitting tally}
+      var submittedCountBy = {};
       attempts.forEach(function(a){
-        if(a.submitted_value!==null && a.submitted_value!==undefined && firstItemOf[a.exam_id] && a.item_id===firstItemOf[a.exam_id]){ sittingsBy[a.exam_id]=(sittingsBy[a.exam_id]||0)+1; }
+        var ex = exams.filter(function(e){ return e.id===a.exam_id; })[0];
+        if(a.submitted_value===null || a.submitted_value===undefined){ return; }
+        if(ex && ex.random_per_student){
+          // count all submitted items; convert to sittings after the loop
+          submittedCountBy[a.exam_id]=(submittedCountBy[a.exam_id]||0)+1;
+        } else if(firstItemOf[a.exam_id] && a.item_id===firstItemOf[a.exam_id]){
+          sittingsBy[a.exam_id]=(sittingsBy[a.exam_id]||0)+1;
+        }
+      });
+      // finalize per-student sittings = submitted items / items-per-sitting
+      Object.keys(submittedCountBy).forEach(function(exId){
+        sittingsBy[exId]=Math.floor(submittedCountBy[exId]/(perSittingOf[exId]||1));
       });
       // total earned across all graded attempts of an exam (approx best by summing latest sitting is complex; show simple completed flag + score)
       var earnedBy = {};
       attempts.forEach(function(a){ if(a.graded_at){ earnedBy[a.exam_id]=(earnedBy[a.exam_id]||0)+(a.points_earned?Number(a.points_earned):0); } });
       var html = '';
       exams.forEach(function(e) {
-        var nItems = e.item_ids ? e.item_ids.length : 0;
+        var nItems = e.random_per_student ? (perSittingOf[e.id]||0) : (e.item_ids ? e.item_ids.length : 0);
         var sittings = sittingsBy[e.id]||0;
         var acc = accomByCourse[e.course_id];
         var baseAtt = (e.max_attempts===null||e.max_attempts===undefined)?1:Number(e.max_attempts);
@@ -3253,15 +3307,45 @@ function loadMyExams() {
   });
 }
 
+// An exam is ready to take if it has a fixed item list OR a per-student recipe.
+function examIsReady(exam){
+  if (exam.random_per_student) {
+    return !!(exam.random_recipe && exam.random_recipe.length > 0);
+  }
+  return !!(exam.item_ids && exam.item_ids.length > 0);
+}
+
+// Draw a fresh set of item ids for THIS student from the exam's recipe.
+// Returns a Promise resolving to an array of item ids (already shuffled within
+// each topic and trimmed to n). Topics with too few items contribute all they have.
+function drawRecipeItems(exam){
+  var recipe = exam.random_recipe || [];
+  var chosen = [];
+  var chain = Promise.resolve();
+  recipe.forEach(function(r){
+    chain = chain.then(function(){
+      var qy = sb.from('sa_assessment_items').select('id').eq('is_active', true).eq('concept_tag', r.tag);
+      if (r.chapter) { qy = qy.eq('chapter', r.chapter); }
+      return qy.then(function(res){
+        var pool = res.data ? res.data.map(function(x){ return x.id; }) : [];
+        for (var i=pool.length-1; i>0; i--){ var j=Math.floor(Math.random()*(i+1)); var t=pool[i]; pool[i]=pool[j]; pool[j]=t; }
+        var take = Math.min(r.n || 1, pool.length);
+        for (var k=0; k<take; k++){ chosen.push(pool[k]); }
+      });
+    });
+  });
+  return chain.then(function(){ return chosen; });
+}
+
 function startExam(exam, accom) {
   ExamState._consented = false;   // require consent fresh for each exam start
-  if (!exam.item_ids || exam.item_ids.length === 0) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
+  if (!examIsReady(exam)) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
   // Camera permission + ID check-in are handled by the shared consent screen.
   proceedStartExam(exam, accom);
 }
 
 function proceedStartExam(exam, accom) {
-  if (!exam.item_ids || exam.item_ids.length === 0) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
+  if (!examIsReady(exam)) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
   // For proctored exams, show the shared rules/consent + camera check-in first.
   var proctored = (exam.proctored !== false);
   if (proctored && !ExamState._consented && typeof MNProctor!=='undefined') {
@@ -3275,48 +3359,55 @@ function proceedStartExam(exam, accom) {
 }
 
 function reallyStartExam(exam, accom) {
-  if (!exam.item_ids || exam.item_ids.length === 0) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
+  if (!examIsReady(exam)) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
   ExamState = { exam:exam, items:[], answers:{}, idx:0, courseId:exam.course_id, submitting:false, finished:false, timer:null, deadline:null, _consented:true };
   var host = $('myExamsBody');
   host.innerHTML = '<div class="card"><span class="spinner"></span> &nbsp;Preparing your exam…</div>';
-  // order of items (shuffle if the instructor enabled it)
-  var ids = exam.item_ids.slice();
-  if (exam.shuffle_questions) {
-    for (var s=ids.length-1; s>0; s--){ var j=Math.floor(Math.random()*(s+1)); var t=ids[s]; ids[s]=ids[j]; ids[j]=t; }
-  }
-  // compute time limit incl. accommodation multiplier
-  if (exam.time_limit_minutes && exam.time_limit_minutes > 0) {
-    var mult = (accom && Number(accom.time_multiplier)) ? Number(accom.time_multiplier) : 1;
-    var mins = exam.time_limit_minutes * mult;
-    ExamState.deadline = Date.now() + Math.round(mins * 60000);
-  }
-  var chain = Promise.resolve();
-  var issued = [];
-  var failed = false;
-  ids.forEach(function(itemId) {
-    chain = chain.then(function() {
-      return sb.functions.invoke('grade-attempt', { body: { action:'issue', item_id:itemId, course_id:exam.course_id, exam_id:exam.id } }).then(function(fn) {
-        if (fn.error) { failed = true; return; }
-        if (fn.data && fn.data.error) { failed = true; ExamState.issueError = fn.data.error; return; }
-        if (fn.data && fn.data.attempt_id) {
-          issued.push({ attempt_id:fn.data.attempt_id, item_type:fn.data.item_type, prompt:fn.data.prompt, options:fn.data.options, points:fn.data.points });
-        }
-      });
-    });
-  });
-  chain.then(function() {
-    if (issued.length === 0) {
-      var msg = ExamState.issueError ? ('Could not start exam: ' + ExamState.issueError + '.') : 'Could not load exam questions. The grading service may be unavailable — please tell your instructor.';
-      host.innerHTML = errCard(msg);
+  // Resolve the question set: a fixed list, or a fresh per-student draw from the recipe.
+  var idsP = exam.random_per_student ? drawRecipeItems(exam) : Promise.resolve(exam.item_ids.slice());
+  idsP.then(function(ids){
+    if (!ids || ids.length === 0) {
+      host.innerHTML = errCard('Could not assemble your exam questions. Please tell your instructor.');
       return;
     }
-    ExamState.items = issued;
-    startExamTimer();
-    renderExamQuestion();
-    if(typeof MNProctor!=='undefined'){
-      MNProctor.onAutoSubmit(function(){ if(!ExamState.finished && !ExamState.submitting){ gradeExam(true); } });
-      MNProctor.start(exam, State.user);
+    // order of items (shuffle if the instructor enabled it)
+    if (exam.shuffle_questions) {
+      for (var s=ids.length-1; s>0; s--){ var j=Math.floor(Math.random()*(s+1)); var t=ids[s]; ids[s]=ids[j]; ids[j]=t; }
     }
+    // compute time limit incl. accommodation multiplier
+    if (exam.time_limit_minutes && exam.time_limit_minutes > 0) {
+      var mult = (accom && Number(accom.time_multiplier)) ? Number(accom.time_multiplier) : 1;
+      var mins = exam.time_limit_minutes * mult;
+      ExamState.deadline = Date.now() + Math.round(mins * 60000);
+    }
+    var chain = Promise.resolve();
+    var issued = [];
+    var failed = false;
+    ids.forEach(function(itemId) {
+      chain = chain.then(function() {
+        return sb.functions.invoke('grade-attempt', { body: { action:'issue', item_id:itemId, course_id:exam.course_id, exam_id:exam.id } }).then(function(fn) {
+          if (fn.error) { failed = true; return; }
+          if (fn.data && fn.data.error) { failed = true; ExamState.issueError = fn.data.error; return; }
+          if (fn.data && fn.data.attempt_id) {
+            issued.push({ attempt_id:fn.data.attempt_id, item_type:fn.data.item_type, prompt:fn.data.prompt, options:fn.data.options, points:fn.data.points, figure:fn.data.figure });
+          }
+        });
+      });
+    });
+    chain.then(function() {
+      if (issued.length === 0) {
+        var msg = ExamState.issueError ? ('Could not start exam: ' + ExamState.issueError + '.') : 'Could not load exam questions. The grading service may be unavailable — please tell your instructor.';
+        host.innerHTML = errCard(msg);
+        return;
+      }
+      ExamState.items = issued;
+      startExamTimer();
+      renderExamQuestion();
+      if(typeof MNProctor!=='undefined'){
+        MNProctor.onAutoSubmit(function(){ if(!ExamState.finished && !ExamState.submitting){ gradeExam(true); } });
+        MNProctor.start(exam, State.user);
+      }
+    });
   });
 }
 
