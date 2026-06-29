@@ -680,8 +680,19 @@ function viewAllowed(view){
 function switchView(view){
   // Enforce role access at the view level (not just by hiding tabs).
   if(!viewAllowed(view)){ view='home'; }
+  // INTEGRITY: if an exam is in progress, leaving the exam view ends the exam.
+  // Warn the student and require confirmation; on confirm, auto-submit so they
+  // cannot wander off and resume (or retake) mid-exam. A finished/submitting
+  // exam is not "in progress" and navigates freely.
+  var examInProgress = (typeof ExamState!=='undefined' && ExamState && ExamState.items && ExamState.items.length>0 && !ExamState.finished && !ExamState.submitting);
+  if(examInProgress && view!=='myexams'){
+    var ok = window.confirm('Leaving the exam will SUBMIT it for grading and you cannot return to it. Are you sure you want to leave?');
+    if(!ok){ return; }   // stay on the exam; do not switch
+    // confirmed: submit the exam now, then continue navigating.
+    if(typeof gradeExam==='function'){ ExamState._leaving=true; gradeExam(false); }
+  }
   // stop any running exam timer when leaving the exam view
-  if(typeof ExamState!=='undefined' && ExamState.timer && view!=='myexams'){ clearInterval(ExamState.timer); ExamState.timer=null; }
+  if(typeof ExamState!=='undefined' && ExamState && ExamState.timer && view!=='myexams'){ clearInterval(ExamState.timer); ExamState.timer=null; }
   if(typeof MNProctor!=='undefined' && MNProctor.isActive() && view!=='myexams'){ MNProctor.finish(); }
   currentView=view;
   var meta=VIEW_META[view];
