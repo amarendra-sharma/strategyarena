@@ -1041,7 +1041,18 @@ function loadRoster(){
     Array.prototype.forEach.call($('rosterBody').querySelectorAll('[data-drop]'), function(b){
       b.addEventListener('click', function(){
         var ns=b.getAttribute('data-st')==='active'?'dropped':'active';
-        sb.from('sa_enrollments').update({status:ns}).eq('id',b.getAttribute('data-drop')).then(function(){ loadRoster(); });
+        var verb=ns==='dropped'?'Drop':'Reactivate';
+        b.disabled=true;
+        sb.from('sa_enrollments').update({status:ns}).eq('id',b.getAttribute('data-drop')).select().then(function(res){
+          b.disabled=false;
+          if(res.error){ alert(verb+' failed: '+res.error.message); return; }
+          // If RLS silently blocked the write, no row comes back and nothing changed.
+          if(!res.data || res.data.length===0){
+            alert(verb+' did not take effect. You may not have permission to change this roster, or the row was not found. (If you are the platform admin, ensure the super-admin roster-write policy is deployed.)');
+            return;
+          }
+          loadRoster();
+        });
       });
     });
   });
@@ -3674,8 +3685,21 @@ function proceedStartExam(exam, accom) {
   if (!examIsReady(exam)) { $('myExamsBody').innerHTML = errCard('This exam has no questions yet — ask your instructor.'); return; }
   // For proctored exams, show the shared rules/consent + camera check-in first.
   var proctored = (exam.proctored !== false);
+  var wantsCamera = exam.camera_mode && exam.camera_mode !== 'off';
+  // If proctoring (or the camera) is expected but the engine isn't loaded, do NOT
+  // silently start an unmonitored exam -- surface the problem so it can be fixed.
+  if (proctored && typeof MNProctor === 'undefined') {
+    $('myExamsBody').innerHTML = errCard('This exam is proctored, but the monitoring component failed to load (mn-proctor.js). Please hard-refresh the page; if it persists, contact your instructor — the exam will not start unmonitored.');
+    return;
+  }
   if (proctored && !ExamState._consented && typeof MNProctor!=='undefined') {
     window.__mnpUserId = State.user ? State.user.id : null;  // for ID capture upload
+    // Diagnostic breadcrumb (visible in console) so a no-camera start is explainable:
+    // distinguishes "camera_mode is off" from "camera was denied".
+    if (window.console) { console.log('[proctor] starting exam', exam.id, '| proctored:', proctored, '| camera_mode:', (exam.camera_mode || 'off')); }
+    if (proctored && !wantsCamera && window.console) {
+      console.warn('[proctor] camera_mode is OFF for this exam — no webcam will start. Set Webcam monitoring to "flag" or "block" when editing the exam to enable recording.');
+    }
     MNProctor.runConsent(exam, $('myExamsBody'),
       function(){ ExamState._consented = true; reallyStartExam(exam, accom); },
       function(){ loadMyExams(); });
