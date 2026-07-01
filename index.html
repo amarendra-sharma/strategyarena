@@ -153,9 +153,10 @@
   .q-meta { font-size: 12px; color: var(--text-subtle); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 12px; }
   .q-prompt { font-size: 18px; color: var(--text-bright); line-height: 1.5; margin-bottom: 20px; }
   .q-options { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
-  .q-option { text-align: left; padding: 13px 16px; border-radius: 10px; background: rgba(255,255,255,.03); border: 1px solid var(--border-strong); color: var(--text); cursor: pointer; font-family: inherit; font-size: 14.5px; }
+  .q-option { text-align: left; padding: 13px 16px; border-radius: 10px; background: rgba(255,255,255,.03); border: 1px solid var(--border-strong); color: var(--text); cursor: pointer; font-family: inherit; font-size: 14.5px; position: relative; transition: border-color .12s, background .12s; }
   .q-option:hover { border-color: var(--violet); }
-  .q-option.sel { border-color: var(--violet); background: rgba(124,92,255,.12); }
+  .q-option.sel { border-color: var(--violet); background: rgba(124,92,255,.18); border-width: 2px; padding: 12px 15px; font-weight: 600; }
+  .q-option.sel::after { content: '\2713 selected'; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--violet); font-size: 12px; font-weight: 700; }
   .feedback { margin-top: 16px; padding: 14px 16px; border-radius: 10px; font-size: 14px; display: none; }
   .feedback.correct { display: block; background: rgba(52,211,153,.12); border: 1px solid rgba(52,211,153,.3); color: #6ee7b7; }
   .feedback.wrong { display: block; background: rgba(251,113,133,.12); border: 1px solid rgba(251,113,133,.3); color: #fda4af; }
@@ -2974,7 +2975,7 @@ function renderQuizQuestion() {
     var opts = q.options || [];
     html += '<div class="q-options">';
     for (var k = 0; k < opts.length; k++) {
-      var savedM = (QuizState.answers[QuizState.idx] !== undefined && Number(QuizState.answers[QuizState.idx]) === k) ? ' selected' : '';
+      var savedM = (QuizState.answers[QuizState.idx] !== undefined && Number(QuizState.answers[QuizState.idx]) === k) ? ' sel' : '';
       html += '<button class="q-option' + savedM + '" data-qopt="' + k + '">' + esc(opts[k]) + '</button>';
     }
     html += '</div>';
@@ -2998,8 +2999,8 @@ function renderQuizQuestion() {
   Array.prototype.forEach.call(area.querySelectorAll('[data-qopt]'), function(b){
     b.addEventListener('click', function(){
       QuizState.answers[QuizState.idx] = parseInt(b.getAttribute('data-qopt'), 10);
-      Array.prototype.forEach.call(area.querySelectorAll('[data-qopt]'), function(x){ x.classList.remove('selected'); });
-      b.classList.add('selected');
+      Array.prototype.forEach.call(area.querySelectorAll('[data-qopt]'), function(x){ x.classList.remove('sel'); });
+      b.classList.add('sel');
     });
   });
   function saveNum(){ var ni = $('quizNum'); if (ni) { var v = ni.value.trim(); if (v !== '') { QuizState.answers[QuizState.idx] = v; } } }
@@ -3552,7 +3553,7 @@ function gradeSummaryCard(summary){
   h+='<h3 style="font-size:15px;margin:0;">Your grade so far</h3>';
   h+='<span class="mono" style="font-size:22px;color:var(--text-bright);font-weight:600;">'+pct+'%</span></div>';
   h+='<table class="data-table"><caption class="sr-only">Weighted grade components</caption><thead><tr><th scope="col">Component</th><th scope="col">Score</th><th scope="col">Weight</th></tr></thead><tbody>'+rows+'</tbody></table>';
-  h+='<div style="font-size:12px;color:var(--text-subtle);margin-top:8px;">Weighted total of all components. Reading, quizzes, and arenas update as you complete them; exams you haven\\u2019t taken count as 0 until taken. This matches how your instructor\\u2019s gradebook weights each part.</div>';
+  h+='<div style="font-size:12px;color:var(--text-subtle);margin-top:8px;">Weighted total of all components. Reading, quizzes, and arenas update as you complete them; exams you have not taken count as 0 until taken. This matches how your instructor\u2019s gradebook weights each part.</div>';
   h+='</div>';
   return h;
 }
