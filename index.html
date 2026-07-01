@@ -2629,10 +2629,11 @@ function maybeHandleInboundCourse() {
 function ensureProfileAndCourse() {
   var uid = State.user.id;
   // profile row already upserted in onSignedIn (without role, so admin/instructor
-  // roles are never clobbered). Go straight to resolving the student's course.
-  return sb.from('sa_enrollments').select('course_id, sa_courses(owner_id)').eq('student_id', uid).then(function(enr) {
+  // roles are never clobbered). Resolve the student's course from ACTIVE enrollments
+  // only -- a DROPPED enrollment must not drive progress, grades, or the exam list.
+  return sb.from('sa_enrollments').select('course_id, status, sa_courses(owner_id)').eq('student_id', uid).eq('status', 'active').then(function(enr) {
     var rows = enr.data ? enr.data : [];
-    // Prefer a self-study course (one the student owns); else any enrollment.
+    // Prefer a self-study course (one the student owns); else any active enrollment.
     var selfRow = null, anyRow = null, profRow = null, i;
     for (i = 0; i < rows.length; i++) {
       anyRow = rows[i];
@@ -2644,14 +2645,25 @@ function ensureProfileAndCourse() {
     State.payCourseId = profRow ? profRow.course_id : (selfRow ? selfRow.course_id : null);
     if (selfRow) { State.selfCourseId = selfRow.course_id; if(!State.payCourseId){ State.payCourseId = selfRow.course_id; } return null; }
     if (anyRow) { State.selfCourseId = anyRow.course_id; if(!State.payCourseId){ State.payCourseId = anyRow.course_id; } return null; }
-    // create a personal self-study course (student owns it) + enroll
+    // No ACTIVE enrollment (e.g., dropped from the only course): create / re-use a
+    // personal self-study course so the student still has a working space.
     var code = 'self-' + uid.slice(0, 8);
     return sb.from('sa_courses').insert({
       owner_id: uid, title: 'Self-Study', term: 'Personal', join_code: code
     }).select('id').single().then(function(c) {
-      if (c.error || !c.data) { return null; }
-      State.selfCourseId = c.data.id;
-      return sb.from('sa_enrollments').insert({ course_id: State.selfCourseId, student_id: uid });
+      if (c.error || !c.data) {
+        // insert may fail if a self-study course already exists (unique join_code) --
+        // fall back to enrolling/activating in the existing one.
+        return sb.from('sa_courses').select('id').eq('owner_id', uid).eq('join_code', code).maybeSingle().then(function(ex){
+          if (ex && ex.data) {
+            State.selfCourseId = ex.data.id; State.payCourseId = State.payCourseId || ex.data.id;
+            return sb.from('sa_enrollments').upsert({ course_id: ex.data.id, student_id: uid, status: 'active' }, { onConflict: 'course_id,student_id' });
+          }
+          return null;
+        });
+      }
+      State.selfCourseId = c.data.id; if(!State.payCourseId){ State.payCourseId = c.data.id; }
+      return sb.from('sa_enrollments').insert({ course_id: State.selfCourseId, student_id: uid, status: 'active' });
     });
   });
 }
