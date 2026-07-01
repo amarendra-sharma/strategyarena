@@ -452,6 +452,47 @@ var ARENA_FILE = {
   'cooperative':'strategyarena-cooperative.html','behavioral':'strategyarena-ultimatum-trust.html',
   'calculus-applications':'strategyarena-calculus-applications.html'
 };
+// Canonical list of graded arenas (the denominator for the arena grade component).
+// Unplayed arenas contribute 0, so partial completion earns partial credit.
+var ARENA_SLUGS = ['prisoners-dilemma','ipd-tournament','centipede','auction','nash-bargaining','signaling','bayesian-game','pbe','mixed-strategy','evolutionary','cooperative','behavioral','calculus-applications'];
+var ARENA_MAX_ATTEMPTS = 2;   // only the first N attempts per arena count toward the grade
+
+// Performance-based arena score for the grade. Given all of a student's arena
+// result rows ({arena_slug, score, played_at}), compute, for each of the 13
+// graded arenas, the AVERAGE of that arena's first ARENA_MAX_ATTEMPTS attempt
+// scores; arenas never played contribute 0. Return the mean across all 13, so
+// partial completion earns partial credit and quality (not just participation)
+// drives the score. Result is 0..1.
+function computeArenaScore(rows){
+  rows = rows ? rows : [];
+  var byArena = {};
+  rows.forEach(function(r){
+    if(!r || !r.arena_slug){ return; }
+    if(!byArena[r.arena_slug]){ byArena[r.arena_slug] = []; }
+    byArena[r.arena_slug].push(r);
+  });
+  var sum = 0;
+  for(var i=0;i<ARENA_SLUGS.length;i++){
+    var slug = ARENA_SLUGS[i];
+    var attempts = byArena[slug];
+    if(!attempts || attempts.length===0){ continue; }   // unplayed -> contributes 0
+    // order by played_at ascending, take the first ARENA_MAX_ATTEMPTS
+    attempts.sort(function(a,b){ return new Date(a.played_at) - new Date(b.played_at); });
+    var take = Math.min(ARENA_MAX_ATTEMPTS, attempts.length);
+    var s = 0, cnt = 0;
+    for(var k=0;k<take;k++){
+      var sc = attempts[k].score;
+      // a missing score counts as 0 for that attempt (an attempt with no measured
+      // performance still consumes one of the two counted tries)
+      s += (sc!==null && sc!==undefined) ? Number(sc) : 0;
+      cnt++;
+    }
+    var arenaPerf = cnt>0 ? (s/cnt) : 0;
+    if(arenaPerf > 1){ arenaPerf = 1; } if(arenaPerf < 0){ arenaPerf = 0; }
+    sum += arenaPerf;
+  }
+  return sum / ARENA_SLUGS.length;   // divide by 13; unplayed already counted as 0
+}
 var ARENA_TITLE = {
   'prisoners-dilemma':"Prisoner's Dilemma",'ipd-tournament':'Repeated PD Tournament','centipede':'Centipede / Sequential',
   'auction':'Auction House','nash-bargaining':'Bargaining Table','signaling':'Signaling Game',
@@ -1168,15 +1209,22 @@ function renderGradebook(host){
           if(key){ examScore[sid][key]=total; }
         });
       });
-      // assignment averages + manual overrides
+      // assignment averages + manual overrides + arena performance
       Promise.all([
         sb.from('sa_assignments').select('id,points').eq('course_id',State.teachCourseId).eq('is_published',true),
         sb.from('sa_submissions').select('assignment_id,student_id,score').eq('course_id',State.teachCourseId),
-        sb.from('sa_grade_overrides').select('student_id,override_pct,note').eq('course_id',State.teachCourseId)
+        sb.from('sa_grade_overrides').select('student_id,override_pct,note').eq('course_id',State.teachCourseId),
+        sb.from('sa_arena_results').select('student_id,arena_slug,score,played_at').eq('course_id',State.teachCourseId)
       ]).then(function(ar){
         var aRows=ar[0].data?ar[0].data:[];
         var subs=ar[1].data?ar[1].data:[];
         var ovr=ar[2].data?ar[2].data:[];
+        var arenaRows=ar[3].data?ar[3].data:[];
+        // group arena results per student, then compute performance-based score each
+        var arenaByStudent={};
+        arenaRows.forEach(function(r){ if(!arenaByStudent[r.student_id]){ arenaByStudent[r.student_id]=[]; } arenaByStudent[r.student_id].push(r); });
+        var arenaScoreOf={};
+        Object.keys(arenaByStudent).forEach(function(sid){ arenaScoreOf[sid]=computeArenaScore(arenaByStudent[sid]); });
         var ptsOf={}; aRows.forEach(function(a){ ptsOf[a.id]=a.points||0; });
         // per student: sum(score)/sum(points over graded assignments)
         var earn={}, poss={};
@@ -1189,18 +1237,18 @@ function renderGradebook(host){
         var asgScore={};
         Object.keys(earn).forEach(function(sid){ asgScore[sid]= poss[sid]>0 ? (earn[sid]/poss[sid]) : null; });
         var overrideOf={}; ovr.forEach(function(o){ overrideOf[o.student_id]={ pct:o.override_pct, note:o.note }; });
-        buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf);
+        buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf);
       });
     });
   });
 }
-function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf){
-  asgScore = asgScore || {}; overrideOf = overrideOf || {};
+function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overrideOf,arenaScoreOf){
+  asgScore = asgScore || {}; overrideOf = overrideOf || {}; arenaScoreOf = arenaScoreOf || {};
   if(rows.length===0){ host.innerHTML='<div class="card empty">No enrolled students yet. Share the join code <span class="pill-code">'+esc(c.join_code)+'</span> so students can join.</div>'; return; }
   var computed=rows.map(function(r){
     var reading=r.chapters_read/14;
     var quizzes=(r.avg_quiz_score!==null&&r.avg_quiz_score!==undefined&&r.avg_quiz_score>0)?Number(r.avg_quiz_score):(r.quizzes_passed/14);
-    var arenas=Math.min(r.arena_sessions/13,1);
+    var arenas=(arenaScoreOf[r.student_id]!==undefined)?arenaScoreOf[r.student_id]:0;
     var midScore=(midterm&&midterm.total_points)?((examScore[r.student_id]&&examScore[r.student_id].midterm?examScore[r.student_id].midterm:0)/midterm.total_points):null;
     var finScore=(fin&&fin.total_points)?((examScore[r.student_id]&&examScore[r.student_id].final?examScore[r.student_id].final:0)/fin.total_points):null;
     // renormalize weights over available components
@@ -2708,30 +2756,55 @@ function renderChapters() {
 }
 
 function renderArenas() {
-  var g = $('arenaGrid'); g.innerHTML = '';
-  Object.keys(ARENA_TITLE).forEach(function(slug) {
-    var file = ARENA_FILE[slug];
-    var locked = arenaLocked(slug);
-    var div = document.createElement('div');
-    div.className = 'card launch';
-    var pill;
-    if (!file) { pill = '<div class="pill soon">Coming soon</div>'; }
-    else if (locked) { pill = '<div class="pill soon">🔒 Subscribe to unlock</div>'; }
-    else { pill = '<div class="pill">Play →</div>'; }
-    div.innerHTML =
-      '<div class="c-eyebrow">Arena' + (FREE_ARENAS[slug] ? ' · Free' : '') + '</div>' +
-      '<div class="c-title">' + esc(ARENA_TITLE[slug]) + '</div>' +
-      '<div class="c-meta mono">' + esc(slug) + '</div>' + pill;
-    if (file && !locked) {
-      div.addEventListener('click', function() { window.open(file, '_blank'); });
-    } else if (file && locked) {
-      div.style.opacity = '.7';
-      div.addEventListener('click', function() { openSubscribePrompt(ARENA_TITLE[slug] + ' arena'); });
-    } else {
-      div.style.opacity = '.6'; div.style.cursor = 'default';
-    }
-    g.appendChild(div);
-  });
+  var g = $('arenaGrid'); g.innerHTML = loadingCard ? '' : '';
+  var uid = State.user ? State.user.id : null;
+  var courseId = State.payCourseId || State.selfCourseId;
+  // Count this student's attempts per arena so we can enforce the 2-attempt cap
+  // and show remaining attempts. (Guests / not-signed-in: no cap shown.)
+  var countBy = {};
+  function paint(){
+    g.innerHTML = '';
+    Object.keys(ARENA_TITLE).forEach(function(slug) {
+      var file = ARENA_FILE[slug];
+      var locked = arenaLocked(slug);
+      var used = countBy[slug] ? countBy[slug] : 0;
+      var capped = used >= ARENA_MAX_ATTEMPTS;
+      var div = document.createElement('div');
+      div.className = 'card launch';
+      var pill;
+      if (!file) { pill = '<div class="pill soon">Coming soon</div>'; }
+      else if (locked) { pill = '<div class="pill soon">🔒 Subscribe to unlock</div>'; }
+      else if (capped) { pill = '<div class="pill soon">Attempts used (' + used + '/' + ARENA_MAX_ATTEMPTS + ')</div>'; }
+      else { pill = '<div class="pill">Play → ' + (uid ? '(' + (ARENA_MAX_ATTEMPTS - used) + ' left)' : '') + '</div>'; }
+      div.innerHTML =
+        '<div class="c-eyebrow">Arena' + (FREE_ARENAS[slug] ? ' · Free' : '') + '</div>' +
+        '<div class="c-title">' + esc(ARENA_TITLE[slug]) + '</div>' +
+        '<div class="c-meta mono">' + esc(slug) + '</div>' + pill;
+      if (file && !locked && !capped) {
+        div.addEventListener('click', function() { window.open(file, '_blank'); });
+      } else if (file && locked) {
+        div.style.opacity = '.7';
+        div.addEventListener('click', function() { openSubscribePrompt(ARENA_TITLE[slug] + ' arena'); });
+      } else if (file && capped) {
+        div.style.opacity = '.6'; div.style.cursor = 'default';
+        div.addEventListener('click', function() { alert('You have used both graded attempts for the ' + ARENA_TITLE[slug] + ' arena. Your grade uses the average of your two attempts.'); });
+      } else {
+        div.style.opacity = '.6'; div.style.cursor = 'default';
+      }
+      g.appendChild(div);
+    });
+  }
+  if (uid) {
+    var q = sb.from('sa_arena_results').select('arena_slug').eq('student_id', uid);
+    if (courseId) { q = q.eq('course_id', courseId); }
+    q.then(function(res){
+      var rows = res.data ? res.data : [];
+      rows.forEach(function(r){ countBy[r.arena_slug] = (countBy[r.arena_slug] || 0) + 1; });
+      paint();
+    });
+  } else {
+    paint();
+  }
 }
 
 function loadHome() {
@@ -2900,7 +2973,7 @@ function fillPracticeChapters() {
    ==================================================================== */
 var QUIZ_LEN = 5;            // items per chapter quiz
 var QUIZ_PASS = 0.70;       // 70% to pass
-var QUIZ_MAX_ATTEMPTS = 2;  // attempts allowed per chapter
+var QUIZ_MAX_ATTEMPTS = 1;  // graded quiz: a single attempt per chapter
 var QuizState = null;
 
 function startGradedQuiz(chapter) {
@@ -2924,10 +2997,15 @@ function startGradedQuiz(chapter) {
   }
   sb.from('sa_chapter_progress').select('chapter,quiz_score,quiz_attempts').eq('student_id', uid).eq('course_id', courseId).eq('chapter', chapter).maybeSingle().then(function(pr){
     if (pr.error) {
-      // likely quiz_attempts missing -> retry without it
-      sb.from('sa_chapter_progress').select('chapter,quiz_score').eq('student_id', uid).eq('course_id', courseId).eq('chapter', chapter).maybeSingle().then(function(pr2){
-        afterPrior(pr2 && pr2.data ? pr2.data : null);
-      });
+      // The quiz_attempts column is missing (migration 33 not run). Attempt-limiting
+      // cannot be enforced without it, so DO NOT silently allow unlimited retakes --
+      // block and surface the cause so the instructor can run the migration.
+      var msg = String(pr.error.message || pr.error);
+      if (msg.toLowerCase().indexOf('quiz_attempts') !== -1 || msg.toLowerCase().indexOf('column') !== -1) {
+        area.innerHTML = errCard('Graded quizzes are not fully set up yet: the attempt-tracking column is missing, so this quiz cannot be started safely. Instructor: run migration 33_quiz_attempts_column.sql in Supabase.');
+        return;
+      }
+      area.innerHTML = errCard('Could not check your quiz attempts: ' + msg);
       return;
     }
     afterPrior(pr && pr.data ? pr.data : null);
@@ -3447,7 +3525,7 @@ function computeWeightedGrade(callback){
   Promise.all([
     sb.from('sa_courses').select('id,title,owner_id,weight_reading,weight_quizzes,weight_arenas,weight_midterm,weight_final').eq('id', courseId).maybeSingle(),
     sb.from('sa_chapter_progress').select('chapter,reading_done,quiz_passed,quiz_score').eq('student_id', uid).eq('course_id', courseId),
-    sb.from('sa_arena_results').select('arena_slug').eq('student_id', uid),
+    sb.from('sa_arena_results').select('arena_slug,score,played_at').eq('student_id', uid).eq('course_id', courseId),
     sb.from('sa_exams').select('id,kind,total_points,attempt_scoring').eq('course_id', courseId).eq('is_published', true)
   ]).then(function(r){
     var course = r[0].data; if (!course) { callback(null); return; }
@@ -3459,9 +3537,7 @@ function computeWeightedGrade(callback){
     prog.forEach(function(p){ if(p.reading_done){ chaptersRead++; } if(p.quiz_passed){ quizzesPassed++; } if(p.quiz_score!==null&&p.quiz_score!==undefined){ quizSum+=Number(p.quiz_score); quizN++; } });
     var reading = chaptersRead/14;
     var quizzes = quizN>0 ? (quizSum/14) : (quizzesPassed/14);
-    var distinctArenas={}; arenas.forEach(function(a){ distinctArenas[a.arena_slug]=true; });
-    var arenaCount=0; for (var k in distinctArenas){ if(distinctArenas.hasOwnProperty(k)){ arenaCount++; } }
-    var arenaScore = Math.min(arenaCount/13, 1);
+    var arenaScore = computeArenaScore(arenas);
     var midterm = exams.filter(function(e){return e.kind==='midterm';})[0];
     var fin = exams.filter(function(e){return e.kind==='final';})[0];
     var examIds=[]; if(midterm){examIds.push(midterm.id);} if(fin){examIds.push(fin.id);}
@@ -3553,7 +3629,7 @@ function gradeSummaryCard(summary){
   h+='<h3 style="font-size:15px;margin:0;">Your grade so far</h3>';
   h+='<span class="mono" style="font-size:22px;color:var(--text-bright);font-weight:600;">'+pct+'%</span></div>';
   h+='<table class="data-table"><caption class="sr-only">Weighted grade components</caption><thead><tr><th scope="col">Component</th><th scope="col">Score</th><th scope="col">Weight</th></tr></thead><tbody>'+rows+'</tbody></table>';
-  h+='<div style="font-size:12px;color:var(--text-subtle);margin-top:8px;">Weighted total of all components. Reading, quizzes, and arenas update as you complete them; exams you have not taken count as 0 until taken. This matches how your instructor\u2019s gradebook weights each part.</div>';
+  h+='<div style="font-size:12px;color:var(--text-subtle);margin-top:8px;">Weighted total of all components. Reading and quizzes update as you complete them. Arenas are scored on performance: each of the 13 arenas contributes the average of your attempts (up to two), and arenas you have not played count as 0. Exams you have not taken count as 0 until taken. This matches how your instructor\u2019s gradebook weights each part.</div>';
   h+='</div>';
   return h;
 }
@@ -4080,7 +4156,7 @@ function loadCompletion() {
   Promise.all([
     sb.from('sa_courses').select('id,title,owner_id,weight_reading,weight_quizzes,weight_arenas,weight_midterm,weight_final').eq('id', courseId).maybeSingle(),
     sb.from('sa_chapter_progress').select('chapter,reading_done,quiz_passed,quiz_score').eq('student_id', uid).eq('course_id', courseId),
-    sb.from('sa_arena_results').select('arena_slug').eq('student_id', uid),
+    sb.from('sa_arena_results').select('arena_slug,score,played_at').eq('student_id', uid).eq('course_id', courseId),
     sb.from('sa_exams').select('id,kind,total_points,attempt_scoring').eq('course_id', courseId).eq('is_published', true)
   ]).then(function(r) {
     var course = r[0].data; if (!course) { host.innerHTML=''; return; }
@@ -4097,9 +4173,7 @@ function loadCompletion() {
     // 0), consistent with Reading and Arenas. Averaging only over attempted
     // quizzes would show 100% after a single perfect quiz.
     var quizzes = quizN>0 ? (quizSum/14) : (quizzesPassed/14);
-    var distinctArenas = {}; arenas.forEach(function(a){ distinctArenas[a.arena_slug]=true; });
-    var arenaCount = 0; for (var k in distinctArenas){ if(distinctArenas.hasOwnProperty(k)){ arenaCount++; } }
-    var arenaScore = Math.min(arenaCount/13, 1);
+    var arenaScore = computeArenaScore(arenas);
 
     var midterm = exams.filter(function(e){return e.kind==='midterm';})[0];
     var fin = exams.filter(function(e){return e.kind==='final';})[0];
