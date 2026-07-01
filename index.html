@@ -2911,14 +2911,27 @@ function startGradedQuiz(chapter) {
   area.innerHTML = '<div class="q-card"><span class="spinner"></span> &nbsp;Checking your attempts…</div>';
 
   // 1) enforce attempt limit: count prior recorded quiz attempts for this chapter.
-  sb.from('sa_chapter_progress').select('chapter,quiz_score,quiz_attempts').eq('student_id', uid).eq('course_id', courseId).eq('chapter', chapter).maybeSingle().then(function(pr){
-    var prior = pr && pr.data ? pr.data : null;
+  //    Read is resilient if quiz_attempts column is absent (migration 33 not run).
+  function afterPrior(prior){
     var used = prior && prior.quiz_attempts ? Number(prior.quiz_attempts) : 0;
     var bestPrior = prior && prior.quiz_score !== null && prior.quiz_score !== undefined ? Number(prior.quiz_score) : null;
     if (used >= QUIZ_MAX_ATTEMPTS) {
       area.innerHTML = errCard('You have used all ' + QUIZ_MAX_ATTEMPTS + ' attempts for the Chapter ' + chapter + ' quiz.' + (bestPrior !== null ? ' Your recorded score is ' + Math.round(bestPrior * 100) + '%.' : ''));
       return;
     }
+    drawAndStart(used, bestPrior);
+  }
+  sb.from('sa_chapter_progress').select('chapter,quiz_score,quiz_attempts').eq('student_id', uid).eq('course_id', courseId).eq('chapter', chapter).maybeSingle().then(function(pr){
+    if (pr.error) {
+      // likely quiz_attempts missing -> retry without it
+      sb.from('sa_chapter_progress').select('chapter,quiz_score').eq('student_id', uid).eq('course_id', courseId).eq('chapter', chapter).maybeSingle().then(function(pr2){
+        afterPrior(pr2 && pr2.data ? pr2.data : null);
+      });
+      return;
+    }
+    afterPrior(pr && pr.data ? pr.data : null);
+  });
+  function drawAndStart(used, bestPrior){
     // 2) draw QUIZ_LEN auto-gradable items from the chapter bank.
     sb.from('sa_assessment_items').select('id,item_type').eq('chapter', chapter).eq('is_active', true).in('item_type', ['parameterized_numeric','multiple_choice']).then(function(res){
       var pool = res.data ? res.data : [];
@@ -2944,7 +2957,7 @@ function startGradedQuiz(chapter) {
         renderQuizQuestion();
       });
     });
-  });
+  }
 }
 
 function renderQuizQuestion() {
@@ -3020,21 +3033,45 @@ function submitGradedQuiz() {
     // Write score + attempts to sa_chapter_progress (best score kept). Reading is
     // also implied done by completing a graded quiz on the chapter.
     var uid = State.user.id;
-    sb.from('sa_chapter_progress').upsert({
+    var row = {
       student_id: uid, course_id: QuizState.courseId, chapter: QuizState.chapter,
       quiz_score: keepFrac, quiz_passed: (keepFrac >= QUIZ_PASS), quiz_attempts: attemptsUsed, reading_done: true
-    }, { onConflict: 'student_id,course_id,chapter' }).then(function(){
+    };
+    function showResult(saveErr){
       var kept = Math.round(keepFrac * 100);
       var html = '<div class="q-card" style="text-align:center;">';
       html += '<div style="font-size:40px;margin-bottom:6px;">' + (passed ? '\u2705' : '\uD83D\uDCDD') + '</div>';
       html += '<h2 style="margin:0 0 4px;">You scored ' + percent + '%</h2>';
-      html += '<div style="color:var(--text-muted);margin-bottom:10px;">' + earned + ' of ' + possible + ' points' + (passed ? ' · Passed' : ' · Below 70%') + '</div>';
+      html += '<div style="color:var(--text-muted);margin-bottom:10px;">' + earned + ' of ' + possible + ' points' + (passed ? ' \u00b7 Passed' : ' \u00b7 Below 70%') + '</div>';
       if (kept !== percent) { html += '<div style="color:var(--text-muted);font-size:13px;margin-bottom:10px;">Your best recorded score for this chapter is ' + kept + '% (kept).</div>'; }
-      html += '<div style="font-size:13px;color:var(--text-subtle);">Recorded to your grade. ' + Math.max(0, QUIZ_MAX_ATTEMPTS - attemptsUsed) + ' attempt' + ((QUIZ_MAX_ATTEMPTS - attemptsUsed) === 1 ? '' : 's') + ' remaining.</div>';
+      if (saveErr) {
+        html += '<div style="color:var(--amber);font-size:13px;margin-bottom:10px;">\u26a0 Your score could NOT be saved to your grade: ' + esc(saveErr) + '. Please tell your instructor.</div>';
+      } else {
+        html += '<div style="font-size:13px;color:var(--text-subtle);">Recorded to your grade. ' + Math.max(0, QUIZ_MAX_ATTEMPTS - attemptsUsed) + ' attempt' + ((QUIZ_MAX_ATTEMPTS - attemptsUsed) === 1 ? '' : 's') + ' remaining.</div>';
+      }
       html += '<div class="inline-actions" style="justify-content:center;margin-top:16px;"><button class="btn btn-ghost" id="quizDone">Back to practice</button></div>';
       html += '</div>';
       area.innerHTML = html;
       if ($('quizDone')) { $('quizDone').addEventListener('click', function(){ QuizState = null; area.innerHTML = ''; loadNewQuestion(); }); }
+    }
+    // Write score. Check for errors instead of assuming success. If the write fails
+    // because quiz_attempts is missing (migration 33 not yet run), retry WITHOUT it
+    // so the score still lands in the gradebook/progress.
+    sb.from('sa_chapter_progress').upsert(row, { onConflict: 'student_id,course_id,chapter' }).select().then(function(res){
+      if (res.error) {
+        var msg = String(res.error.message || res.error);
+        if (msg.toLowerCase().indexOf('quiz_attempts') !== -1 || msg.toLowerCase().indexOf('column') !== -1) {
+          var row2 = { student_id: uid, course_id: QuizState.courseId, chapter: QuizState.chapter, quiz_score: keepFrac, quiz_passed: (keepFrac >= QUIZ_PASS), reading_done: true };
+          sb.from('sa_chapter_progress').upsert(row2, { onConflict: 'student_id,course_id,chapter' }).select().then(function(res2){
+            showResult(res2.error ? String(res2.error.message || res2.error) : null);
+          });
+          return;
+        }
+        showResult(msg);
+        return;
+      }
+      if (!res.data || res.data.length === 0) { showResult('the update did not take effect (permission or row issue)'); return; }
+      showResult(null);
     });
   });
 }

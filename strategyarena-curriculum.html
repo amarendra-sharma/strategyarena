@@ -9375,9 +9375,12 @@ function bindQuizzes() {
       cp.quizScore = percent;
       saveProgress();
 
-      // --- StrategyArena: report this quiz result to Supabase (no-op if logged out) ---
-      if (window.SAProgress) {
-        window.SAProgress.recordQuiz(chNum, percent, passed);
+      // --- StrategyArena: the in-chapter quiz is PRACTICE (it reveals answers and
+      // can be reset), so it must NOT write a graded quiz_score -- that would collide
+      // with and overwrite the server-graded quiz taken in the app. We still credit
+      // READING, since finishing the chapter's practice quiz is evidence of reading.
+      if (window.SAProgress && window.SAProgress.markReadingDone) {
+        window.SAProgress.markReadingDone(chNum);
       }
 
       // Show result banner
