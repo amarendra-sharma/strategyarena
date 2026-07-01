@@ -733,6 +733,14 @@ function switchView(view){
     // confirmed: submit the exam now, then continue navigating.
     if(typeof gradeExam==='function'){ ExamState._leaving=true; gradeExam(false); }
   }
+  // INTEGRITY: same protection for a graded quiz in progress -- leaving Practice
+  // submits it (a graded quiz is single-attempt, so it cannot be resumed/retaken).
+  var quizInProgress = (typeof QuizState!=='undefined' && QuizState && QuizState.items && QuizState.items.length>0 && !QuizState.submitting);
+  if(quizInProgress && view!=='practice'){
+    var okq = window.confirm('Leaving will SUBMIT your graded quiz for grading. Are you sure you want to leave?');
+    if(!okq){ return; }
+    if(typeof submitGradedQuiz==='function'){ submitGradedQuiz(); }
+  }
   // stop any running exam timer when leaving the exam view
   if(typeof ExamState!=='undefined' && ExamState && ExamState.timer && view!=='myexams'){ clearInterval(ExamState.timer); ExamState.timer=null; }
   if(typeof MNProctor!=='undefined' && MNProctor.isActive() && view!=='myexams'){ MNProctor.finish(); }
@@ -2982,6 +2990,10 @@ function startGradedQuiz(chapter) {
   var uid = State.user ? State.user.id : null;
   var courseId = State.payCourseId || State.selfCourseId;
   if (!uid || !courseId) { area.innerHTML = errCard('Please sign in to take a graded quiz.'); return; }
+  // Heads-up: this graded quiz is proctored (lightweight). Tell the student before
+  // fullscreen engages so it is not a surprise. They can back out here.
+  var ready = window.confirm('This is a graded, proctored quiz for Chapter ' + chapter + '.\n\n\u2022 You have ONE attempt.\n\u2022 It runs in fullscreen; leaving the tab, exiting fullscreen, or copy/paste is recorded and repeated flags auto-submit.\n\u2022 No webcam is used.\n\nStart now?');
+  if (!ready) { return; }
   area.innerHTML = '<div class="q-card"><span class="spinner"></span> &nbsp;Checking your attempts…</div>';
 
   // 1) enforce attempt limit: count prior recorded quiz attempts for this chapter.
@@ -3034,6 +3046,20 @@ function startGradedQuiz(chapter) {
         if (issued.length === 0) { area.innerHTML = errCard('Could not start the quiz. Please try again.'); return; }
         QuizState = { chapter:chapter, courseId:courseId, items:issued, idx:0, answers:{}, attemptsUsed:used, bestPrior:bestPrior, submitting:false };
         renderQuizQuestion();
+        // Lightweight integrity: fullscreen + tab-switch/copy blocking + auto-submit,
+        // no webcam and no stored proctor record (camera_mode off, noPersist true).
+        if (typeof MNProctor !== 'undefined') {
+          var quizSession = {
+            id: 'quiz-ch' + chapter,          // synthetic id (never written to DB)
+            course_id: courseId,
+            camera_mode: 'off',               // no webcam for quizzes
+            proctored: true,
+            noPersist: true,                  // no sa_exams row -> skip DB persist
+            sessionLabel: 'quiz'              // banner reads "Proctored quiz in progress"
+          };
+          MNProctor.onAutoSubmit(function(){ if (QuizState && !QuizState.submitting) { submitGradedQuiz(); } });
+          MNProctor.start(quizSession, State.user);
+        }
       });
     });
   }
@@ -3090,6 +3116,8 @@ function renderQuizQuestion() {
 function submitGradedQuiz() {
   if (QuizState.submitting) { return; }
   QuizState.submitting = true;
+  // End the lightweight proctoring session (exit fullscreen, remove banner/handlers).
+  if (typeof MNProctor !== 'undefined' && MNProctor.isActive()) { MNProctor.finish(); }
   var area = $('practiceArea');
   area.innerHTML = '<div class="q-card"><span class="spinner"></span> &nbsp;Grading your quiz…</div>';
   var earned = 0, possible = 0;

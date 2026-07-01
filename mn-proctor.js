@@ -166,7 +166,8 @@ var MNProctor = (function () {
     goFullscreen();
     var b=document.createElement('div'); b.id='mnpBanner';
     b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#1a1430;color:#cdbcff;border-bottom:1px solid #3a2f60;font:600 12px/1.4 system-ui,sans-serif;padding:7px 14px;display:flex;justify-content:space-between;align-items:center;';
-    b.innerHTML='<span>\uD83D\uDD12 Proctored exam in progress \u2014 stay in fullscreen; leaving this tab is recorded.</span><span id="mnpCount" style="color:#9b87e0;"></span>';
+    var label = (exam && exam.sessionLabel) ? exam.sessionLabel : 'exam';
+    b.innerHTML='<span>\uD83D\uDD12 Proctored ' + label + ' in progress \u2014 stay in fullscreen; leaving this tab is recorded.</span><span id="mnpCount" style="color:#9b87e0;"></span>';
     document.body.appendChild(b); S.banner=b;
 
     S.handlers.vis=function(){ if(document.hidden){ flag('left the exam tab / minimized'); } };
@@ -380,6 +381,10 @@ var MNProctor = (function () {
   }
   function persist(){
     if(!S.exam){ return Promise.resolve(); }
+    // Lightweight sessions (e.g. graded quizzes) set noPersist: there is no
+    // sa_exams row to satisfy the exam_id foreign key, so we skip the DB write.
+    // The in-page protections (fullscreen, tab/copy blocking, auto-submit) still run.
+    if(S.exam.noPersist){ return Promise.resolve(); }
     var rec={ exam_id:S.exam.id, course_id:S.exam.course_id, student_id:S.user?S.user.id:null,
               violations:S.violations, events:JSON.stringify(S.events.slice(0,50)) };
     if(!rec.student_id){ return Promise.resolve(); }
