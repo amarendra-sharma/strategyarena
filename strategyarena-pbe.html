@@ -1401,6 +1401,7 @@ async function runVerification() {
   // Re-render tree with violations
   renderTree();
   State.finished = true;
+  if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') { window.SAProgress.reportArenaNow(); }
 }
 
 /* ============================================================

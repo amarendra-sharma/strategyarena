@@ -148,44 +148,34 @@
   // both match-style and open-ended explorer arenas without bespoke hooks.
   function initArena(opts) {
     if (!opts || !opts.slug || typeof opts.getSession !== 'function') { return; }
-    var lastSig = null;       // signature of the last snapshot we recorded
-    var recordedOnce = false;
+    var recorded = false;     // ensure AT MOST ONE row per arena session
 
-    function snapSig(s) {
-      if (!s) { return null; }
-      return String(s.score) + '|' + String(s.outcome) + '|' + (s.detail ? JSON.stringify(s.detail) : '');
-    }
-    // Record the CURRENT session if it is meaningful and has changed since last time.
+    // Record the LATEST meaningful session exactly once. Called at leave-time or
+    // via an explicit finish trigger -- NOT on a per-round interval, so a 10-round
+    // game produces a single result row (its final score), not one row per round.
     function flush() {
+      if (recorded) { return; }
       var snap;
       try { snap = opts.getSession(); } catch (e) { snap = null; }
-      if (!snap) { return; }                 // nothing meaningful happened — skip
-      var sig = snapSig(snap);
-      if (sig === lastSig) { return; }       // unchanged — don't duplicate
-      lastSig = sig; recordedOnce = true;
+      if (!snap) { return; }                 // nothing meaningful yet — skip
+      recorded = true;
       var score = (snap.score !== undefined && snap.score !== null) ? snap.score : null;
       var outcome = snap.outcome ? snap.outcome : 'completed';
       var detail = snap.detail ? snap.detail : null;
       recordArena(opts.slug, score, outcome, detail);
     }
 
-    // 1) Report DURING play (the reliable path): a light interval that only
-    //    writes when the session has actually changed. This avoids losing the
-    //    write to page-unload, which often kills in-flight network requests.
-    var ticks = 0;
-    var iv = setInterval(function () {
-      ticks++;
-      flush();
-      if (ticks > 600) { clearInterval(iv); }   // stop after ~30 min idle cap
-    }, 3000);
-
-    // 2) Backups at leave-time (best effort; may be dropped by the browser).
+    // Record when the player leaves the arena (best effort) OR when the game
+    // explicitly signals completion via SAProgress.reportArenaNow(). We do NOT
+    // poll during play: polling recorded a fresh row every time the score
+    // changed, so a single match created many rows.
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'hidden') { flush(); }
     });
     window.addEventListener('pagehide', flush);
     window.addEventListener('beforeunload', flush);
-    // 3) Manual trigger for arenas with an explicit "finish".
+    // Explicit "match complete" trigger the game can call for a reliable, timely
+    // single write (recommended: call SAProgress.reportArenaNow() at match end).
     global.SAProgress.reportArenaNow = flush;
   }
 

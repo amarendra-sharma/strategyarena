@@ -1025,6 +1025,7 @@ function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
 function showFinalPanel() {
   const panel = $('#finalPanel');
   panel.classList.remove('hidden');
+  if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') { window.SAProgress.reportArenaNow(); }
 
   const opp = OPPONENTS[State.oppKey];
   $('#finalOppLabel').textContent = opp.name;
@@ -1285,7 +1286,8 @@ document.addEventListener('DOMContentLoaded', () => {
     window.SAProgress.initArena({
       slug: 'centipede',
       getSession: function () {
-        if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
+        if (typeof State === 'undefined' || !State.finished) { return null; }
+        if (!State.history || State.history.length === 0) { return null; }
         var you = State.scoreYou, opp = State.scoreOpp, total = you + opp;
         var score = total > 0 ? (you / total) : 0.5;
         var outcome = you > opp ? 'win' : (you < opp ? 'loss' : 'draw');

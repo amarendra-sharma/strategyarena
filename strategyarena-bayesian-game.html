@@ -1221,6 +1221,7 @@ async function chooseAction(action) {
   // Show result
   showResult();
   State.finished = true;
+  if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') { window.SAProgress.reportArenaNow(); }
   State.busy = false;
 }
 
@@ -1586,7 +1587,8 @@ document.addEventListener('DOMContentLoaded', () => {
     window.SAProgress.initArena({
       slug: 'bayesian-game',
       getSession: function () {
-        if (typeof State === 'undefined' || (State.scoreYou === 0 && State.scoreOpp === 0)) { return null; }
+        if (typeof State === 'undefined' || !State.finished) { return null; }
+        if (State.scoreYou === 0 && State.scoreOpp === 0) { return null; }
         var you = State.scoreYou, opp = State.scoreOpp, total = you + opp;
         var score = total > 0 ? (you / total) : 0.5;
         var outcome = you > opp ? 'win' : (you < opp ? 'loss' : 'draw');

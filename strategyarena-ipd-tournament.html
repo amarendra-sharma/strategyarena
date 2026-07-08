@@ -1004,6 +1004,7 @@ function showResults() {
       $('#startTournament').click();
     }, 100);
   };
+  if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') { window.SAProgress.reportArenaNow(); }
 }
 
 function renderLesson(winner, ranked, totals) {

@@ -1134,6 +1134,11 @@ function renderDebrief(round) {
    ================================================================= */
 function showMatchEnd() {
   State.finished = true;
+  // Record the completed match exactly once, right now (reliable — not dependent
+  // on the browser delivering an unload event).
+  if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') {
+    window.SAProgress.reportArenaNow();
+  }
   $('#endScoreYou').textContent = State.scoreYou;
   $('#endScoreOpp').textContent = State.scoreOpp;
 
@@ -1364,7 +1369,11 @@ document.addEventListener('DOMContentLoaded', () => {
     window.SAProgress.initArena({
       slug: 'prisoners-dilemma',
       getSession: function () {
-        if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
+        // Record ONE result per completed match, not per round. Until the match
+        // is finished, return null so nothing is written (this prevents a 10-round
+        // game from creating ~10 arena-result rows).
+        if (typeof State === 'undefined' || !State.finished) { return null; }
+        if (!State.history || State.history.length === 0) { return null; }
         var you = State.scoreYou, opp = State.scoreOpp;
         var total = you + opp;
         var score = total > 0 ? (you / total) : 0.5;

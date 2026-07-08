@@ -1093,6 +1093,7 @@ async function submitProposal() {
 
   showResult(decision);
   State.finished = true;
+  if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') { window.SAProgress.reportArenaNow(); }
   State.busy = false;
 }
 
