@@ -1185,6 +1185,23 @@ async function chooseSignal(s) {
 
   State.scoreYou += netYou;
   State.scoreFirm += profitFirm;
+  // Track the BEST net the worker could have earned this round given their type
+  // and the firm they face, so the arena score = actual/optimal (rewards playing
+  // the correct signaling strategy: separate types when facing a separating firm).
+  (function(){
+    var firm = FIRMS[State.firmKey];
+    var sigs = ['none', 'BA', 'PhD'];
+    var bestNet = -Infinity, j;
+    for (j = 0; j < sigs.length; j++) {
+      var wKey = firm.decideWage(sigs[j]);
+      var wVal = CONFIG.wages[wKey];
+      var c = CONFIG.cost[State.type][sigs[j]];
+      var net = wVal - c;
+      if (net > bestNet) { bestNet = net; }
+    }
+    if (typeof State.optYou !== 'number') { State.optYou = 0; }
+    State.optYou += bestNet;
+  })();
   bumpScore('#scoreYou', State.scoreYou);
   bumpScore('#scoreFirm', State.scoreFirm);
 
@@ -1550,7 +1567,13 @@ document.addEventListener('DOMContentLoaded', () => {
       getSession: function () {
         if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
         var you = State.scoreYou, firm = State.scoreFirm;
-        return { score: null, outcome: 'completed', detail: { you: you, firm: firm, rounds: State.history.length, firmKey: State.firmKey } };
+        // Score = your cumulative net payoff / the best achievable net given the
+        // types you drew and the firm you faced. 1.0 = you played the optimal
+        // signaling strategy every round. Guard against divide-by-zero / negatives.
+        var opt = (typeof State.optYou === 'number') ? State.optYou : 0;
+        var sc = null;
+        if (opt > 0) { sc = you / opt; if (sc > 1) { sc = 1; } if (sc < 0) { sc = 0; } }
+        return { score: sc, outcome: (sc !== null && sc >= 0.9) ? 'win' : 'completed', detail: { you: you, firm: firm, optimal: opt, rounds: State.history.length, firmKey: State.firmKey } };
       }
     });
   }

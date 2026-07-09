@@ -1288,10 +1288,23 @@ document.addEventListener('DOMContentLoaded', () => {
       getSession: function () {
         if (typeof State === 'undefined' || !State.finished) { return null; }
         if (!State.history || State.history.length === 0) { return null; }
-        var you = State.scoreYou, opp = State.scoreOpp, total = you + opp;
-        var score = total > 0 ? (you / total) : 0.5;
+        var you = State.scoreYou, opp = State.scoreOpp;
+        // Score = your payoff / the best you could secure against THIS opponent.
+        // Rewards correct backward-induction judgement: take early vs a rational
+        // opponent, but pass to grow the pot vs a trusting one.
+        //   Your take-node payoffs (player 1): node1=2, node3=6, node5=10.
+        //   vs rational  (takes at node 2): best is take node1 -> 2
+        //   vs altruistic(passes): pass to node5, take -> 10
+        //   vs empirical (rising take prob): a sound target is node3 -> 6
+        var k = State.oppKey;
+        var optYou;
+        if (k === 'rational') { optYou = 2; }
+        else if (k === 'altruistic') { optYou = 10; }
+        else { optYou = 6; }   // empirical / other
+        var score = optYou > 0 ? (you / optYou) : 0.5;
+        if (score > 1) { score = 1; } if (score < 0) { score = 0; }
         var outcome = you > opp ? 'win' : (you < opp ? 'loss' : 'draw');
-        return { score: score, outcome: outcome, detail: { you: you, opp: opp, moves: State.history.length, opponent: State.oppKey } };
+        return { score: score, outcome: outcome, detail: { you: you, opp: opp, optimal: optYou, moves: State.history.length, opponent: State.oppKey } };
       }
     });
   }

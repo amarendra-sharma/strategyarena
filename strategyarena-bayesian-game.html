@@ -1326,6 +1326,11 @@ function showResult() {
   let oppStrategy = State.oppKey === 'naive' ? { soft: 'C', tough: 'S' } : eq;
   const expected = expectedPayoff(State.yourType, State.yourAction, State.prior, oppStrategy);
   const bnePayoff = expectedPayoff(State.yourType, bneAction, State.prior, oppStrategy);
+  // Accumulate the BNE-optimal expected payoff for your type each round, so the
+  // arena score = your payoff / BNE-optimal payoff (rewards playing the Bayesian
+  // Nash equilibrium action for your type, not merely out-scoring the opponent).
+  if (typeof State.bneTotal !== 'number') { State.bneTotal = 0; }
+  State.bneTotal += bnePayoff;
 
   // Coordination check
   const coordinated = State.yourAction === State.oppAction;
@@ -1589,10 +1594,15 @@ document.addEventListener('DOMContentLoaded', () => {
       getSession: function () {
         if (typeof State === 'undefined' || !State.finished) { return null; }
         if (State.scoreYou === 0 && State.scoreOpp === 0) { return null; }
-        var you = State.scoreYou, opp = State.scoreOpp, total = you + opp;
-        var score = total > 0 ? (you / total) : 0.5;
+        var you = State.scoreYou, opp = State.scoreOpp;
+        // Score = your payoff / the BNE-optimal payoff for your type(s) over the
+        // rounds played. 1.0 = you played the Bayesian Nash equilibrium action.
+        var bne = (typeof State.bneTotal === 'number') ? State.bneTotal : 0;
+        var score;
+        if (bne > 0) { score = you / bne; if (score > 1) { score = 1; } if (score < 0) { score = 0; } }
+        else { score = (you >= opp) ? 1 : 0.5; }
         var outcome = you > opp ? 'win' : (you < opp ? 'loss' : 'draw');
-        return { score: score, outcome: outcome, detail: { you: you, opp: opp, opponent: State.oppKey } };
+        return { score: score, outcome: outcome, detail: { you: you, opp: opp, bneOptimal: bne, opponent: State.oppKey } };
       }
     });
   }

@@ -1695,7 +1695,14 @@ document.addEventListener('DOMContentLoaded', () => {
       getSession: function () {
         if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
         var you = State.scoreYou, spe = State.scoreSPE;
-        return { score: null, outcome: 'completed', detail: { you: you, spe: spe, game: State.game, rounds: State.history.length } };
+        // Score = your earnings relative to the rational (SPE) benchmark, capped at
+        // 1.0. Playing the subgame-perfect strategy earns ~1.0; earning MORE (e.g.
+        // via successful trust in the trust game) also caps at 1.0; earning less
+        // (e.g. a rejected greedy ultimatum offer) scores proportionally lower.
+        var denom = Math.max(spe, you, 1);
+        var sc = you / denom;
+        if (sc > 1) { sc = 1; } if (sc < 0) { sc = 0; }
+        return { score: sc, outcome: (sc >= 0.9 ? 'win' : 'completed'), detail: { you: you, spe: spe, game: State.game, rounds: State.history.length } };
       }
     });
   }

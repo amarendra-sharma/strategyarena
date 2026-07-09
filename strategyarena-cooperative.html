@@ -1617,7 +1617,23 @@ document.addEventListener('DOMContentLoaded', () => {
       slug: 'cooperative',
       getSession: function () {
         if (typeof State === 'undefined' || !State.players || State.players.length === 0) { return null; }
-        return { score: null, outcome: 'completed', detail: { players: State.players.length, exploredCoalition: !!State.partition } };
+        // This is an exploration arena (no opponent). The key learning outcome is
+        // forming the GRAND COALITION (all players together) and seeing how the
+        // Shapley value distributes its worth. Score: 1.0 if the grand coalition is
+        // currently formed; 0.6 if a multi-player (but not grand) coalition exists
+        // (partial exploration); 0.3 for only singletons (minimal engagement).
+        var n = State.players.length;
+        var sc = 0.3, i;
+        if (State.partition && State.partition.length > 0) {
+          var maxCoal = 0;
+          for (i = 0; i < State.partition.length; i++) {
+            if (State.partition[i].length > maxCoal) { maxCoal = State.partition[i].length; }
+          }
+          if (maxCoal >= n) { sc = 1.0; }
+          else if (maxCoal >= 2) { sc = 0.6; }
+          else { sc = 0.3; }
+        }
+        return { score: sc, outcome: (sc >= 1.0 ? 'win' : 'completed'), detail: { players: n, exploredCoalition: !!State.partition } };
       }
     });
   }

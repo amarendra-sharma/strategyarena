@@ -1631,6 +1631,9 @@ function updateLiveStats() {
   const target = eqs.find(e => e.kind === 'stable') || eqs.find(e => e.kind === 'cyclic');
   if (target) {
     const dist = Math.sqrt(game.strategies.reduce((sum, s) => sum + Math.pow(State.population[s.key] - target.proportions[s.key], 2), 0));
+    // Track the CLOSEST the student steered the population to the ESS (smallest
+    // distance). The arena score = 1 - bestDist, so reaching the ESS scores 1.0.
+    if (typeof State.bestESSDist !== 'number' || dist < State.bestESSDist) { State.bestESSDist = dist; }
     $('#statDistESS').textContent = dist.toFixed(3);
     $('#statDistESS').style.color = dist < 0.05 ? '#34D399' : dist < 0.2 ? '#FBBF24' : '#FB7185';
   } else {
@@ -1722,7 +1725,15 @@ document.addEventListener('DOMContentLoaded', () => {
       slug: 'evolutionary',
       getSession: function () {
         if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
-        return { score: null, outcome: 'completed', detail: { game: State.gameKey, params: State.params, simTime: State.simTime, finalPop: State.population } };
+        // Score = how close the student steered the population to the ESS (the
+        // stable rest point of the replicator dynamics). 1.0 = reached the ESS.
+        // bestESSDist is an L2 distance in the simplex (max ~sqrt(2)); normalize.
+        var sc = null;
+        if (typeof State.bestESSDist === 'number') {
+          sc = 1 - (State.bestESSDist / Math.SQRT2);
+          if (sc > 1) { sc = 1; } if (sc < 0) { sc = 0; }
+        }
+        return { score: sc, outcome: (sc !== null && sc >= 0.9 ? 'win' : 'completed'), detail: { game: State.gameKey, params: State.params, simTime: State.simTime, bestDistToESS: State.bestESSDist, finalPop: State.population } };
       }
     });
   }

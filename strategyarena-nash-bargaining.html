@@ -1106,6 +1106,7 @@ async function showResult(decision) {
   const yourProd = nashProduct(u1, u2);
   const optProd = opt.prod;
   const efficiency = optProd > 0 ? yourProd / optProd : 0;
+  State.efficiency = efficiency;   // 0..1 : how close the split is to the optimal Nash product
 
   // Reveal optimum on the canvas
   await revealOptimum(opt);
@@ -1376,7 +1377,11 @@ document.addEventListener('DOMContentLoaded', () => {
       getSession: function () {
         if (typeof State === 'undefined' || !State.finished) { return null; }
         var p = State.proposal || { u1: 0, u2: 0 };
-        return { score: null, outcome: 'completed', detail: { u1: p.u1, u2: p.u2, opponent: State.oppKey } };
+        // Score = efficiency: how close the agreed split is to the optimal Nash
+        // bargaining solution (product of surpluses). 1.0 = found the Nash solution.
+        var sc = (typeof State.efficiency === 'number') ? State.efficiency : null;
+        if (sc !== null) { if (sc > 1) { sc = 1; } if (sc < 0) { sc = 0; } }
+        return { score: sc, outcome: (sc !== null && sc >= 0.97) ? 'win' : 'completed', detail: { u1: p.u1, u2: p.u2, efficiency: sc, opponent: State.oppKey } };
       }
     });
   }

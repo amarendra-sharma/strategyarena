@@ -1048,6 +1048,29 @@ function showAnalysis() {
   State.session.rounds++;
   if (youWon) State.session.wins++;
   State.session.profit += userProfit;
+  // Counterfactual: what profit WOULD the BNE strategy have earned this round,
+  // given the same opponent bids? In first-price, BNE bid = (n-1)/n * value; you
+  // win if it beats the top opponent bid, paying your bid. In second-price, bid
+  // your value and pay the second price. This lets us score profit vs the optimal
+  // strategy (rewards correct shading, NOT overbidding to win at a loss).
+  (function(){
+    var oppBids = [];
+    for (var oi = 0; oi < State.opponentBids.length; oi++) { oppBids.push(State.opponentBids[oi].bid); }
+    var topOpp = oppBids.length > 0 ? Math.max.apply(null, oppBids) : 0;
+    var bneProfit;
+    if (State.format === 'first') {
+      var bneBid = Math.round(BNE_COEF * State.value);
+      // win iff bneBid strictly beats the best opponent bid (ties: assume loss)
+      bneProfit = (bneBid > topOpp) ? (State.value - bneBid) : 0;
+    } else {
+      // second-price: optimal is bid truthfully; win iff value beats top opp,
+      // pay the top opponent bid (the second-highest overall).
+      bneProfit = (State.value > topOpp) ? (State.value - topOpp) : 0;
+    }
+    if (bneProfit < 0) { bneProfit = 0; }
+    if (typeof State.session.optProfit !== 'number') { State.session.optProfit = 0; }
+    State.session.optProfit += bneProfit;
+  })();
   if (State.value > 0) {
     State.session.shadingSum += (1 - State.bid / State.value);
     State.session.shadingCount++;
@@ -1252,8 +1275,21 @@ document.addEventListener('DOMContentLoaded', () => {
       getSession: function () {
         if (typeof State === 'undefined' || !State.session || State.session.rounds === 0) { return null; }
         var s = State.session;
+        // Score = your profit / the profit the optimal (BNE) strategy would have
+        // earned against the same opponents. Rewards correct bid-shading and
+        // profitable restraint -- NOT overbidding to win auctions at a loss.
+        var opt = (typeof s.optProfit === 'number') ? s.optProfit : 0;
+        var sc;
+        if (opt > 0) {
+          sc = s.profit / opt;
+          if (sc > 1) { sc = 1; } if (sc < 0) { sc = 0; }
+        } else {
+          // The optimal strategy would also have earned ~0 (unlucky value draws):
+          // credit the student fully if they too avoided losses, else 0.
+          sc = (s.profit >= 0) ? 1 : 0;
+        }
         var winRate = s.rounds > 0 ? (s.wins / s.rounds) : 0;
-        return { score: winRate, outcome: 'completed', detail: { rounds: s.rounds, wins: s.wins, profit: s.profit, format: State.format } };
+        return { score: sc, outcome: (sc >= 0.9 ? 'win' : 'completed'), detail: { rounds: s.rounds, wins: s.wins, winRate: winRate, profit: s.profit, optimalProfit: opt, format: State.format } };
       }
     });
   }
