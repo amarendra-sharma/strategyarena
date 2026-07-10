@@ -1608,5 +1608,27 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 </script>
 
+
+<!-- ===== Arena intro overlay (auto-injected) ===== -->
+<div id="saArenaIntro" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(5,4,16,.82);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);">
+  <div style="max-width:560px;width:100%;background:rgba(17,16,42,.96);border:1px solid rgba(255,255,255,.10);border-radius:18px;padding:26px 28px;box-shadow:0 24px 80px rgba(0,0,0,.5);font-family:'Inter',system-ui,sans-serif;color:#E8E6F5;">
+    <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#9B7BFF;font-weight:600;margin-bottom:8px;">Arena</div>
+    <div style="font-size:24px;font-weight:700;line-height:1.15;margin-bottom:14px;">Bayesian Game</div>
+    <div style="font-size:14.5px;line-height:1.6;color:rgba(232,230,245,.82);margin-bottom:18px;">You play a game of incomplete information: you know your own type, but your opponent's type is hidden and drawn according to known odds. You choose an action while reasoning about the distribution of opponents you might be facing, not a single known one. Good play means acting on your beliefs about who's across the table, updated by whatever the setup tells you.</div>
+    <div style="font-size:13px;line-height:1.55;color:rgba(251,191,36,.92);background:rgba(245,158,11,.08);border:1px solid rgba(251,191,36,.28);border-radius:11px;padding:12px 14px;margin-bottom:20px;">
+      <strong>You get two attempts.</strong> After finishing your first attempt, check your grade in the app. If you're happy with it, you're done — only use your second attempt if you want to try to improve.
+    </div>
+    <button id="saArenaIntroBtn" style="width:100%;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#7C5CFF,#5B3DCC);color:#fff;font-weight:600;font-size:15px;font-family:inherit;cursor:pointer;">Start</button>
+  </div>
+</div>
+<script>
+(function(){
+  var b = document.getElementById('saArenaIntroBtn');
+  var ov = document.getElementById('saArenaIntro');
+  if (b && ov) { b.addEventListener('click', function(){ ov.parentNode.removeChild(ov); }); }
+})();
+</script>
+<!-- ===== end arena intro overlay ===== -->
+
 </body>
 </html>
