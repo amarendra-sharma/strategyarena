@@ -477,6 +477,8 @@
     <div class="hidden md:flex items-center gap-2 text-xs text-white/55 px-3 py-2 rounded-lg glass-subtle">
       <span>Round</span>
       <span class="font-mono text-white" id="roundNum">1</span>
+      <span class="text-white/40">of</span>
+      <span class="font-mono text-white/70" id="roundTotal">8</span>
     </div>
     <button class="btn-ghost text-sm" id="restartBtn">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
@@ -691,6 +693,7 @@
    CONFIG
    ================================================================= */
 const N_BIDDERS = 4;
+const AUCTION_ROUNDS = 8;   // fixed game length so students know when it ends
 const OPPONENTS = [
   { id: 1, name: 'Ada',   av: 'av-1', meta: 'Aggressive' },
   { id: 2, name: 'Bosco', av: 'av-2', meta: 'Value-matcher' },
@@ -778,6 +781,7 @@ function newRound() {
 
   // Reset UI
   $('#roundNum').textContent = State.round;
+  if ($('#roundTotal')) { $('#roundTotal').textContent = AUCTION_ROUNDS; }
   $('#analysisPanel').classList.add('hidden');
   $('#hintsBox').classList.remove('hidden');
   $('#countdownWrap').classList.add('hidden');
@@ -1193,12 +1197,34 @@ function showAnalysis() {
 
   $('#analysisPanel').classList.remove('hidden');
   State.phase = 'analysis';
+
+  // End-of-game handling: after the fixed number of rounds, stop and let the
+  // student finish, which records their score. Before that, the button advances
+  // to the next auction as usual.
+  var btn = $('#newRoundBtn');
+  if (State.session.rounds >= AUCTION_ROUNDS) {
+    State.gameComplete = true;
+    if (btn) {
+      btn.innerHTML = 'Finish &amp; save score';
+      btn.classList.add('is-finish');
+    }
+  } else if (btn) {
+    // show remaining count so students know how many rounds are left
+    var left = AUCTION_ROUNDS - State.session.rounds;
+    btn.innerHTML = 'Next auction (' + left + ' left) <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>';
+  }
 }
 
 /* =================================================================
    NEW ROUND BUTTON
    ================================================================= */
 function handleNewRound() {
+  // If the fixed number of rounds is done, finish the game: record the score and
+  // show a final summary instead of starting another auction.
+  if (State.gameComplete) {
+    finishAuctionGame();
+    return;
+  }
   State.round++;
   // Clean up card state
   $$('.bid-card').forEach(c => {
@@ -1212,11 +1238,44 @@ function handleNewRound() {
 }
 
 /* =================================================================
+   FINISH GAME — record score once, show final summary
+   ================================================================= */
+function finishAuctionGame() {
+  // Record the arena result exactly once (guard against double-fire).
+  if (!State.recorded) {
+    State.recorded = true;
+    if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') {
+      window.SAProgress.reportArenaNow();
+    }
+  }
+  var s = State.session;
+  var profitTxt = (s.profit >= 0 ? '$' + s.profit : '-$' + Math.abs(s.profit));
+  var optTxt = (typeof s.optProfit === 'number') ? ('$' + s.optProfit) : 'n/a';
+  var main = $('main');
+  if (main) {
+    main.innerHTML =
+      '<div class="glass-strong" style="max-width:520px;margin:40px auto;padding:32px;border-radius:20px;text-align:center;color:#E8E6F5;font-family:Inter,system-ui,sans-serif;">' +
+      '<div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9B7BFF;font-weight:600;margin-bottom:8px;">Auction complete</div>' +
+      '<div style="font-size:26px;font-weight:700;margin-bottom:16px;">You played all ' + AUCTION_ROUNDS + ' rounds</div>' +
+      '<div style="display:flex;justify-content:space-around;margin-bottom:20px;font-size:14px;">' +
+        '<div><div style="font-size:22px;font-weight:700;">' + s.wins + '/' + s.rounds + '</div><div style="color:rgba(232,230,245,.6);">auctions won</div></div>' +
+        '<div><div style="font-size:22px;font-weight:700;">' + profitTxt + '</div><div style="color:rgba(232,230,245,.6);">your profit</div></div>' +
+        '<div><div style="font-size:22px;font-weight:700;">' + optTxt + '</div><div style="color:rgba(232,230,245,.6);">optimal profit</div></div>' +
+      '</div>' +
+      '<div style="font-size:13.5px;line-height:1.6;color:rgba(232,230,245,.78);margin-bottom:22px;">Your score is based on how close your profit came to the best a rational bidder could have earned against the same rivals. It has been saved \u2014 check your grade in the app. If you want to try to improve, you can play your second attempt.</div>' +
+      '<button onclick="location.reload()" style="width:100%;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#7C5CFF,#5B3DCC);color:#fff;font-weight:600;font-size:15px;font-family:inherit;cursor:pointer;">Play again (2nd attempt)</button>' +
+      '</div>';
+  }
+}
+
+/* =================================================================
    SESSION RESTART
    ================================================================= */
 function restartSession() {
   State.round = 1;
   State.session = { rounds: 0, wins: 0, profit: 0, shadingSum: 0, shadingCount: 0 };
+  State.gameComplete = false;
+  State.recorded = false;
   $('#statRounds').textContent = '0';
   $('#statWins').textContent = '0';
   $('#statProfit').textContent = '$0';
