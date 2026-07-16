@@ -612,6 +612,8 @@
           </button>
           <button class="btn-ghost" id="stepBtn">Step</button>
         </div>
+        <button class="btn-primary w-full mb-3" id="finishEvoBtn" style="display:none;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>
+        <div class="text-[10px] text-white/40 mb-3" id="evoHint">Run the simulation to steer the population toward the ESS, then finish to save your best result.</div>
         <div class="text-[10px] uppercase tracking-wider text-white/45 font-medium mb-2">Speed</div>
         <div class="speed-control" id="speedControl">
           <div class="speed-btn" data-speed="0.5">0.5×</div>
@@ -1634,6 +1636,7 @@ function updateLiveStats() {
     // Track the CLOSEST the student steered the population to the ESS (smallest
     // distance). The arena score = 1 - bestDist, so reaching the ESS scores 1.0.
     if (typeof State.bestESSDist !== 'number' || dist < State.bestESSDist) { State.bestESSDist = dist; }
+    if ($('#finishEvoBtn') && $('#finishEvoBtn').style.display === 'none') { $('#finishEvoBtn').style.display = ''; }
     $('#statDistESS').textContent = dist.toFixed(3);
     $('#statDistESS').style.color = dist < 0.05 ? '#34D399' : dist < 0.2 ? '#FBBF24' : '#FB7185';
   } else {
@@ -1720,6 +1723,26 @@ document.addEventListener('DOMContentLoaded', () => {
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sa-progress.js"></script>
 <script>
+  function finishEvoGame() {
+    if (typeof State === 'undefined' || typeof State.bestESSDist !== 'number') { return; }
+    if (!State.recorded) {
+      State.recorded = true;
+      if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') {
+        window.SAProgress.reportArenaNow();
+      }
+    }
+    var main = document.querySelector('main') || document.body;
+    main.innerHTML =
+      '<div style="max-width:520px;margin:40px auto;padding:32px;border-radius:20px;text-align:center;color:#E8E6F5;font-family:Inter,system-ui,sans-serif;background:rgba(11,10,26,.85);border:1px solid rgba(255,255,255,.08);">' +
+      '<div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9B7BFF;font-weight:600;margin-bottom:8px;">Session complete</div>' +
+      '<div style="font-size:24px;font-weight:700;margin-bottom:16px;">Simulation finished</div>' +
+      '<div style="font-size:13.5px;line-height:1.6;color:rgba(232,230,245,.78);margin-bottom:22px;">Your score reflects how close you steered the population to the evolutionarily stable strategy. It has been saved \u2014 check your grade in the app. If you want to try to improve, you can play your second attempt.</div>' +
+      '<button onclick="location.reload()" style="width:100%;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#7C5CFF,#5B3DCC);color:#fff;font-weight:600;font-size:15px;font-family:inherit;cursor:pointer;">Play again (2nd attempt)</button>' +
+      '</div>';
+  }
+  var _feb = document.getElementById('finishEvoBtn');
+  if (_feb) { _feb.addEventListener('click', finishEvoGame); }
+
   if (window.SAProgress) {
     window.SAProgress.initArena({
       slug: 'evolutionary',
