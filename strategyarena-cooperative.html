@@ -548,6 +548,7 @@
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
       Split all
     </button>
+    <button class="btn-primary text-sm" id="finishCoopBtn" style="background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>
   </div>
 </header>
 
@@ -1589,8 +1590,28 @@ function renderPresetRow() {
 /* ============================================================
    BOOT
    ============================================================ */
+function finishCoopGame() {
+  if (typeof State === 'undefined' || !State.players || State.players.length === 0) { return; }
+  if (!State.recorded) {
+    State.recorded = true;
+    if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') {
+      window.SAProgress.reportArenaNow();
+    }
+  }
+  var main = document.querySelector('main') || document.body;
+  main.innerHTML =
+    '<div style="max-width:520px;margin:40px auto;padding:32px;border-radius:20px;text-align:center;color:#E8E6F5;font-family:Inter,system-ui,sans-serif;background:rgba(11,10,26,.85);border:1px solid rgba(255,255,255,.08);">' +
+    '<div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9B7BFF;font-weight:600;margin-bottom:8px;">Session complete</div>' +
+    '<div style="font-size:24px;font-weight:700;margin-bottom:16px;">Coalition analysis saved</div>' +
+    '<div style="font-size:13.5px;line-height:1.6;color:rgba(232,230,245,.78);margin-bottom:22px;">Your score reflects how you explored coalition formation and the grand coalition. It has been saved \u2014 check your grade in the app. If you want to try to improve, you can play your second attempt.</div>' +
+    '<button onclick="location.reload()" style="width:100%;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#7C5CFF,#5B3DCC);color:#fff;font-weight:600;font-size:15px;font-family:inherit;cursor:pointer;">Play again (2nd attempt)</button>' +
+    '</div>';
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   $('#addPlayerBtn').addEventListener('click', addPlayer);
+  var _fcb = document.getElementById('finishCoopBtn');
+  if (_fcb) { _fcb.addEventListener('click', finishCoopGame); }
   $('#splitAllBtn').addEventListener('click', () => {
     splitAll();
     showToast('All coalitions dissolved');
