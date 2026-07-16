@@ -129,6 +129,7 @@
         <div class="flex gap-2 mt-3 flex-wrap">
           <button class="btn btn-g" id="snapBtn">Snap to my best response</button>
           <button class="btn btn-p" id="checkBtn">Lock in &amp; check</button>
+          <button class="btn btn-p" id="finishCalcBtn" style="display:none;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>
         </div>
         <div id="feedback"></div>
       </div>
@@ -367,6 +368,22 @@ function setMode(m){
   refresh();
 }
 
+function finishCalcGame(){
+  if(typeof State==='undefined' || State.bestScore===null){ return; }
+  if(!State.recorded){
+    State.recorded=true;
+    if(window.SAProgress && typeof window.SAProgress.reportArenaNow==='function'){ window.SAProgress.reportArenaNow(); }
+  }
+  var main=document.querySelector('main')||document.body;
+  main.innerHTML=
+    '<div style="max-width:520px;margin:40px auto;padding:32px;border-radius:20px;text-align:center;color:#E8E6F5;font-family:Inter,system-ui,sans-serif;background:rgba(11,10,26,.85);border:1px solid rgba(255,255,255,.08);">'+
+    '<div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9B7BFF;font-weight:600;margin-bottom:8px;">Session complete</div>'+
+    '<div style="font-size:24px;font-weight:700;margin-bottom:16px;">Result saved</div>'+
+    '<div style="font-size:13.5px;line-height:1.6;color:rgba(232,230,245,.78);margin-bottom:22px;">Your score reflects how accurately you located the equilibrium. It has been saved \u2014 check your grade in the app. If you want to try to improve, you can play your second attempt.</div>'+
+    '<button onclick="location.reload()" style="width:100%;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#7C5CFF,#5B3DCC);color:#fff;font-weight:600;font-size:15px;font-family:inherit;cursor:pointer;">Play again (2nd attempt)</button>'+
+    '</div>';
+}
+
 function checkAnswer(){
   State.engaged=true;
   var q1=State.q1, target, label, tol;
@@ -388,6 +405,8 @@ function checkAnswer(){
     }
     fb.className='feedback win';
     fb.innerHTML='<b>Solved.</b> q\u2081 = '+r2(q1)+' \u2248 '+label+' = '+r2(target)+'.'+extra;
+    // Reveal the finish button so the student can record their result reliably.
+    if($('finishCalcBtn')){ $('finishCalcBtn').style.display=''; }
   } else {
     State.bestOutcome = State.bestOutcome==='win'?'win':'attempted';
     var hint = (q1<target) ? 'produce a bit more' : 'pull back a little';
@@ -407,6 +426,7 @@ function init(){
     fb.innerHTML='Snapped q\u2081 to your best response ('+r2(br1)+') given Firm 2\u2019s current output. Repeat a few times and you spiral into Nash \u2014 that\u2019s best-response dynamics.';
   });
   $('checkBtn').addEventListener('click', checkAnswer);
+  if($('finishCalcBtn')){ $('finishCalcBtn').addEventListener('click', finishCalcGame); }
   var tabs=document.querySelectorAll('.tabbtn');
   for(var i=0;i<tabs.length;i++){ tabs[i].addEventListener('click', function(){ setMode(this.getAttribute('data-mode')); }); }
   setMode('cournot');
