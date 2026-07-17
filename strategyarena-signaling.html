@@ -619,6 +619,7 @@
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
         </button>
         <button class="btn-primary" id="finishSignalBtn" style="display:none;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>
+        <div class="text-[11px] text-white/45 mt-2" id="signalHint">Play against all three firm strategies (Separating, Pooling, Bayesian) to unlock saving.</div>
       </div>
 
       <div id="resultBanner" class="mb-5"></div>
@@ -1223,10 +1224,28 @@ async function chooseSignal(s) {
   // Show result panel
   showResult(post, netYou, profitFirm);
   State.finished = true;
-  // After a few rounds there's enough to score; reveal Finish so the student can
-  // stop and reliably record (rather than depending on the leave-time save).
-  if (State.round >= 5 && $('#finishSignalBtn')) {
-    $('#finishSignalBtn').style.display = '';
+  if (!State.playedFirms) { State.playedFirms = {}; }
+  State.playedFirms[State.firmKey] = true;
+  // Reveal Finish only once all THREE firm strategies have been faced.
+  var pf = State.playedFirms;
+  var allFirms = pf['separating'] && pf['pooling'] && pf['bayesian'];
+  if ($('#finishSignalBtn')) {
+    if (allFirms) {
+      $('#finishSignalBtn').style.display = '';
+    } else {
+      $('#finishSignalBtn').style.display = 'none';
+    }
+  }
+  if ($('#signalHint')) {
+    if (allFirms) {
+      $('#signalHint').textContent = 'You\u2019ve faced all three firm types \u2014 finish whenever you\u2019re ready to save.';
+    } else {
+      var needF = [];
+      if (!pf['separating']) { needF.push('Separating'); }
+      if (!pf['pooling']) { needF.push('Pooling'); }
+      if (!pf['bayesian']) { needF.push('Bayesian'); }
+      $('#signalHint').textContent = 'Play against all three firm strategies to unlock saving. Still to face: ' + needF.join(', ') + '.';
+    }
   }
 }
 

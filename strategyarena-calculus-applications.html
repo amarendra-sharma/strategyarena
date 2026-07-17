@@ -130,6 +130,7 @@
           <button class="btn btn-g" id="snapBtn">Snap to my best response</button>
           <button class="btn btn-p" id="checkBtn">Lock in &amp; check</button>
           <button class="btn btn-p" id="finishCalcBtn" style="display:none;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>
+          <div style="font-size:11px;color:var(--subtle);margin-top:6px;width:100%;" id="calcModeHint">Play and check all three modes (Cournot, Stackelberg, Market Structures) to unlock saving.</div>
         </div>
         <div id="feedback"></div>
       </div>
@@ -238,6 +239,22 @@ function refresh(){
 function tex(el, latex){ if(window.katex){ try{ katex.render(latex,$(el),{throwOnError:false}); }catch(e){ $(el).textContent=latex; } } else { $(el).textContent=latex; } }
 function renderCalc(){
   var a=State.a,b=State.b,c=State.c;
+  // Pedagogy: hide the worked solution until the student has locked in an answer
+  // for THIS mode. They must derive the equilibrium themselves first; checking
+  // reveals the full derivation so they can verify their reasoning.
+  if(!State.solvedModes){ State.solvedModes={}; }
+  if(!State.solvedModes[State.mode]){
+    tex('cl_profit', '\\text{Set up firm 1\\u2019s profit, take the first-order condition, and solve for } q_1.');
+    $('cl_deriv').textContent='';
+    $('cl_foc').textContent='';
+    $('cl_br').textContent='';
+    $('calcNote').textContent='Work out the equilibrium output on paper, move the slider to your answer, then press \u201cLock in \u0026 check\u201d to reveal the full derivation and see how close you were.';
+    return;
+  }
+  renderCalcSolution(a,b,c);
+}
+
+function renderCalcSolution(a,b,c){
   if(State.mode==='stackelberg'){
     // leader substitutes BR2 into its profit, then maximizes
     tex('cl_profit', '\\pi_1 = \\big(a - b(q_1+q_2) - c\\big)\\,q_1,\\quad q_2 = \\tfrac{a-c-bq_1}{2b}');
@@ -386,13 +403,32 @@ function finishCalcGame(){
 
 function checkAnswer(){
   State.engaged=true;
+  if(!State.solvedModes){ State.solvedModes={}; }
+  // Reveal this mode's worked solution now that the student has committed an answer.
+  State.solvedModes[State.mode]=true;
   var q1=State.q1, target, label, tol;
   if(State.mode==='cournot'){ target=cournotQ(); label='Cournot\u2013Nash'; }
-  else { target=stackLeaderQ(); label='Stackelberg leader'; }
+  else if(State.mode==='stackelberg'){ target=stackLeaderQ(); label='Stackelberg leader'; }
+  else { target=null; }
+  // Market Structures (compare) mode has no single slider target; checking it
+  // just counts as engaging with that mode and reveals its solution.
+  if(target===null){
+    if(!State.modesChecked){ State.modesChecked={}; }
+    State.modesChecked['compare']=true;
+    renderCalc();
+    maybeRevealCalcFinish();
+    var fbc=$('feedback');
+    fbc.className='feedback win';
+    fbc.innerHTML='<b>Market structures reviewed.</b> Compare how monopoly, oligopoly, and perfect competition change total output and price.';
+    return;
+  }
   tol=Math.max(0.6, qMax()*0.03);
   var q2=brOf(q1), pi1=profitFirm(q1,q2);
   var diff=Math.abs(q1-target);
   var fb=$('feedback');
+  if(!State.modesChecked){ State.modesChecked={}; }
+  State.modesChecked[State.mode]=true;
+  renderCalc();   // reveal the worked solution for this mode
   if(diff<=tol){
     var score=clamp(1 - diff/(tol*3), 0, 1);
     State.bestScore = (State.bestScore===null)?score:Math.max(State.bestScore,score);
@@ -405,18 +441,40 @@ function checkAnswer(){
     }
     fb.className='feedback win';
     fb.innerHTML='<b>Solved.</b> q\u2081 = '+r2(q1)+' \u2248 '+label+' = '+r2(target)+'.'+extra;
-    // Reveal the finish button so the student can record their result reliably.
-    if($('finishCalcBtn')){ $('finishCalcBtn').style.display=''; }
+    maybeRevealCalcFinish();
   } else {
     State.bestOutcome = State.bestOutcome==='win'?'win':'attempted';
+    // partial credit for engaging even if not exact, so the mode counts as played
+    var partial=clamp(1 - diff/(tol*6), 0, 0.5);
+    State.bestScore = (State.bestScore===null)?partial:Math.max(State.bestScore,partial);
     var hint = (q1<target) ? 'produce a bit more' : 'pull back a little';
     fb.className='feedback near';
-    fb.innerHTML='Not yet \u2014 the '+label+' output is the point where your reaction curve (BR\u2081) meets Firm 2\u2019s. Try to '+hint+'. (You\u2019re '+r2(diff)+' away.)';
+    fb.innerHTML='Not quite \u2014 but here\u2019s the full derivation so you can see where the '+label+' output comes from. Compare it to your answer and try to '+hint+'. (You\u2019re '+r2(diff)+' away.)';
+    maybeRevealCalcFinish();
+  }
+}
+
+function maybeRevealCalcFinish(){
+  // Unlock saving only once the student has checked all THREE modes.
+  var mc=State.modesChecked||{};
+  var allThree = mc['cournot'] && mc['stackelberg'] && mc['compare'];
+  var btn=$('finishCalcBtn');
+  if(btn){ btn.style.display = allThree ? '' : 'none'; }
+  var hint=$('calcModeHint');
+  if(hint){
+    if(allThree){ hint.textContent='All three modes complete \u2014 finish whenever you\u2019re ready to save your score.'; }
+    else {
+      var need=[];
+      if(!mc['cournot']){ need.push('Cournot'); }
+      if(!mc['stackelberg']){ need.push('Stackelberg'); }
+      if(!mc['compare']){ need.push('Market Structures'); }
+      hint.textContent='Play and check all three modes to unlock saving. Still to do: '+need.join(', ')+'.';
+    }
   }
 }
 
 function init(){
-  ['aR','bR','cR','nR'].forEach(function(id){ $(id).addEventListener('input', function(){ State.engaged=true; refresh(); }); });
+  ['aR','bR','cR','nR'].forEach(function(id){ $(id).addEventListener('input', function(){ State.engaged=true; if(State.solvedModes){ State.solvedModes[State.mode]=false; } refresh(); }); });
   $('q1R').addEventListener('input', function(){ State.engaged=true; refresh(); $('feedback').innerHTML=''; });
   $('snapBtn').addEventListener('click', function(){
     State.engaged=true;

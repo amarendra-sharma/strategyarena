@@ -784,7 +784,10 @@ const State = {
   // Last frame time (for time delta)
   lastFrameTime: null,
   // Drag state
-  isDragging: false
+  isDragging: false,
+  // Which games have been meaningfully played (sim run) — gates the save button
+  playedGames: {},
+  recorded: false
 };
 
 const HISTORY_MAX_POINTS = 600;
@@ -885,6 +888,7 @@ function animationFrame(now) {
 function startSim() {
   if (State.running) return;
   State.running = true;
+  State.playedGames[State.gameKey] = true;   // this game counts as played once run
   State.lastFrameTime = null;
   $('#liveDot').classList.remove('paused');
   $('#liveLabel').textContent = 'Evolving';
@@ -1068,15 +1072,26 @@ function renderPhaseHD() {
 
 function bindPhaseHDDrag(svg, x0, x1, lineY) {
   const trackW = x1 - x0;
+  // #phaseSVG is a STABLE element (only its innerHTML is redrawn), so we bind the
+  // drag listeners exactly once. Previously this ran on every render and re-added
+  // document-level mousemove/mouseup handlers each frame — hundreds accumulated
+  // during a drag, each forcing a full re-render, which froze and blanked the page.
+  // We stash the current geometry so the single persistent handler stays accurate.
+  State._hdGeom = { x0: x0, x1: x1, trackW: trackW };
+  if (State._hdDragBound) { return; }
+  State._hdDragBound = true;
+  var host = svg;   // stable across renders
+  let isDown = false;
   function eventToProportion(e) {
-    const rect = svg.getBoundingClientRect();
+    const g = State._hdGeom;
+    const rect = host.getBoundingClientRect();
     const sx = (e.clientX - rect.left) / rect.width * PHASE.W;
-    const p = (sx - x0) / trackW;
+    const p = (sx - g.x0) / g.trackW;
     return Math.max(0, Math.min(1, p));
   }
-  let isDown = false;
   function onDown(e) {
-    if (State.running) return;  // don't allow drag during sim
+    if (State.running) return;
+    if (State.gameKey !== 'hawk-dove') return;   // this handler is HD-only
     isDown = true;
     State.isDragging = true;
     onMove(e);
@@ -1090,23 +1105,18 @@ function bindPhaseHDDrag(svg, x0, x1, lineY) {
     syncSliders();
     updateLiveStats();
     renderPhase();
-    // Reset history when dragging
     State.simTime = 0;
     State.history = [{ t: 0, props: Object.assign({}, State.population) }];
     renderPopChart();
   }
-  function onUp() {
-    isDown = false;
-    State.isDragging = false;
-  }
-  svg.addEventListener('mousedown', onDown);
+  function onUp() { isDown = false; State.isDragging = false; }
+  host.addEventListener('mousedown', onDown);
+  host.addEventListener('touchstart', onDown, { passive: false });
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
-  svg.addEventListener('touchstart', onDown, { passive: false });
-  document.addEventListener('touchmove', (e) => { if (isDown) { e.preventDefault(); onMove(e); } }, { passive: false });
+  document.addEventListener('touchmove', function(e){ if (isDown) { e.preventDefault(); onMove(e); } }, { passive: false });
   document.addEventListener('touchend', onUp);
 }
-
 /* ----------------- RPS TERNARY PHASE PLOT ----------------- */
 function renderPhaseRPS() {
   const svg = $('#phaseSVG');
@@ -1239,21 +1249,26 @@ function renderPhaseRPS() {
 }
 
 function bindPhaseRPSDrag(svg, ternToXY, Rx, Ry, Px, Py, Sx, Sy) {
+  // Stash current triangle geometry so the single persistent handler stays
+  // accurate. Bind document listeners only ONCE — re-binding every render leaked
+  // hundreds of mousemove handlers and blanked the page on drag (same bug as HD).
+  State._rpsGeom = { Rx: Rx, Ry: Ry, Px: Px, Py: Py, Sx: Sx, Sy: Sy };
+  if (State._rpsDragBound) { return; }
+  State._rpsDragBound = true;
+  var host = svg;   // #phaseSVG is stable across renders
   function screenToBary(sx, sy) {
-    // Solve for barycentric coordinates from screen position
-    // [Rx Px Sx] [pR]   [sx]
-    // [Ry Py Sy] [pP] = [sy]
-    // [1  1  1 ] [pS]   [1 ]
-    const det = Rx*(Py - Sy) - Px*(Ry - Sy) + Sx*(Ry - Py);
+    const g = State._rpsGeom;
+    const det = g.Rx*(g.Py - g.Sy) - g.Px*(g.Ry - g.Sy) + g.Sx*(g.Ry - g.Py);
     if (Math.abs(det) < 1e-9) return null;
-    const pR = (sx*(Py - Sy) - Px*(sy - Sy) + Sx*(sy - Py)) / det;
-    const pP = (Rx*(sy - Sy) - sx*(Ry - Sy) + Sx*(Ry - sy)) / det;
+    const pR = (sx*(g.Py - g.Sy) - g.Px*(sy - g.Sy) + g.Sx*(sy - g.Py)) / det;
+    const pP = (g.Rx*(sy - g.Sy) - sx*(g.Ry - g.Sy) + g.Sx*(g.Ry - sy)) / det;
     const pS = 1 - pR - pP;
     return [pR, pP, pS];
   }
   let isDown = false;
   function onDown(e) {
     if (State.running) return;
+    if (State.gameKey !== 'rps') return;   // RPS-only handler
     isDown = true;
     State.isDragging = true;
     onMove(e);
@@ -1261,13 +1276,12 @@ function bindPhaseRPSDrag(svg, ternToXY, Rx, Ry, Px, Py, Sx, Sy) {
   function onMove(e) {
     if (!isDown) return;
     const ev = e.touches ? e.touches[0] : e;
-    const rect = svg.getBoundingClientRect();
+    const rect = host.getBoundingClientRect();
     const sx = (ev.clientX - rect.left) / rect.width * PHASE.W;
     const sy = (ev.clientY - rect.top) / rect.height * PHASE.H;
     const bary = screenToBary(sx, sy);
     if (!bary) return;
     let [pR, pP, pS] = bary;
-    // Clamp to inside triangle (project to nearest valid point)
     if (pR < 0 || pP < 0 || pS < 0) {
       pR = Math.max(0.001, pR);
       pP = Math.max(0.001, pP);
@@ -1284,18 +1298,14 @@ function bindPhaseRPSDrag(svg, ternToXY, Rx, Ry, Px, Py, Sx, Sy) {
     State.history = [{ t: 0, props: Object.assign({}, State.population) }];
     renderPopChart();
   }
-  function onUp() {
-    isDown = false;
-    State.isDragging = false;
-  }
-  svg.addEventListener('mousedown', onDown);
+  function onUp() { isDown = false; State.isDragging = false; }
+  host.addEventListener('mousedown', onDown);
+  host.addEventListener('touchstart', onDown, { passive: false });
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
-  svg.addEventListener('touchstart', onDown, { passive: false });
   document.addEventListener('touchmove', (e) => { if (isDown) { e.preventDefault(); onMove(e); } }, { passive: false });
   document.addEventListener('touchend', onUp);
 }
-
 /* ============================================================
    POPULATION CHART (stacked area over time)
    ============================================================ */
@@ -1636,7 +1646,21 @@ function updateLiveStats() {
     // Track the CLOSEST the student steered the population to the ESS (smallest
     // distance). The arena score = 1 - bestDist, so reaching the ESS scores 1.0.
     if (typeof State.bestESSDist !== 'number' || dist < State.bestESSDist) { State.bestESSDist = dist; }
-    if ($('#finishEvoBtn') && $('#finishEvoBtn').style.display === 'none') { $('#finishEvoBtn').style.display = ''; }
+    if (!State.bestESSByGame) { State.bestESSByGame = {}; }
+    if (typeof State.bestESSByGame[State.gameKey] !== 'number' || dist < State.bestESSByGame[State.gameKey]) {
+      State.bestESSByGame[State.gameKey] = dist;
+    }
+    // Reveal the Finish button only once BOTH games (Hawk-Dove and RPS) have been run.
+    var bothPlayed = State.playedGames['hawk-dove'] && State.playedGames['rps'];
+    var feb = $('#finishEvoBtn');
+    if (feb) {
+      if (bothPlayed) {
+        feb.style.display = '';
+        if ($('#evoHint')) { $('#evoHint').textContent = 'Both games played \u2014 finish whenever you\u2019re ready to save your score.'; }
+      } else if ($('#evoHint')) {
+        $('#evoHint').textContent = 'Play BOTH Hawk-Dove and RPS to unlock saving. (' + (State.playedGames['hawk-dove'] ? 'Hawk-Dove done \u2014 now switch to RPS and run it' : (State.playedGames['rps'] ? 'RPS done \u2014 now switch to Hawk-Dove and run it' : 'Run this simulation, then try the other game')) + ')';
+      }
+    }
     $('#statDistESS').textContent = dist.toFixed(3);
     $('#statDistESS').style.color = dist < 0.05 ? '#34D399' : dist < 0.2 ? '#FBBF24' : '#FB7185';
   } else {
@@ -1748,15 +1772,19 @@ document.addEventListener('DOMContentLoaded', () => {
       slug: 'evolutionary',
       getSession: function () {
         if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
-        // Score = how close the student steered the population to the ESS (the
-        // stable rest point of the replicator dynamics). 1.0 = reached the ESS.
-        // bestESSDist is an L2 distance in the simplex (max ~sqrt(2)); normalize.
-        var sc = null;
-        if (typeof State.bestESSDist === 'number') {
-          sc = 1 - (State.bestESSDist / Math.SQRT2);
-          if (sc > 1) { sc = 1; } if (sc < 0) { sc = 0; }
+        // Score = how close the student steered the population to the ESS in EACH
+        // game, averaged across both Hawk-Dove and RPS. 1.0 = reached the ESS in both.
+        var byGame = State.bestESSByGame || {};
+        var keys = Object.keys(byGame);
+        if (keys.length === 0) { return null; }
+        var sum = 0, n = 0;
+        for (var i = 0; i < keys.length; i++) {
+          var s = 1 - (byGame[keys[i]] / Math.SQRT2);
+          if (s > 1) { s = 1; } if (s < 0) { s = 0; }
+          sum += s; n++;
         }
-        return { score: sc, outcome: (sc !== null && sc >= 0.9 ? 'win' : 'completed'), detail: { game: State.gameKey, params: State.params, simTime: State.simTime, bestDistToESS: State.bestESSDist, finalPop: State.population } };
+        var sc = n > 0 ? sum / n : null;
+        return { score: sc, outcome: (sc !== null && sc >= 0.9 ? 'win' : 'completed'), detail: { gamesPlayed: keys, perGameDist: byGame, finalGame: State.gameKey } };
       }
     });
   }

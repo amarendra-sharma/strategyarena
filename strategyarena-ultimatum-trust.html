@@ -868,6 +868,8 @@ const State = {
   game: 'ultimatum',
   oppKey: 'human',
   round: 1,
+  playedGames: {},
+  recorded: false,
   // Cumulative
   scoreYou: 0,
   scoreSPE: 0,
@@ -1164,15 +1166,17 @@ function renderTrustWaitingPanel(root) {
 }
 
 function renderTrustDonePanel(root) {
-  var showFinish = (State.round >= 4);
+  State.playedGames['trust'] = true;
+  var bothPlayed = State.playedGames['ultimatum'] && State.playedGames['trust'];
   root.innerHTML = `
     <div class="text-center py-6">
       <button class="btn-primary" id="newRoundBtn">
         <span>Next round</span>
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
       </button>
-      ${showFinish ? '<button class="btn-primary" id="finishTrustBtn" style="margin-left:10px;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>' : ''}
+      ${bothPlayed ? '<button class="btn-primary" id="finishTrustBtn" style="margin-left:10px;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>' : ''}
     </div>
+    ${bothPlayed ? '' : '<div class="text-[11px] text-white/45 text-center mt-1">Play at least one round of BOTH the Ultimatum and Trust games to unlock saving. (' + (State.playedGames['ultimatum'] ? 'Ultimatum done \u2014 play Trust' : 'Now try the Ultimatum game') + ')</div>'}
   `;
   $('#newRoundBtn').addEventListener('click', startNewRound);
   if ($('#finishTrustBtn')) { $('#finishTrustBtn').addEventListener('click', finishTrustGame); }
@@ -1384,11 +1388,25 @@ async function submitUltimatumOffer() {
   updateStats();
   renderHistory();
   State.busy = false;
+  State.playedGames['ultimatum'] = true;
 
-  // Show "Next round" button
-  $('#submitOffer').disabled = false;
-  $('#submitOffer').innerHTML = '<span>Next round</span>';
-  $('#submitOffer').onclick = startNewRound;
+  // Show a DEDICATED "Next round" button. Do NOT reuse #submitOffer: it still has
+  // its click->submitUltimatumOffer listener attached, so reusing it made a single
+  // click fire BOTH submit and next-round (the auto-submit bug). Replacing the
+  // panel content gives a clean button with only the next-round handler.
+  var bothPlayed = State.playedGames['ultimatum'] && State.playedGames['trust'];
+  var offerRoot = $('#offerPanel');
+  if (offerRoot) {
+    offerRoot.innerHTML =
+      '<div class="text-center py-6">' +
+      '<div class="text-sm text-white/60 mb-4">Round resolved. Ready for the next one?</div>' +
+      '<button class="btn-primary" id="ultNextBtn"><span>Next round</span></button>' +
+      (bothPlayed ? '<button class="btn-primary" id="ultFinishBtn" style="margin-left:10px;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>' : '') +
+      '</div>' +
+      (bothPlayed ? '' : '<div class="text-[11px] text-white/45 text-center mt-1">Play at least one round of BOTH the Ultimatum and Trust games to unlock saving. (' + (State.playedGames['trust'] ? 'Trust done \u2014 play Ultimatum' : 'Now try the Trust game') + ')</div>');
+    if ($('#ultNextBtn')) { $('#ultNextBtn').addEventListener('click', startNewRound); }
+    if ($('#ultFinishBtn')) { $('#ultFinishBtn').addEventListener('click', finishTrustGame); }
+  }
 }
 
 /* ============================================================
@@ -1668,10 +1686,9 @@ function resetSession() {
 function switchGame(newGame) {
   State.game = newGame;
   State.round = 1;
-  State.scoreYou = 0;
-  State.scoreSPE = 0;
-  State.history = [];
-  State.recorded = false;
+  // NOTE: do NOT reset scoreYou/scoreSPE/playedGames here. The score accumulates
+  // across BOTH game types so that playing both contributes to the final grade,
+  // and playedGames must persist so the "played both" gate works after switching.
   State.busy = false;
   State.proposedOffer = 5;
   State.trustSent = 5;

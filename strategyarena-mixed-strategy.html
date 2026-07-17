@@ -1173,7 +1173,7 @@ async function playOneRound() {
   const oppAction = oppFn.pickAction(State.history);
   const payoff = PAYOFF[yourAction][oppAction];
 
-  State.history.push({ you: yourAction, opp: oppAction, payoff });
+  State.history.push({ you: yourAction, opp: oppAction, payoff, oppKey: State.oppKey });
   State.scoreYou += payoff;
   State.scoreOpp -= payoff;
   State.rounds++;
@@ -1203,7 +1203,7 @@ async function playN(n, intervalMs = 250) {
     const oppFn = OPPONENTS[State.oppKey];
     const oppAction = oppFn.pickAction(State.history);
     const payoff = PAYOFF[yourAction][oppAction];
-    State.history.push({ you: yourAction, opp: oppAction, payoff });
+    State.history.push({ you: yourAction, opp: oppAction, payoff, oppKey: State.oppKey });
     State.scoreYou += payoff;
     State.scoreOpp -= payoff;
     State.rounds++;
@@ -1829,10 +1829,43 @@ document.addEventListener('DOMContentLoaded', () => {
       slug: 'mixed-strategy',
       getSession: function () {
         if (typeof State === 'undefined' || !State.history || State.history.length === 0) { return null; }
-        var you = State.scoreYou, opp = State.scoreOpp, total = you + opp;
-        var score = total !== 0 ? (you / (Math.abs(you) + Math.abs(opp))) : 0.5;
-        var outcome = you > opp ? 'win' : (you < opp ? 'loss' : 'draw');
-        return { score: score, outcome: outcome, detail: { you: you, opp: opp, rounds: State.history.length, opponent: State.oppKey } };
+        // Fair RPS scoring. The old formula (you/(|you|+|opp|)) always returned 0.5
+        // because RPS is zero-sum (opp = -you), so it can't distinguish play quality.
+        // Instead we score, PER OPPONENT, on two things the game actually teaches:
+        //   1) unexploitability: how close your empirical mix was to the Nash mix
+        //      (1/3,1/3,1/3) -- being predictable is what lets an opponent beat you;
+        //   2) payoff: your average points per round vs that opponent.
+        // Against Pattern-hunter both matter (stay unpredictable AND capitalize);
+        // against Random/Equilibrium the game value is 0, so unexploitability
+        // (playing the Nash mix) is the correct, rewarded behavior. Final score =
+        // average across the opponents faced.
+        var byOpp = {};
+        State.history.forEach(function(h){
+          var k = h.oppKey || 'unknown';
+          if (!byOpp[k]) { byOpp[k] = { R:0, P:0, S:0, pay:0, n:0 }; }
+          byOpp[k][h.you] = (byOpp[k][h.you] || 0) + 1;
+          byOpp[k].pay += h.payoff;
+          byOpp[k].n += 1;
+        });
+        function scoreOpp(rec, oppKey){
+          var n = rec.n || 1;
+          var avg = rec.pay / n;                                   // avg payoff [-1,1]
+          var SCALE = 0.34;
+          var payoffScore = 0.5 + 0.5 * (avg / SCALE);
+          if (payoffScore < 0) { payoffScore = 0; } if (payoffScore > 1) { payoffScore = 1; }
+          var pR = rec.R / n, pP = rec.P / n, pS = rec.S / n;
+          var d = Math.sqrt(Math.pow(pR-1/3,2) + Math.pow(pP-1/3,2) + Math.pow(pS-1/3,2));
+          var unexploit = 1 - d / 0.8165;                          // 0..1, 1 = perfectly uniform
+          if (unexploit < 0) { unexploit = 0; } if (unexploit > 1) { unexploit = 1; }
+          if (oppKey === 'hunter') { return 0.5*payoffScore + 0.5*unexploit; }
+          return 0.6*unexploit + 0.4*payoffScore;
+        }
+        var keys = Object.keys(byOpp), sum = 0, cnt = 0;
+        for (var i=0;i<keys.length;i++){ sum += scoreOpp(byOpp[keys[i]], keys[i]); cnt++; }
+        var score = cnt > 0 ? sum / cnt : 0.5;
+        if (score < 0) { score = 0; } if (score > 1) { score = 1; }
+        var outcome = score >= 0.75 ? 'win' : (score >= 0.4 ? 'draw' : 'loss');
+        return { score: score, outcome: outcome, detail: { perOpponent: byOpp, opponentsFaced: keys, rounds: State.history.length } };
       }
     });
   }
