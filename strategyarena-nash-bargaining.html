@@ -610,7 +610,7 @@
         <button class="btn-ghost" id="changeOppFromResult">Different opponent</button>
         <button class="btn-primary" id="finishNashBtn" style="display:none;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>
       </div>
-      <div class="text-xs text-white/45 text-center mt-2" id="nashHint">Reach a deal with all three opponents (Fair, Tough, Strategic) to unlock saving your score.</div>
+      <div class="text-xs text-white/45 text-center mt-2" id="nashHint">Negotiate with all three opponents (Fair, Tough, Strategic) to unlock saving. Reaching a fair deal with each scores higher.</div>
     </div>
   </div>
 
@@ -1097,13 +1097,15 @@ async function submitProposal() {
 
   showResult(decision);
   State.finished = true;
-  // Track the best efficiency achieved against THIS opponent (only on acceptance —
-  // a rejected deal yields no split). Do NOT record here; the student records once
-  // via "Finish & save score" after negotiating with all three opponents.
-  if (decision && decision.accept && typeof State.efficiency === 'number') {
-    if (typeof State.effByOpp[State.oppKey] !== 'number' || State.efficiency > State.effByOpp[State.oppKey]) {
-      State.effByOpp[State.oppKey] = State.efficiency;
-    }
+  // Mark this opponent as negotiated once a proposal is resolved — whether the
+  // opponent ACCEPTED or REJECTED. (Previously only acceptances counted, so a
+  // student who negotiated all three but had Tough/Strategic reject their offers
+  // could never unlock saving.) An accepted deal scores its efficiency; a rejected
+  // deal realizes no surplus, so it scores 0 for that opponent. Best result per
+  // opponent is kept, so re-negotiating to reach a deal always improves the score.
+  var thisEff = (decision && decision.accept && typeof State.efficiency === 'number') ? State.efficiency : 0;
+  if (typeof State.effByOpp[State.oppKey] !== 'number' || thisEff > State.effByOpp[State.oppKey]) {
+    State.effByOpp[State.oppKey] = thisEff;
   }
   updateNashFinishGate();
   State.busy = false;
@@ -1383,7 +1385,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof e['fair'] !== 'number') { need.push('Fair'); }
         if (typeof e['tough'] !== 'number') { need.push('Tough'); }
         if (typeof e['strategic'] !== 'number') { need.push('Strategic'); }
-        hint.textContent = 'Reach an accepted deal with all three opponents to unlock saving. Still to negotiate: ' + need.join(', ') + '.';
+        hint.textContent = 'Negotiate with all three opponents to unlock saving. Still to face: ' + need.join(', ') + '. (Tip: a rejected offer still counts, but reaching a fair deal scores higher.)';
       }
     }
   }
