@@ -608,7 +608,9 @@
           New round
         </button>
         <button class="btn-ghost" id="changeOppFromResult">Different opponent</button>
+        <button class="btn-primary" id="finishNashBtn" style="display:none;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>
       </div>
+      <div class="text-xs text-white/45 text-center mt-2" id="nashHint">Reach a deal with all three opponents (Fair, Tough, Strategic) to unlock saving your score.</div>
     </div>
   </div>
 
@@ -717,7 +719,9 @@ const State = {
   oppKey: 'fair',
   busy: false,
   finished: false,
-  isDragging: false
+  isDragging: false,
+  effByOpp: {},                   // best efficiency achieved per opponent
+  recorded: false
 };
 
 const $ = s => document.querySelector(s);
@@ -1093,7 +1097,15 @@ async function submitProposal() {
 
   showResult(decision);
   State.finished = true;
-  if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') { window.SAProgress.reportArenaNow(); }
+  // Track the best efficiency achieved against THIS opponent (only on acceptance —
+  // a rejected deal yields no split). Do NOT record here; the student records once
+  // via "Finish & save score" after negotiating with all three opponents.
+  if (decision && decision.accept && typeof State.efficiency === 'number') {
+    if (typeof State.effByOpp[State.oppKey] !== 'number' || State.efficiency > State.effByOpp[State.oppKey]) {
+      State.effByOpp[State.oppKey] = State.efficiency;
+    }
+  }
+  updateNashFinishGate();
   State.busy = false;
 }
 
@@ -1357,9 +1369,64 @@ document.addEventListener('DOMContentLoaded', () => {
   bindOppPicker();
 
   $('#submitOfferBtn').addEventListener('click', submitProposal);
+  function updateNashFinishGate() {
+    var e = State.effByOpp || {};
+    var allThree = (typeof e['fair'] === 'number') && (typeof e['tough'] === 'number') && (typeof e['strategic'] === 'number');
+    var btn = document.getElementById('finishNashBtn');
+    var hint = document.getElementById('nashHint');
+    if (btn) { btn.style.display = allThree ? '' : 'none'; }
+    if (hint) {
+      if (allThree) {
+        hint.textContent = 'You\u2019ve reached a deal with all three opponents \u2014 finish whenever you\u2019re ready to save.';
+      } else {
+        var need = [];
+        if (typeof e['fair'] !== 'number') { need.push('Fair'); }
+        if (typeof e['tough'] !== 'number') { need.push('Tough'); }
+        if (typeof e['strategic'] !== 'number') { need.push('Strategic'); }
+        hint.textContent = 'Reach an accepted deal with all three opponents to unlock saving. Still to negotiate: ' + need.join(', ') + '.';
+      }
+    }
+  }
+
+  function finishNashGame() {
+    var e = State.effByOpp || {};
+    var keys = Object.keys(e);
+    if (keys.length === 0) { return; }
+    if (!State.recorded) {
+      State.recorded = true;
+      if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') {
+        window.SAProgress.reportArenaNow();
+      }
+    }
+    var avg = 0; for (var i = 0; i < keys.length; i++) { avg += e[keys[i]]; } avg = avg / keys.length;
+    var main = document.querySelector('main') || document.body;
+    main.innerHTML =
+      '<div style="max-width:520px;margin:40px auto;padding:32px;border-radius:20px;text-align:center;color:#E8E6F5;font-family:Inter,system-ui,sans-serif;background:rgba(11,10,26,.85);border:1px solid rgba(255,255,255,.08);">' +
+      '<div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9B7BFF;font-weight:600;margin-bottom:8px;">Negotiations complete</div>' +
+      '<div style="font-size:26px;font-weight:700;margin-bottom:16px;">You bargained with all three opponents</div>' +
+      '<div style="font-size:22px;font-weight:700;margin-bottom:6px;">' + Math.round(avg * 100) + '%</div>' +
+      '<div style="font-size:12px;color:rgba(232,230,245,.6);margin-bottom:16px;">average efficiency vs the Nash bargaining solution</div>' +
+      '<div style="font-size:13.5px;line-height:1.6;color:rgba(232,230,245,.78);margin-bottom:22px;">Your score reflects how close your deals came to the efficient Nash split across all three opponents. It has been saved \u2014 check your grade in the app. If you want to try to improve, you can play your second attempt.</div>' +
+      '<button onclick="location.reload()" style="width:100%;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#7C5CFF,#5B3DCC);color:#fff;font-weight:600;font-size:15px;font-family:inherit;cursor:pointer;">Play again (2nd attempt)</button>' +
+      '</div>';
+  }
+
   $('#snapToOptBtn').addEventListener('click', snapToOptimum);
-  $('#restartBtn').addEventListener('click', restart);
+  $('#restartBtn').addEventListener('click', () => {
+    // Full reset: discards progress against ALL opponents. Warn if mid-session.
+    var played = State.effByOpp ? Object.keys(State.effByOpp).length : 0;
+    if (played > 0 && !State.recorded) {
+      var ok = window.confirm('Reset will discard your deals with all opponents (' + played + ' so far) and start over. Your score is only saved once you have negotiated with all three opponents and pressed "Finish & save score". Reset anyway?');
+      if (!ok) { return; }
+    }
+    State.effByOpp = {};
+    State.recorded = false;
+    restart();
+    updateNashFinishGate();
+  });
   $('#newRoundFromResult').addEventListener('click', restart);
+  var _fnb = document.getElementById('finishNashBtn');
+  if (_fnb) { _fnb.addEventListener('click', finishNashGame); }
   $('#changeOppFromResult').addEventListener('click', () => {
     restart();
     document.querySelector('#oppPicker').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1375,13 +1442,21 @@ document.addEventListener('DOMContentLoaded', () => {
     window.SAProgress.initArena({
       slug: 'nash-bargaining',
       getSession: function () {
-        if (typeof State === 'undefined' || !State.finished) { return null; }
-        var p = State.proposal || { u1: 0, u2: 0 };
-        // Score = efficiency: how close the agreed split is to the optimal Nash
-        // bargaining solution (product of surpluses). 1.0 = found the Nash solution.
-        var sc = (typeof State.efficiency === 'number') ? State.efficiency : null;
-        if (sc !== null) { if (sc > 1) { sc = 1; } if (sc < 0) { sc = 0; } }
-        return { score: sc, outcome: (sc !== null && sc >= 0.97) ? 'win' : 'completed', detail: { u1: p.u1, u2: p.u2, efficiency: sc, opponent: State.oppKey } };
+        if (typeof State === 'undefined') { return null; }
+        // Score = average efficiency across the opponents the student reached a deal
+        // with (best efficiency kept per opponent). 1.0 = found the Nash bargaining
+        // solution against each. Requires at least one accepted deal to report.
+        var e = State.effByOpp || {};
+        var keys = Object.keys(e);
+        if (keys.length === 0) { return null; }
+        var sum = 0;
+        for (var i = 0; i < keys.length; i++) {
+          var v = e[keys[i]];
+          if (v > 1) { v = 1; } if (v < 0) { v = 0; }
+          sum += v;
+        }
+        var sc = sum / keys.length;
+        return { score: sc, outcome: (sc >= 0.97 ? 'win' : 'completed'), detail: { efficiencyByOpponent: e, opponentsFaced: keys } };
       }
     });
   }
