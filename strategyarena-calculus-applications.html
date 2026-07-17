@@ -129,8 +129,6 @@
         <div class="flex gap-2 mt-3 flex-wrap">
           <button class="btn btn-g" id="snapBtn">Snap to my best response</button>
           <button class="btn btn-p" id="checkBtn">Lock in &amp; check</button>
-          <button class="btn btn-p" id="finishCalcBtn" style="display:none;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>
-          <div style="font-size:11px;color:var(--subtle);margin-top:6px;width:100%;" id="calcModeHint">Play and check all three modes (Cournot, Stackelberg, Market Structures) to unlock saving.</div>
         </div>
         <div id="feedback"></div>
       </div>
@@ -140,6 +138,12 @@
         <h3 style="font-size:18px;margin-bottom:2px;">From monopoly to competition</h3>
         <p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">Same demand and cost — only the number of competing firms changes. Watch price fall toward marginal cost as competition intensifies.</p>
         <div id="cmpBars"></div>
+      </div>
+
+      <!-- persistent save bar: visible in ALL modes so it isn't hidden with playCard -->
+      <div class="card p-4" id="calcSaveBar">
+        <button class="btn btn-p" id="finishCalcBtn" style="display:none;width:100%;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>
+        <div style="font-size:11px;color:var(--subtle);margin-top:6px;" id="calcModeHint">Play and check all three modes (Cournot, Stackelberg, Market Structures) to unlock saving.</div>
       </div>
     </div>
 
@@ -244,7 +248,7 @@ function renderCalc(){
   // reveals the full derivation so they can verify their reasoning.
   if(!State.solvedModes){ State.solvedModes={}; }
   if(!State.solvedModes[State.mode]){
-    tex('cl_profit', '\\text{Set up firm 1\\u2019s profit, take the first-order condition, and solve for } q_1.');
+    tex('cl_profit', '\\text{Set up the profit for firm 1, take the first-order condition, and solve for } q_1.');
     $('cl_deriv').textContent='';
     $('cl_foc').textContent='';
     $('cl_br').textContent='';
@@ -382,6 +386,16 @@ function setMode(m){
     $('playHint').textContent='Firm 2 best-responds to whatever you pick. Adjust q\u2081 until you are also best-responding to Firm 2 — that mutual point is Nash.'; }
   if(m==='stackelberg'){ $('playTitle').textContent='You move first — be the Stackelberg leader';
     $('playHint').textContent='Firm 2 sees your output, then best-responds. Commit to the output that maximises your profit given that reaction.'; }
+  // Market Structures is a comparison view with no slider to "check" — simply
+  // viewing it counts as engaging with that mode, so mark it and reveal its solution.
+  if(m==='compare'){
+    if(!State.modesChecked){ State.modesChecked={}; }
+    State.modesChecked['compare']=true;
+    if(!State.solvedModes){ State.solvedModes={}; }
+    State.solvedModes['compare']=true;
+    if(State.bestScore===null){ State.bestScore=0; }   // engaged; unlocks save once all modes done
+    if(typeof maybeRevealCalcFinish==='function'){ maybeRevealCalcFinish(); }
+  }
   refresh();
 }
 
