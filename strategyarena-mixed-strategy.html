@@ -639,7 +639,7 @@
           <button class="btn-ghost" id="play200Btn">Run 200 ×</button>
         </div>
         <button class="btn-primary w-full mt-3" id="finishMixedBtn" style="display:none;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>
-        <div class="text-[11px] text-white/45 mt-2" id="mixedHint">Play at least 20 rounds, then finish to record your score.</div>
+        <div class="text-[11px] text-white/45 mt-2" id="mixedHint">Play against all three opponents to unlock saving your score.</div>
       </div>
 
       <!-- Latest round result -->
@@ -1177,6 +1177,8 @@ async function playOneRound() {
   State.scoreYou += payoff;
   State.scoreOpp -= payoff;
   State.rounds++;
+  if (!State.playedOpps) { State.playedOpps = {}; }
+  State.playedOpps[State.oppKey] = true;
 
   updateRoundDisplay(yourAction, oppAction, payoff);
   updateScores();
@@ -1257,11 +1259,21 @@ function updateScores() {
   bumpScore('#scoreYou', State.scoreYou);
   bumpScore('#scoreOpp', State.scoreOpp);
   $('#roundCounter').textContent = State.rounds;
-  // Once the student has played enough rounds for a meaningful result, reveal the
-  // Finish button so they know they can stop and record their score.
-  if (State.rounds >= 20 && $('#finishMixedBtn')) {
-    $('#finishMixedBtn').style.display = '';
-    if ($('#mixedHint')) { $('#mixedHint').textContent = 'You have enough rounds \u2014 finish whenever you\u2019re ready to record your score.'; }
+  // Reveal Finish only once the student has played all THREE opponents.
+  var opps = State.playedOpps || {};
+  var allThree = opps['hunter'] && opps['random'] && opps['equilibrium'];
+  if ($('#finishMixedBtn') && $('#mixedHint')) {
+    if (allThree) {
+      $('#finishMixedBtn').style.display = '';
+      $('#mixedHint').textContent = 'You\u2019ve faced all three opponents \u2014 finish whenever you\u2019re ready to save your score.';
+    } else {
+      $('#finishMixedBtn').style.display = 'none';
+      var need = [];
+      if (!opps['hunter']) { need.push('Pattern-hunter'); }
+      if (!opps['random']) { need.push('Random'); }
+      if (!opps['equilibrium']) { need.push('Equilibrium'); }
+      $('#mixedHint').textContent = 'Play against all three opponents to unlock saving. Still to face: ' + need.join(', ') + '.';
+    }
   }
   // Wins/losses/ties
   const wins = State.history.filter(h => h.payoff > 0).length;
