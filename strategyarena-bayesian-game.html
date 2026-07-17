@@ -529,6 +529,8 @@
     <div class="hidden md:flex items-center gap-2 text-xs text-white/55 px-3 py-2 rounded-lg glass-subtle">
       <span>Round</span>
       <span class="font-mono text-white" id="roundNum">1</span>
+      <span class="text-white/40">of</span>
+      <span class="font-mono text-white/70" id="roundTotal">8</span>
     </div>
     <button class="btn-ghost text-sm" id="restartBtn">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
@@ -897,8 +899,11 @@ const $$ = s => document.querySelectorAll(s);
 /* ============================================================
    STATE
    ============================================================ */
+const BAYESIAN_ROUNDS = 8;   // fixed game length so students know when it ends
 const State = {
   round: 1,
+  recorded: false,
+  gameComplete: false,
   prior: 0.5,           // P(opponent is Soft); slider value
   yourType: null,       // 'soft' | 'tough'  (assigned each round)
   oppType: null,        // hidden until reveal
@@ -1018,6 +1023,28 @@ const OPPONENTS = {
 /* ============================================================
    NEW ROUND
    ============================================================ */
+function finishBayesianGame() {
+  if (!State.history || State.history.length === 0) { return; }
+  if (!State.recorded) {
+    State.recorded = true;
+    if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') {
+      window.SAProgress.reportArenaNow();
+    }
+  }
+  var main = document.querySelector('main') || document.body;
+  main.innerHTML =
+    '<div style="max-width:520px;margin:40px auto;padding:32px;border-radius:20px;text-align:center;color:#E8E6F5;font-family:Inter,system-ui,sans-serif;background:rgba(11,10,26,.85);border:1px solid rgba(255,255,255,.08);">' +
+    '<div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9B7BFF;font-weight:600;margin-bottom:8px;">Game complete</div>' +
+    '<div style="font-size:26px;font-weight:700;margin-bottom:16px;">You played all ' + BAYESIAN_ROUNDS + ' rounds</div>' +
+    '<div style="display:flex;justify-content:space-around;margin-bottom:20px;font-size:14px;">' +
+      '<div><div style="font-size:22px;font-weight:700;">' + State.scoreYou + '</div><div style="color:rgba(232,230,245,.6);">your payoff</div></div>' +
+      '<div><div style="font-size:22px;font-weight:700;">' + (typeof State.bneTotal === "number" ? State.bneTotal.toFixed(0) : "\u2014") + '</div><div style="color:rgba(232,230,245,.6);">optimal (BNE)</div></div>' +
+    '</div>' +
+    '<div style="font-size:13.5px;line-height:1.6;color:rgba(232,230,245,.78);margin-bottom:22px;">Your score reflects how close your payoff came to the Bayesian Nash equilibrium \u2014 playing the best action for your type given the odds on the opponent. It has been saved \u2014 check your grade in the app. If you want to try to improve, you can play your second attempt.</div>' +
+    '<button onclick="location.reload()" style="width:100%;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#7C5CFF,#5B3DCC);color:#fff;font-weight:600;font-size:15px;font-family:inherit;cursor:pointer;">Play again (2nd attempt)</button>' +
+    '</div>';
+}
+
 function newRound() {
   // Assign user type
   State.yourType = Math.random() < 0.5 ? 'soft' : 'tough';
@@ -1029,6 +1056,7 @@ function newRound() {
 
   // Reset UI
   $('#roundNum').textContent = State.round;
+  if ($('#roundTotal')) { $('#roundTotal').textContent = BAYESIAN_ROUNDS; }
   $('#resultPanel').classList.add('hidden');
 
   // Open user's vault, animate
@@ -1221,7 +1249,17 @@ async function chooseAction(action) {
   // Show result
   showResult();
   State.finished = true;
-  if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') { window.SAProgress.reportArenaNow(); }
+  // Do NOT record every round (that recorded a half-finished game). Instead, mark
+  // the game complete after the fixed number of rounds; the student then presses
+  // "Finish & save score" to record once. Update the advance button accordingly.
+  var btn = $('#newRoundBtn');
+  if (State.round >= BAYESIAN_ROUNDS) {
+    State.gameComplete = true;
+    if (btn) { btn.innerHTML = 'Finish &amp; save score'; }
+  } else if (btn) {
+    var left = BAYESIAN_ROUNDS - State.round;
+    btn.innerHTML = 'Next round (' + left + ' left) <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>';
+  }
   State.busy = false;
 }
 
@@ -1548,6 +1586,7 @@ function bindActions() {
     btn.addEventListener('click', () => chooseAction(btn.dataset.action));
   });
   $('#newRoundBtn').addEventListener('click', () => {
+    if (State.gameComplete) { finishBayesianGame(); return; }
     State.round++;
     newRound();
   });
@@ -1556,6 +1595,9 @@ function bindActions() {
     State.scoreYou = 0;
     State.scoreOpp = 0;
     State.history = [];
+    State.bneTotal = 0;
+    State.recorded = false;
+    State.gameComplete = false;
     $('#scoreYou').textContent = '0';
     $('#scoreOpp').textContent = '0';
     renderHistory();
