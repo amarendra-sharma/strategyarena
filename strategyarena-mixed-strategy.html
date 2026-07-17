@@ -638,6 +638,8 @@
           <button class="btn-ghost" id="play10Btn">Run 10 ×</button>
           <button class="btn-ghost" id="play200Btn">Run 200 ×</button>
         </div>
+        <button class="btn-primary w-full mt-3" id="finishMixedBtn" style="display:none;background:linear-gradient(135deg,#34D399,#059669);">Finish &amp; save score</button>
+        <div class="text-[11px] text-white/45 mt-2" id="mixedHint">Play at least 20 rounds, then finish to record your score.</div>
       </div>
 
       <!-- Latest round result -->
@@ -1255,6 +1257,12 @@ function updateScores() {
   bumpScore('#scoreYou', State.scoreYou);
   bumpScore('#scoreOpp', State.scoreOpp);
   $('#roundCounter').textContent = State.rounds;
+  // Once the student has played enough rounds for a meaningful result, reveal the
+  // Finish button so they know they can stop and record their score.
+  if (State.rounds >= 20 && $('#finishMixedBtn')) {
+    $('#finishMixedBtn').style.display = '';
+    if ($('#mixedHint')) { $('#mixedHint').textContent = 'You have enough rounds \u2014 finish whenever you\u2019re ready to record your score.'; }
+  }
   // Wins/losses/ties
   const wins = State.history.filter(h => h.payoff > 0).length;
   const losses = State.history.filter(h => h.payoff < 0).length;
@@ -1706,8 +1714,31 @@ function bindOppPicker() {
 /* ============================================================
    ACTIONS
    ============================================================ */
+function finishMixedGame() {
+  if (State.rounds < 1) { return; }
+  if (!State.recorded) {
+    State.recorded = true;
+    if (window.SAProgress && typeof window.SAProgress.reportArenaNow === 'function') {
+      window.SAProgress.reportArenaNow();
+    }
+  }
+  var main = document.querySelector('main') || document.body;
+  main.innerHTML =
+    '<div style="max-width:520px;margin:40px auto;padding:32px;border-radius:20px;text-align:center;color:#E8E6F5;font-family:Inter,system-ui,sans-serif;background:rgba(11,10,26,.85);border:1px solid rgba(255,255,255,.08);">' +
+    '<div style="font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9B7BFF;font-weight:600;margin-bottom:8px;">Session complete</div>' +
+    '<div style="font-size:26px;font-weight:700;margin-bottom:16px;">You played ' + State.rounds + ' rounds</div>' +
+    '<div style="display:flex;justify-content:space-around;margin-bottom:20px;font-size:14px;">' +
+      '<div><div style="font-size:22px;font-weight:700;">' + State.scoreYou + '</div><div style="color:rgba(232,230,245,.6);">your total</div></div>' +
+      '<div><div style="font-size:22px;font-weight:700;">' + State.scoreOpp + '</div><div style="color:rgba(232,230,245,.6);">opponent total</div></div>' +
+    '</div>' +
+    '<div style="font-size:13.5px;line-height:1.6;color:rgba(232,230,245,.78);margin-bottom:22px;">Your score reflects how well your mix held up against this opponent. It has been saved \u2014 check your grade in the app. If you want to try to improve, you can play your second attempt.</div>' +
+    '<button onclick="location.reload()" style="width:100%;padding:13px;border:none;border-radius:11px;background:linear-gradient(135deg,#7C5CFF,#5B3DCC);color:#fff;font-weight:600;font-size:15px;font-family:inherit;cursor:pointer;">Play again (2nd attempt)</button>' +
+    '</div>';
+}
+
 function bindActions() {
   $('#playOneBtn').addEventListener('click', () => playOneRound());
+  $('#finishMixedBtn') && $('#finishMixedBtn').addEventListener('click', finishMixedGame);
   $('#play10Btn').addEventListener('click', () => {
     if (!State.autoplayActive) playN(10, 120);
   });
@@ -1725,6 +1756,9 @@ function resetSession() {
   State.scoreYou = 0;
   State.scoreOpp = 0;
   State.rounds = 0;
+  State.recorded = false;
+  if ($('#finishMixedBtn')) { $('#finishMixedBtn').style.display = 'none'; }
+  if ($('#mixedHint')) { $('#mixedHint').textContent = 'Play at least 20 rounds, then finish to record your score.'; }
   State.autoplayCancel = true;
   $('#scoreYou').textContent = '0';
   $('#scoreOpp').textContent = '0';
