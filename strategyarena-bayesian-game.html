@@ -1591,6 +1591,12 @@ function bindActions() {
     newRound();
   });
   $('#restartBtn').addEventListener('click', () => {
+    // Warn before discarding an in-progress game (rounds played but not yet saved).
+    var inProgress = State.history && State.history.length > 0 && !State.recorded;
+    if (inProgress) {
+      var ok = window.confirm('Reset will discard this game (' + State.history.length + ' round(s) played) and start over. Your score is only saved when you finish all ' + BAYESIAN_ROUNDS + ' rounds and press "Finish & save score". Reset anyway?');
+      if (!ok) { return; }
+    }
     State.round = 1;
     State.scoreYou = 0;
     State.scoreOpp = 0;
@@ -1600,6 +1606,8 @@ function bindActions() {
     State.gameComplete = false;
     $('#scoreYou').textContent = '0';
     $('#scoreOpp').textContent = '0';
+    var btn = $('#newRoundBtn');
+    if (btn) { btn.innerHTML = 'Next round (' + (BAYESIAN_ROUNDS - 1) + ' left) <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>'; }
     renderHistory();
     newRound();
   });
