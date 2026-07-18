@@ -1183,6 +1183,105 @@ function openAddStudent(){
 /* ====================================================================
    GRADEBOOK  (weighted; renormalizes over available components)
    ==================================================================== */
+/* ====================================================================
+   INSTRUCTOR REVIEW — see a student's graded answers, and class-wide
+   item difficulty. Both fail open: if the RPCs are not installed the
+   panel says so and nothing else in the app is affected.
+   ==================================================================== */
+function saReviewNotInstalled(host){
+  host.innerHTML='<div class="msg err" style="display:block;">Instructor review is not installed yet. Run <b>54_instructor_review.sql</b> in the Supabase SQL editor, then reopen this window. Nothing else in the course is affected until you do.</div>';
+}
+
+function saCorrectAnswerText(r){
+  if(r.correct_option===null||r.correct_option===undefined){ return ''; }
+  var idx=Number(r.correct_option);
+  var opts=r.options;
+  if(opts && Object.prototype.toString.call(opts)==='[object Array]' && opts.length>idx && idx>=0){
+    return 'Choice #'+(idx+1)+' \u2014 '+esc(String(opts[idx]));
+  }
+  return 'Choice #'+(idx+1);
+}
+
+function openStudentWork(courseId, studentId, studentName){
+  if(!courseId||!studentId){ return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:820px;"><h3 style="margin-bottom:4px;">Graded work \u2014 '+esc(studentName||'student')+'</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Every graded answer this student submitted in this course, newest first.</p>'+
+    '<div id="swBody" style="max-height:60vh;overflow:auto;">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:12px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="swClose">Close</button></div></div>';
+  document.body.appendChild(ov);
+  $('swClose').addEventListener('click', function(){ if(ov.parentNode){ document.body.removeChild(ov); } });
+
+  function render(res){
+    var body=$('swBody');
+    if(!body){ return; }
+    if(res&&res.error){ saReviewNotInstalled(body); return; }
+    var rows=(res&&res.data)?res.data:[];
+    if(rows.length===0){ body.innerHTML='<div class="card empty">No graded work recorded for this student yet.</div>'; return; }
+    var html='';
+    rows.forEach(function(r){
+      var badge = r.source==='exam' ? '<span class="tag violet">exam</span>'
+                : (r.source==='quiz' ? '<span class="tag">quiz</span>'
+                : '<span class="tag dim" title="Taken before quiz attempts were tracked separately, so this may be a graded quiz or practice">quiz or practice</span>');
+      var mark = r.is_correct ? '<span class="tag" style="background:rgba(52,211,153,.15);color:#34D399;">correct</span>'
+                              : '<span class="tag rose">missed</span>';
+      var corr=saCorrectAnswerText(r);
+      html+='<div class="card" style="margin-bottom:8px;background:var(--bg2);">'+
+        '<div style="font-size:11px;color:var(--text-subtle);display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'+badge+' '+mark+
+          '<span>'+esc(r.context||'')+'</span><span>\u00b7</span><span>'+esc(r.item_id||'')+'</span>'+
+          (r.graded_at?('<span>\u00b7</span><span>'+new Date(r.graded_at).toLocaleString()+'</span>'):'')+'</div>'+
+        '<div style="font-size:13.5px;color:var(--text-bright);margin:5px 0 6px;">'+esc(r.prompt||'')+'</div>'+
+        '<div style="font-size:12.5px;"><b>Their answer:</b> '+(r.submitted_value?esc(r.submitted_value):'<span style="color:var(--text-subtle);">(blank)</span>')+'</div>'+
+        (corr?('<div style="font-size:12.5px;color:var(--green);margin-top:3px;"><b>Key:</b> '+corr+'</div>'):'')+
+        (r.answer_notes?('<div style="font-size:12px;color:var(--text-muted);margin-top:3px;"><b>Notes:</b> '+esc(r.answer_notes)+'</div>'):'')+
+        '</div>';
+    });
+    body.innerHTML=html;
+  }
+
+  try{
+    sb.rpc('sa_instructor_student_review',{p_course_id:courseId,p_student_id:studentId}).then(render,function(e){ render({error:e}); });
+  }catch(e){ saReviewNotInstalled($('swBody')); }
+}
+
+function openItemStats(courseId){
+  if(!courseId){ return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:860px;"><h3 style="margin-bottom:4px;">Item analysis</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">How the class performed on each graded question, hardest first. A question almost everyone misses is usually a problem with the question, not the students \u2014 worth re-reading before you defend the key.</p>'+
+    '<div id="isBody" style="max-height:60vh;overflow:auto;">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:12px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="isClose">Close</button></div></div>';
+  document.body.appendChild(ov);
+  $('isClose').addEventListener('click', function(){ if(ov.parentNode){ document.body.removeChild(ov); } });
+
+  function render(res){
+    var body=$('isBody');
+    if(!body){ return; }
+    if(res&&res.error){ saReviewNotInstalled(body); return; }
+    var rows=(res&&res.data)?res.data:[];
+    if(rows.length===0){ body.innerHTML='<div class="card empty">No graded questions yet. Once students complete quizzes or exams, question-level statistics appear here.</div>'; return; }
+    var html='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Question</th><th scope="col">Ch</th><th scope="col">Answered</th><th scope="col">Correct</th><th scope="col">% correct</th></tr></thead><tbody>';
+    rows.forEach(function(r){
+      var p=(r.pct_correct===null||r.pct_correct===undefined)?null:Number(r.pct_correct);
+      var flag='';
+      if(p!==null&&p<40){ flag=' <span class="tag rose" title="Most of the class missed this. Re-read the wording and the key.">review</span>'; }
+      var short=String(r.prompt||'');
+      if(short.length>120){ short=short.slice(0,120)+'\u2026'; }
+      html+='<tr><th scope="row" style="font-weight:400;"><div style="font-size:11px;color:var(--text-subtle);">'+esc(r.item_id||'')+flag+'</div><div style="font-size:12.5px;">'+esc(short)+'</div></th>'+
+        '<td>'+esc(String(r.chapter===null||r.chapter===undefined?'':r.chapter))+'</td>'+
+        '<td>'+esc(String(r.n_answered))+'</td>'+
+        '<td>'+esc(String(r.n_correct))+'</td>'+
+        '<td style="font-weight:600;color:'+(p!==null&&p<40?'#FB7185':'var(--text-bright)')+';">'+(p===null?'\u2014':(p+'%'))+'</td></tr>';
+    });
+    html+='</tbody></table></div>';
+    body.innerHTML=html;
+  }
+
+  try{
+    sb.rpc('sa_instructor_item_stats',{p_course_id:courseId}).then(render,function(e){ render({error:e}); });
+  }catch(e){ saReviewNotInstalled($('isBody')); }
+}
+
 function renderGradebook(host){
   if(!needCourse(host)){ return; }
   host.innerHTML=loadingCard();
@@ -1286,7 +1385,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   });
   var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
     '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data. <b>Assignments</b> are shown for reference; to fold them (or participation) into a student\u2019s final grade, use the <b>Override</b> column \u2014 an entered override becomes the Final grade and is what the CSV exports.</div>'+
-    '<button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div>';
+    '<div style="display:flex;gap:8px;"><button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
   html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col"></th></tr></thead><tbody>';
   computed.forEach(function(g){
     html+='<tr><th scope="row" style="font-weight:500;">'+esc(g.name||g.email)+'</th><td>'+subTag(g.sub)+'</td>'+
@@ -1297,11 +1396,15 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
       '<td>'+pct(g.computed)+'</td>'+
       '<td><label class="sr-only" for="ovr-'+g.sid+'">Override percent for '+esc(g.name||g.email)+'</label><input id="ovr-'+g.sid+'" type="number" min="0" max="100" step="0.1" placeholder="\u2014" value="'+(g.override?g.override.pct:'')+'" style="width:64px;"></td>'+
       '<td style="font-weight:600;color:var(--text-bright);">'+pct(g.finalPct)+(g.override?' <span class="tag violet" title="manual override">ovr</span>':'')+'</td>'+
-      '<td><button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button></td></tr>';
+      '<td><button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> <button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button></td></tr>';
   });
   html+='</tbody></table></div>';
   host.innerHTML=html;
   $('csvBtn').addEventListener('click', function(){ exportCSV(c,computed); });
+  if($('itemStatsBtn')){ $('itemStatsBtn').addEventListener('click', function(){ openItemStats(c.id); }); }
+  Array.prototype.forEach.call(host.querySelectorAll('[data-work]'), function(b){
+    b.addEventListener('click', function(){ openStudentWork(c.id, b.getAttribute('data-work'), b.getAttribute('data-wname')); });
+  });
   Array.prototype.forEach.call(host.querySelectorAll('[data-saveovr]'), function(b){ b.addEventListener('click', function(){
     var sid=b.getAttribute('data-saveovr');
     var v=$('ovr-'+sid).value;
