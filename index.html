@@ -353,6 +353,7 @@
         <select class="sel" id="practiceChapter"></select>
         <button class="btn btn-primary" id="newQuestionBtn" style="width:auto;">New question</button>
         <button class="btn btn-ghost" id="takeQuizBtn" style="width:auto;" title="A short graded quiz for this chapter. Counts toward your grade. Answers are never shown until after the deadline.">Take graded quiz</button>
+        <button class="btn btn-ghost" id="reviewQuizBtn" style="width:auto;" title="Once the quiz deadline has passed, review the questions you missed with the correct answers.">Review missed questions</button>
       </div>
       <div id="practiceArea"></div>
     </section>
@@ -1559,10 +1560,69 @@ function openSubmissions(asgId, title, points){
 
 function renderExams(host){
   if(!needCourse(host)){ return; }
-  host.innerHTML='<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-primary" id="newExamBtn">+ Assemble exam</button><button class="btn btn-ghost" id="libBtn">\uD83D\uDCDA Use a ready-made exam</button></div><div id="examList">'+loadingCard()+'</div>';
+  host.innerHTML='<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;"><button class="btn btn-primary" id="newExamBtn">+ Assemble exam</button><button class="btn btn-ghost" id="libBtn">\uD83D\uDCDA Use a ready-made exam</button><button class="btn btn-ghost" id="quizDlBtn">\u23F0 Quiz deadlines</button></div><div id="examList">'+loadingCard()+'</div>';
   $('newExamBtn').addEventListener('click', function(){ openAssembler(); });
   $('libBtn').addEventListener('click', function(){ openExamLibrary(); });
+  $('quizDlBtn').addEventListener('click', function(){ openQuizDeadlines(); });
   loadExams();
+}
+
+function openQuizDeadlines(){
+  if(!State.teachCourseId){ alert('Select a course first.'); return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:560px;"><h3 style="margin-bottom:6px;">Graded-quiz deadlines</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:14px;">Set a close date and time for each chapter\u2019s graded quiz. After the deadline the quiz can no longer be taken, and students can review the questions they missed. Leave a chapter blank for no deadline (quiz stays open; no review).</p>'+
+    '<div id="qdlBody">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:14px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="qdlClose">Close</button><button class="btn btn-primary btn-sm" id="qdlSave">Save deadlines</button></div></div>';
+  document.body.appendChild(ov);
+  function shut(){ if(ov.parentNode){ document.body.removeChild(ov); } }
+  $('qdlClose').addEventListener('click', shut);
+
+  function notInstalled(){
+    $('qdlBody').innerHTML='<div class="msg err" style="display:block;">Quiz deadlines are not installed yet. Run the migration <b>52_quiz_deadlines.sql</b> in the Supabase SQL editor, then reopen this window. Nothing else in the course is affected until you do.</div>';
+    var sv=$('qdlSave'); if(sv){ sv.disabled=true; }
+  }
+
+  sb.from('sa_quiz_deadlines').select('chapter,closes_at').eq('course_id',State.teachCourseId).then(function(res){
+    if(res && res.error){ notInstalled(); return; }
+    var have={}; ((res && res.data) ? res.data : []).forEach(function(r){ have[r.chapter]=r.closes_at; });
+    var rowsHtml='';
+    STUDENT_CHAPTERS.forEach(function(c){
+      var val='';
+      if(have[c.n]){
+        var d=new Date(have[c.n]); var pad=function(x){return (x<10?'0':'')+x;};
+        val=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+      }
+      rowsHtml+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><label style="flex:1;font-size:13px;">Ch '+c.n+' \u00b7 '+esc(c.title)+'</label>'+
+        '<input type="datetime-local" data-qdl-ch="'+c.n+'" value="'+val+'" style="font-size:13px;padding:5px 8px;"></div>';
+    });
+    $('qdlBody').innerHTML=rowsHtml;
+  }, function(){ notInstalled(); });
+
+  $('qdlSave').addEventListener('click', function(){
+    var inputs=ov.querySelectorAll('[data-qdl-ch]');
+    if(!inputs || inputs.length===0){ shut(); return; }
+    var ups=[], dels=[];
+    Array.prototype.forEach.call(inputs, function(inp){
+      var ch=parseInt(inp.getAttribute('data-qdl-ch'),10);
+      var v=inp.value;
+      if(v){ ups.push({ course_id:State.teachCourseId, chapter:ch, closes_at:new Date(v).toISOString(), updated_at:new Date().toISOString() }); }
+      else { dels.push(ch); }
+    });
+    var btn=$('qdlSave'); btn.disabled=true; btn.textContent='Saving\u2026';
+    var work=[];
+    if(ups.length){ work.push(sb.from('sa_quiz_deadlines').upsert(ups, { onConflict:'course_id,chapter' })); }
+    if(dels.length){ work.push(sb.from('sa_quiz_deadlines').delete().eq('course_id',State.teachCourseId).in('chapter',dels)); }
+    Promise.all(work).then(function(rs){
+      var err=null;
+      rs.forEach(function(r){ if(r && r.error){ err=r.error.message; } });
+      if(err){ btn.disabled=false; btn.textContent='Save deadlines'; alert('Could not save: '+err); return; }
+      shut();
+    }, function(e){
+      btn.disabled=false; btn.textContent='Save deadlines';
+      alert('Could not save: '+String(e && e.message ? e.message : e));
+    });
+  });
 }
 
 function loadExams(){
@@ -2978,6 +3038,11 @@ function fillPracticeChapters() {
     qbtn.setAttribute('data-wired', '1');
     qbtn.addEventListener('click', function(){ startGradedQuiz(parseInt($('practiceChapter').value, 10)); });
   }
+  var rbtn = $('reviewQuizBtn');
+  if (rbtn && !rbtn.getAttribute('data-wired')) {
+    rbtn.setAttribute('data-wired', '1');
+    rbtn.addEventListener('click', function(){ openQuizReview(parseInt($('practiceChapter').value, 10)); });
+  }
 }
 
 /* ====================================================================
@@ -3004,9 +3069,35 @@ function startGradedQuiz(chapter) {
   var uid = State.user ? State.user.id : null;
   var courseId = State.payCourseId || State.selfCourseId;
   if (!uid || !courseId) { area.innerHTML = errCard('Please sign in to take a graded quiz.'); return; }
+  // FAIL-OPEN deadline check. If the deadlines table does not exist yet, or the
+  // query errors for any reason, we proceed exactly as before (no deadline). The
+  // quiz can therefore never be blocked by this feature being half-deployed.
+  var proceed = function (closesAt) { startGradedQuizConfirmed(chapter, closesAt); };
+  try {
+    sb.from('sa_quiz_deadlines').select('closes_at')
+      .eq('course_id', courseId).eq('chapter', chapter).maybeSingle()
+      .then(function (dl) {
+        var closesAt = null;
+        if (dl && !dl.error && dl.data && dl.data.closes_at) {
+          closesAt = new Date(dl.data.closes_at).getTime();
+        }
+        if (closesAt !== null && Date.now() > closesAt) {
+          area.innerHTML = errCard('The Chapter ' + chapter + ' quiz closed on ' + new Date(closesAt).toLocaleString() + '. It can no longer be taken. You can review the questions you missed using "Review missed questions".');
+          return;
+        }
+        proceed(closesAt);
+      }, function () { proceed(null); });
+  } catch (e) { proceed(null); }
+}
+
+function startGradedQuizConfirmed(chapter, closesAt) {
+  var area = $('practiceArea');
+  var uid = State.user ? State.user.id : null;
+  var courseId = State.payCourseId || State.selfCourseId;
   // Heads-up: this graded quiz is proctored (lightweight). Tell the student before
   // fullscreen engages so it is not a surprise. They can back out here.
-  var ready = window.confirm('This is a graded, proctored quiz for Chapter ' + chapter + '.\n\n\u2022 You have ONE attempt.\n\u2022 It runs in fullscreen; leaving the tab, exiting fullscreen, or copy/paste is recorded and repeated flags auto-submit.\n\u2022 No webcam is used.\n\nStart now?');
+  var dueNote = (closesAt !== null && typeof closesAt === 'number') ? ('\n\u2022 Due by ' + new Date(closesAt).toLocaleString() + '.') : '';
+  var ready = window.confirm('This is a graded, proctored quiz for Chapter ' + chapter + '.\n\n\u2022 You have ONE attempt.\n\u2022 It runs in fullscreen; leaving the tab, exiting fullscreen, or copy/paste is recorded and repeated flags auto-submit.\n\u2022 No webcam is used.' + dueNote + '\n\nStart now?');
   if (!ready) { return; }
   area.innerHTML = '<div class="q-card"><span class="spinner"></span> &nbsp;Checking your attempts…</div>';
 
@@ -3154,9 +3245,15 @@ function submitGradedQuiz() {
     // Write score + attempts to sa_chapter_progress (best score kept). Reading is
     // also implied done by completing a graded quiz on the chapter.
     var uid = State.user.id;
+    // Record which attempts belong to THIS graded quiz so review shows only these
+    // (never practice-mode attempts). If the column does not exist yet, the upsert
+    // below falls back to a minimal row, so the score still saves normally.
+    var attIds = [];
+    QuizState.items.forEach(function (it) { if (it && it.attempt_id) { attIds.push(String(it.attempt_id)); } });
     var row = {
       student_id: uid, course_id: QuizState.courseId, chapter: QuizState.chapter,
-      quiz_score: keepFrac, quiz_passed: (keepFrac >= QUIZ_PASS), quiz_attempts: attemptsUsed, reading_done: true
+      quiz_score: keepFrac, quiz_passed: (keepFrac >= QUIZ_PASS), quiz_attempts: attemptsUsed, reading_done: true,
+      quiz_attempt_ids: attIds
     };
     function showResult(saveErr){
       var kept = Math.round(keepFrac * 100);
@@ -3417,6 +3514,72 @@ var ExamState = { exam:null, items:[], answers:{}, idx:0, courseId:null, submitt
    repeated violations. The instructor sees an integrity flag afterward.
    ==================================================================== */
 /* Proctoring is now provided by the shared MNProctor module (mn-proctor.js). */
+
+function openQuizReview(chapter){
+  if (!chapter) { return; }
+  var area = $('practiceArea');
+  if (!area) { return; }
+  var courseId = State.payCourseId || State.selfCourseId;
+  if (!courseId) { area.innerHTML = errCard('Please sign in to review your quiz.'); return; }
+  area.innerHTML = '<div class="q-card"><span class="spinner"></span> &nbsp;Loading review…</div>';
+
+  function backBar(){
+    return '<button class="btn btn-ghost btn-sm" id="qrvBack" style="margin-top:8px;">Back to practice</button>';
+  }
+  function wireBack(){
+    if ($('qrvBack')) { $('qrvBack').addEventListener('click', function(){ area.innerHTML = ''; loadNewQuestion(); }); }
+  }
+  function notReady(message){
+    area.innerHTML = '<div class="q-card" style="max-width:620px;margin:0 auto;"><p style="color:var(--text-muted);margin-bottom:10px;">' + esc(message) + '</p>' + backBar() + '</div>';
+    wireBack();
+  }
+
+  function handle(res){
+    if (res && res.error) {
+      var m = String(res.error.message || res.error);
+      var lower = m.toLowerCase();
+      // Feature not deployed yet (RPC missing) -> plain, non-alarming message.
+      if (lower.indexOf('does not exist') !== -1 || lower.indexOf('schema cache') !== -1 || lower.indexOf('not find') !== -1 || lower.indexOf('function') !== -1) {
+        notReady('Quiz review is not available yet. Your instructor turns this on by setting a deadline for the chapter quiz; once that deadline passes you can review the questions you missed.');
+        return;
+      }
+      // Deadline-gated messages raised by the RPC are already student-friendly.
+      notReady(m);
+      return;
+    }
+    var rows = (res && res.data) ? res.data : [];
+    var html = '<div class="q-card" style="max-width:720px;margin:0 auto;text-align:left;">';
+    html += '<h2 style="font-size:20px;margin-bottom:4px;">Chapter ' + chapter + ' quiz \u2014 questions to revisit</h2>';
+    html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">These are the graded-quiz questions you missed, with the correct choice. Use them to study.</p>';
+    if (rows.length === 0) {
+      html += '<p style="color:var(--text-bright);">Nothing to review here \u2014 you didn\u2019t miss any auto-graded questions on this quiz.</p>';
+    } else {
+      rows.forEach(function(r){
+        var correctTxt = '';
+        if (r.correct_option !== null && r.correct_option !== undefined) {
+          correctTxt = '<div style="font-size:12.5px;color:var(--green);margin-top:4px;">Correct choice: #' + (Number(r.correct_option) + 1) + '</div>';
+        }
+        var notes = r.answer_notes ? '<div style="font-size:12.5px;color:var(--text-muted);margin-top:4px;"><b>Why:</b> ' + esc(r.answer_notes) + '</div>' : '';
+        html += '<div class="q-card" style="margin-bottom:10px;background:var(--bg2);text-align:left;">' +
+          '<div style="font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.05em;">' + esc(r.item_id || '') + '</div>' +
+          '<div style="font-size:14px;color:var(--text-bright);margin:4px 0 6px;">' + esc(r.prompt || '') + '</div>' +
+          '<div style="font-size:13px;"><b>Your answer:</b> ' + (r.your_answer ? esc(r.your_answer) : '<span style="color:var(--text-subtle);">(blank)</span>') + '</div>' +
+          correctTxt + notes + '</div>';
+      });
+    }
+    html += backBar() + '</div>';
+    area.innerHTML = html;
+    wireBack();
+  }
+
+  try {
+    sb.rpc('sa_quiz_review', { p_course_id: courseId, p_chapter: chapter }).then(handle, function(err){
+      handle({ error: err });
+    });
+  } catch (e) {
+    notReady('Quiz review is not available yet.');
+  }
+}
 
 function openExamReview(examId){
   // The student Exams list lives in #myExamsBody (inside the visible
