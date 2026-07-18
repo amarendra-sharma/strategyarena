@@ -352,7 +352,7 @@
       <div class="practice-bar">
         <select class="sel" id="practiceChapter"></select>
         <button class="btn btn-primary" id="newQuestionBtn" style="width:auto;">New question</button>
-        <button class="btn btn-ghost" id="takeQuizBtn" style="width:auto;" title="A short graded quiz for this chapter. Counts toward your grade. Answers are never shown.">Take graded quiz</button>
+        <button class="btn btn-ghost" id="takeQuizBtn" style="width:auto;" title="A short graded quiz for this chapter. Counts toward your grade. Answers are never shown until after the deadline.">Take graded quiz</button>
       </div>
       <div id="practiceArea"></div>
     </section>
@@ -458,40 +458,45 @@ var ARENA_SLUGS = ['prisoners-dilemma','ipd-tournament','centipede','auction','n
 var ARENA_MAX_ATTEMPTS = 2;   // only the first N attempts per arena count toward the grade
 
 // Performance-based arena score for the grade. Given all of a student's arena
-// result rows ({arena_slug, score, played_at}), compute, for each of the 13
-// graded arenas, the AVERAGE of that arena's first ARENA_MAX_ATTEMPTS attempt
-// scores; arenas never played contribute 0. Return the mean across all 13, so
-// partial completion earns partial credit and quality (not just participation)
-// drives the score. Result is 0..1.
-function computeArenaScore(rows){
+// result rows ({arena_slug, score, played_at}) and the course's requiredN (how
+// many arenas count), compute each played arena's performance = average of its
+// first ARENA_MAX_ATTEMPTS attempt scores, then take the student's BEST requiredN
+// arena performances, sum them, and divide by requiredN. Playing fewer than
+// requiredN arenas earns partial credit (missing ones contribute 0); playing more
+// than requiredN keeps only the best requiredN, so extra strong arenas can offset
+// a weak required one. requiredN defaults to the full 13 (unchanged behavior).
+function computeArenaScore(rows, requiredN){
   rows = rows ? rows : [];
+  var N = (typeof requiredN === 'number' && requiredN >= 1 && requiredN <= ARENA_SLUGS.length) ? Math.floor(requiredN) : ARENA_SLUGS.length;
   var byArena = {};
   rows.forEach(function(r){
     if(!r || !r.arena_slug){ return; }
+    if(ARENA_SLUGS.indexOf(r.arena_slug) === -1){ return; }   // ignore unknown slugs
     if(!byArena[r.arena_slug]){ byArena[r.arena_slug] = []; }
     byArena[r.arena_slug].push(r);
   });
-  var sum = 0;
-  for(var i=0;i<ARENA_SLUGS.length;i++){
-    var slug = ARENA_SLUGS[i];
-    var attempts = byArena[slug];
-    if(!attempts || attempts.length===0){ continue; }   // unplayed -> contributes 0
-    // order by played_at ascending, take the first ARENA_MAX_ATTEMPTS
+  // per-arena performance (avg of first ARENA_MAX_ATTEMPTS attempts)
+  var perfs = [];
+  var slugs = Object.keys(byArena);
+  for(var i=0;i<slugs.length;i++){
+    var attempts = byArena[slugs[i]];
     attempts.sort(function(a,b){ return new Date(a.played_at) - new Date(b.played_at); });
     var take = Math.min(ARENA_MAX_ATTEMPTS, attempts.length);
     var s = 0, cnt = 0;
     for(var k=0;k<take;k++){
       var sc = attempts[k].score;
-      // a missing score counts as 0 for that attempt (an attempt with no measured
-      // performance still consumes one of the two counted tries)
       s += (sc!==null && sc!==undefined) ? Number(sc) : 0;
       cnt++;
     }
     var arenaPerf = cnt>0 ? (s/cnt) : 0;
     if(arenaPerf > 1){ arenaPerf = 1; } if(arenaPerf < 0){ arenaPerf = 0; }
-    sum += arenaPerf;
+    perfs.push(arenaPerf);
   }
-  return sum / ARENA_SLUGS.length;   // divide by 13; unplayed already counted as 0
+  // keep the BEST requiredN performances; the rest (or unplayed) contribute 0
+  perfs.sort(function(a,b){ return b - a; });
+  var sum = 0;
+  for(var j=0;j<N && j<perfs.length;j++){ sum += perfs[j]; }
+  return sum / N;   // divide by requiredN; unplayed/beyond-N already excluded
 }
 var ARENA_TITLE = {
   'prisoners-dilemma':"Prisoner's Dilemma",'ipd-tournament':'Repeated PD Tournament','centipede':'Centipede / Sequential',
@@ -862,7 +867,8 @@ function openCourseModal(courseId){
   var v={ title:c?c.title:'', term:c?c.term:'', description:c?(c.description||''):'',
     join_code:c?c.join_code:randomCode(), requires_payment:c?c.requires_payment:true,
     access_starts:c?(c.access_starts||''):'', access_ends:c?(c.access_ends||''):'',
-    wr:c?c.weight_reading:0.10, wq:c?c.weight_quizzes:0.20, wa:c?c.weight_arenas:0.20, wm:c?c.weight_midterm:0.20, wf:c?c.weight_final:0.30 };
+    wr:c?c.weight_reading:0.10, wq:c?c.weight_quizzes:0.20, wa:c?c.weight_arenas:0.20, wm:c?c.weight_midterm:0.20, wf:c?c.weight_final:0.30,
+    reqArenas:(c&&c.required_arenas)?c.required_arenas:13 };
   var m=document.createElement('div'); m.className='modal-bg';
   m.innerHTML='<div class="modal"><h2>'+(isNew?'New course':'Edit course')+'</h2>'+
     '<div id="cmMsg" class="msg"></div>'+
@@ -877,6 +883,9 @@ function openCourseModal(courseId){
     '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;">'+
       wInput('cmWr','Reading',v.wr)+wInput('cmWq','Quizzes',v.wq)+wInput('cmWa','Arenas',v.wa)+wInput('cmWm','Midterm',v.wm)+wInput('cmWf','Final',v.wf)+
     '</div><div id="cmWsum" style="font-size:11.5px;color:var(--text-subtle);margin-top:6px;"></div></div>'+
+    '<div class="field"><label>Required arenas (how many count toward the arena grade)</label>'+
+      '<input id="cmReqArenas" type="number" min="1" max="13" value="'+(v.reqArenas)+'" style="width:90px;">'+
+      '<div style="font-size:11.5px;color:var(--text-subtle);margin-top:4px;">The arena grade uses each student\u2019s best N arena performances \u00f7 N. Default 13 = all arenas. Lower it if you assign fewer.</div></div>'+
     '<div class="inline-actions" style="margin-top:18px;justify-content:flex-end;">'+
       (isNew?'':'<button class="btn btn-danger btn-sm" id="cmArchive">Archive</button>')+
       '<button class="btn btn-ghost" id="cmCancel">Cancel</button>'+
@@ -900,7 +909,8 @@ function openCourseModal(courseId){
     var payload={ title:title, term:$('cmTerm').value.trim(), description:$('cmDesc').value.trim(),
       join_code:$('cmCode').value.trim(), requires_payment:$('cmPay').checked,
       access_starts:$('cmStart').value||null, access_ends:$('cmEnd').value||null,
-      weight_reading:num('cmWr'), weight_quizzes:num('cmWq'), weight_arenas:num('cmWa'), weight_midterm:num('cmWm'), weight_final:num('cmWf') };
+      weight_reading:num('cmWr'), weight_quizzes:num('cmWq'), weight_arenas:num('cmWa'), weight_midterm:num('cmWm'), weight_final:num('cmWf'),
+      required_arenas:(function(){ var n=parseInt($('cmReqArenas').value,10); if(isNaN(n)||n<1){ n=13; } if(n>13){ n=13; } return n; })() };
     $('cmSave').disabled=true;
     var op;
     if(isNew){ payload.owner_id=State.user.id; op=sb.from('sa_courses').insert(payload); }
@@ -1232,7 +1242,8 @@ function renderGradebook(host){
         var arenaByStudent={};
         arenaRows.forEach(function(r){ if(!arenaByStudent[r.student_id]){ arenaByStudent[r.student_id]=[]; } arenaByStudent[r.student_id].push(r); });
         var arenaScoreOf={};
-        Object.keys(arenaByStudent).forEach(function(sid){ arenaScoreOf[sid]=computeArenaScore(arenaByStudent[sid]); });
+        var reqN = c && c.required_arenas ? Number(c.required_arenas) : 13;
+        Object.keys(arenaByStudent).forEach(function(sid){ arenaScoreOf[sid]=computeArenaScore(arenaByStudent[sid], reqN); });
         var ptsOf={}; aRows.forEach(function(a){ ptsOf[a.id]=a.points||0; });
         // per student: sum(score)/sum(points over graded assignments)
         var earn={}, poss={};
@@ -1553,6 +1564,7 @@ function renderExams(host){
   $('libBtn').addEventListener('click', function(){ openExamLibrary(); });
   loadExams();
 }
+
 function loadExams(){
   sb.from('sa_exams').select('*').eq('course_id',State.teachCourseId).order('created_at',{ascending:false}).then(function(res){
     var rows=res.data?res.data:[];
@@ -1883,7 +1895,7 @@ function openExamEditor(examId){
     EX=res.data; EDIT_IDS=(EX.item_ids||[]).slice();
     // fetch the items currently in the exam (to show questions)
     if(EDIT_IDS.length===0){ renderEditor({}); return; }
-    sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt,options').in('id',EDIT_IDS).then(function(r2){
+    sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt,options,figure').in('id',EDIT_IDS).then(function(r2){
       (r2.data||[]).forEach(function(it){ bank[it.id]=it; });
       renderEditor(bank);
     });
@@ -1933,10 +1945,11 @@ function openExamEditor(examId){
       var typeBadge = it.item_type==='free_response'?'<span class="tag amber">written</span>':(it.item_type==='multiple_choice'?'<span class="tag violet">MC</span>':'<span class="tag dim">numeric</span>');
       var opts='';
       if(it.options && it.options.length){ opts='<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Options: '+it.options.map(function(o){return esc(o);}).join(' \u00b7 ')+'</div>'; }
+      var figHtml2 = (typeof renderFigure === 'function' && it.figure) ? renderFigure(it.figure) : '';
       html+='<div class="card" style="margin-bottom:8px;background:var(--bg2);">'+
         '<div style="display:flex;justify-content:space-between;gap:10px;">'+
           '<div style="flex:1;"><div style="font-size:11px;color:var(--text-subtle);">'+(idx+1)+'. '+esc(id)+' '+typeBadge+' \u00b7 '+esc((it.difficulty||''))+' \u00b7 '+((it.points||1))+'pt</div>'+
-          '<div style="font-size:13.5px;color:var(--text-bright);margin-top:3px;">'+esc(it.prompt||'(question text unavailable)')+'</div>'+opts+'</div>'+
+          '<div style="font-size:13.5px;color:var(--text-bright);margin-top:3px;">'+esc(it.prompt||'(question text unavailable)')+'</div>'+figHtml2+opts+'</div>'+
           '<button class="btn btn-danger btn-sm" data-rm="'+id+'" style="align-self:flex-start;">Remove</button>'+
         '</div></div>';
     });
@@ -1959,7 +1972,7 @@ function openExamEditor(examId){
   }
   function fillBank(){
     var ch=$('edBankCh').value;
-    var q=sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt,options').eq('is_active',true).order('id');
+    var q=sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt,options,figure').eq('is_active',true).order('id');
     if(ch){ q=q.eq('chapter',parseInt(ch,10)); }
     q.then(function(res){
       var items=res.data?res.data:[];
@@ -2116,7 +2129,7 @@ function openAssembler(){
   loadBank();
 
   function loadBank(){
-    var q=sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt,options').eq('is_active',true).order('id');
+    var q=sb.from('sa_assessment_items').select('id,chapter,concept_tag,difficulty,item_type,points,prompt,options,figure').eq('is_active',true).order('id');
     var ch=$('axChapter').value; if(ch){ q=q.eq('chapter',parseInt(ch,10)); }
     var ty=$('axType')?$('axType').value:''; if(ty){ q=q.eq('item_type',ty); }
     $('axBank').innerHTML=loadingCard();
@@ -2162,7 +2175,8 @@ function openAssembler(){
       } else if(it.item_type==='free_response'){
         opt='<div style="margin-top:6px;font-size:12px;color:var(--amber);">Short answer · students type a written response · graded by you (or AI-assisted)</div>';
       }
-      box.innerHTML='<div style="margin-top:8px;padding:10px;border-radius:8px;background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.2);font-size:13px;color:var(--text);">'+esc(it.prompt)+opt+'</div>';
+      var figHtml = (typeof renderFigure === 'function' && it.figure) ? renderFigure(it.figure) : '';
+      box.innerHTML='<div style="margin-top:8px;padding:10px;border-radius:8px;background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.2);font-size:13px;color:var(--text);">'+esc(it.prompt)+figHtml+opt+'</div>';
       box.style.display='block';
     } else { box.style.display='none'; }
   }
@@ -3551,7 +3565,7 @@ function computeWeightedGrade(callback){
   var courseId = State.payCourseId || State.selfCourseId;
   if (!uid || !courseId) { callback(null); return; }
   Promise.all([
-    sb.from('sa_courses').select('id,title,owner_id,weight_reading,weight_quizzes,weight_arenas,weight_midterm,weight_final').eq('id', courseId).maybeSingle(),
+    sb.from('sa_courses').select('id,title,owner_id,weight_reading,weight_quizzes,weight_arenas,weight_midterm,weight_final,required_arenas').eq('id', courseId).maybeSingle(),
     sb.from('sa_chapter_progress').select('chapter,reading_done,quiz_passed,quiz_score').eq('student_id', uid).eq('course_id', courseId),
     sb.from('sa_arena_results').select('arena_slug,score,played_at').eq('student_id', uid).eq('course_id', courseId),
     sb.from('sa_exams').select('id,kind,total_points,attempt_scoring').eq('course_id', courseId).eq('is_published', true)
@@ -3565,7 +3579,7 @@ function computeWeightedGrade(callback){
     prog.forEach(function(p){ if(p.reading_done){ chaptersRead++; } if(p.quiz_passed){ quizzesPassed++; } if(p.quiz_score!==null&&p.quiz_score!==undefined){ quizSum+=Number(p.quiz_score); quizN++; } });
     var reading = chaptersRead/14;
     var quizzes = quizN>0 ? (quizSum/14) : (quizzesPassed/14);
-    var arenaScore = computeArenaScore(arenas);
+    var arenaScore = computeArenaScore(arenas, course.required_arenas ? Number(course.required_arenas) : 13);
     var midterm = exams.filter(function(e){return e.kind==='midterm';})[0];
     var fin = exams.filter(function(e){return e.kind==='final';})[0];
     var examIds=[]; if(midterm){examIds.push(midterm.id);} if(fin){examIds.push(fin.id);}
@@ -3657,7 +3671,7 @@ function gradeSummaryCard(summary){
   h+='<h3 style="font-size:15px;margin:0;">Your grade so far</h3>';
   h+='<span class="mono" style="font-size:22px;color:var(--text-bright);font-weight:600;">'+pct+'%</span></div>';
   h+='<table class="data-table"><caption class="sr-only">Weighted grade components</caption><thead><tr><th scope="col">Component</th><th scope="col">Score</th><th scope="col">Weight</th></tr></thead><tbody>'+rows+'</tbody></table>';
-  h+='<div style="font-size:12px;color:var(--text-subtle);margin-top:8px;">Weighted total of all components. Reading and quizzes update as you complete them. Arenas are scored on performance: each of the 13 arenas contributes the average of your attempts (up to two), and arenas you have not played count as 0. Exams you have not taken count as 0 until taken. This matches how your instructor\u2019s gradebook weights each part.</div>';
+  h+='<div style="font-size:12px;color:var(--text-subtle);margin-top:8px;">Weighted total of all components. Reading and quizzes update as you complete them. Arenas are scored on performance: your best arena results (up to the number your instructor requires) are averaged, and arenas you have not played count as 0 toward that requirement. Exams you have not taken count as 0 until taken. This matches how your instructor\u2019s gradebook weights each part.</div>';
   h+='</div>';
   return h;
 }
@@ -4182,7 +4196,7 @@ function loadCompletion() {
   if (!courseId) { host.innerHTML = ''; return; }
 
   Promise.all([
-    sb.from('sa_courses').select('id,title,owner_id,weight_reading,weight_quizzes,weight_arenas,weight_midterm,weight_final').eq('id', courseId).maybeSingle(),
+    sb.from('sa_courses').select('id,title,owner_id,weight_reading,weight_quizzes,weight_arenas,weight_midterm,weight_final,required_arenas').eq('id', courseId).maybeSingle(),
     sb.from('sa_chapter_progress').select('chapter,reading_done,quiz_passed,quiz_score').eq('student_id', uid).eq('course_id', courseId),
     sb.from('sa_arena_results').select('arena_slug,score,played_at').eq('student_id', uid).eq('course_id', courseId),
     sb.from('sa_exams').select('id,kind,total_points,attempt_scoring').eq('course_id', courseId).eq('is_published', true)
@@ -4201,7 +4215,7 @@ function loadCompletion() {
     // 0), consistent with Reading and Arenas. Averaging only over attempted
     // quizzes would show 100% after a single perfect quiz.
     var quizzes = quizN>0 ? (quizSum/14) : (quizzesPassed/14);
-    var arenaScore = computeArenaScore(arenas);
+    var arenaScore = computeArenaScore(arenas, course.required_arenas ? Number(course.required_arenas) : 13);
 
     var midterm = exams.filter(function(e){return e.kind==='midterm';})[0];
     var fin = exams.filter(function(e){return e.kind==='final';})[0];
