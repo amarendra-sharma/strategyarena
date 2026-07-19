@@ -1282,6 +1282,65 @@ function openItemStats(courseId){
   }catch(e){ saReviewNotInstalled($('isBody')); }
 }
 
+function openRegradeNumeric(courseId, gradebookHost){
+  if(!courseId){ return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:640px;"><h3 style="margin-bottom:4px;">Fix fraction grading</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">The old grader could only read plain decimals, so correct answers typed as fractions (5/9), with a currency symbol, a percent sign or a comma were marked wrong. This re-checks those answers. It can only change a grade from wrong to right \u2014 <b>no score can go down</b>.</p>'+
+    '<div id="rgBody">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:14px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="rgClose">Close</button><button class="btn btn-primary btn-sm" id="rgApply" style="display:none;">Apply corrections</button></div></div>';
+  document.body.appendChild(ov);
+  function shut(){ if(ov.parentNode){ document.body.removeChild(ov); } }
+  $('rgClose').addEventListener('click', shut);
+
+  function fail(msg){
+    $('rgBody').innerHTML='<div class="msg err" style="display:block;">'+esc(msg)+'</div>';
+    if($('rgApply')){ $('rgApply').style.display='none'; }
+  }
+
+  function run(dry){
+    return sb.functions.invoke('grade-attempt', { body: { action:'regrade_numeric', course_id: courseId, dry_run: dry } });
+  }
+
+  // Step 1: dry run, so nothing changes until the numbers are on screen.
+  run(true).then(function(res){
+    if(res.error){
+      fail('Could not run the check: '+String(res.error.message||res.error)+'. If this says the action is unknown, the grade-attempt function has not been redeployed yet.');
+      return;
+    }
+    var d=res.data||{};
+    if(d.error){ fail(String(d.error)); return; }
+    var n=Number(d.corrected||0);
+    var html='<div class="card" style="background:var(--bg2);">'+
+      '<div style="font-size:13px;">Scanned <b>'+Number(d.scanned||0)+'</b> answers currently marked wrong.</div>'+
+      '<div style="font-size:15px;margin-top:6px;color:'+(n>0?'var(--green)':'var(--text-muted)')+';"><b>'+n+'</b> '+(n===1?'answer is':'answers are')+' actually correct'+(n>0?(' across <b>'+Number(d.affected_students||0)+'</b> student'+(Number(d.affected_students)===1?'':'s')):'')+'.</div>'+
+      '</div>';
+    if(n>0 && d.sample && d.sample.length){
+      html+='<div style="margin-top:10px;max-height:32vh;overflow:auto;"><table class="tbl"><thead><tr><th scope="col">Question</th><th scope="col">They typed</th><th scope="col">Pts</th></tr></thead><tbody>';
+      d.sample.forEach(function(s){
+        html+='<tr><td style="font-size:12px;">'+esc(s.item_id||'')+'</td><td style="font-family:JetBrains Mono,monospace;font-size:12.5px;">'+esc(String(s.submitted||''))+'</td><td>'+esc(String(s.points||1))+'</td></tr>';
+      });
+      html+='</tbody></table></div>';
+      if(d.sample.length < n){ html+='<div style="font-size:11.5px;color:var(--text-subtle);margin-top:6px;">Showing the first '+d.sample.length+' of '+n+'.</div>'; }
+    }
+    if(n===0){ html+='<div style="font-size:12.5px;color:var(--text-muted);margin-top:10px;">Nothing to correct. Either this has already been run, or no wrong answers were formatting casualties.</div>'; }
+    $('rgBody').innerHTML=html;
+    if(n>0 && $('rgApply')){ $('rgApply').style.display=''; }
+  }, function(e){ fail('Could not run the check: '+String(e&&e.message?e.message:e)); });
+
+  // Step 2: apply for real, only after the instructor has seen the numbers.
+  $('rgApply').addEventListener('click', function(){
+    var btn=$('rgApply'); btn.disabled=true; btn.textContent='Applying\u2026';
+    run(false).then(function(res){
+      if(res.error){ btn.disabled=false; btn.textContent='Apply corrections'; fail('Could not apply: '+String(res.error.message||res.error)); return; }
+      var d=res.data||{};
+      $('rgBody').innerHTML='<div class="msg ok" style="display:block;">Corrected <b>'+Number(d.corrected||0)+'</b> answers for <b>'+Number(d.affected_students||0)+'</b> student'+(Number(d.affected_students)===1?'':'s')+'. Exam grades update automatically. Chapter quiz scores were stored when the quiz was submitted, so those need adjusting by hand \u2014 use the Override column.</div>';
+      btn.style.display='none';
+      if(gradebookHost){ renderGradebook(gradebookHost); }
+    }, function(e){ btn.disabled=false; btn.textContent='Apply corrections'; fail('Could not apply: '+String(e&&e.message?e.message:e)); });
+  });
+}
+
 function renderGradebook(host){
   if(!needCourse(host)){ return; }
   host.innerHTML=loadingCard();
@@ -1385,7 +1444,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   });
   var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
     '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data. <b>Assignments</b> are shown for reference; to fold them (or participation) into a student\u2019s final grade, use the <b>Override</b> column \u2014 an entered override becomes the Final grade and is what the CSV exports.</div>'+
-    '<div style="display:flex;gap:8px;"><button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
+    '<div style="display:flex;gap:8px;"><button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button><button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
   html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col"></th></tr></thead><tbody>';
   computed.forEach(function(g){
     html+='<tr><th scope="row" style="font-weight:500;">'+esc(g.name||g.email)+'</th><td>'+subTag(g.sub)+'</td>'+
@@ -1402,6 +1461,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   host.innerHTML=html;
   $('csvBtn').addEventListener('click', function(){ exportCSV(c,computed); });
   if($('itemStatsBtn')){ $('itemStatsBtn').addEventListener('click', function(){ openItemStats(c.id); }); }
+  if($('regradeBtn')){ $('regradeBtn').addEventListener('click', function(){ openRegradeNumeric(c.id, host); }); }
   Array.prototype.forEach.call(host.querySelectorAll('[data-work]'), function(b){
     b.addEventListener('click', function(){ openStudentWork(c.id, b.getAttribute('data-work'), b.getAttribute('data-wname')); });
   });
