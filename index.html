@@ -1010,11 +1010,26 @@ function renderAnnounce(host){
     var e=$('annMsg');
     if(!title || !body){ e.className='msg err'; e.textContent='Enter a title and a message.'; return; }
     $('annPost').disabled=true;
-    sb.from('sa_announcements').insert({ course_id:State.teachCourseId, title:title, body:body, created_by:State.user.id }).then(function(r){
-      $('annPost').disabled=false;
-      if(r.error){ e.className='msg err'; e.textContent=r.error.message; return; }
-      $('annTitle').value=''; $('annBody').value=''; e.className='msg ok'; e.textContent='Posted. Students will see it on their Home page.';
-      loadAnnounceList();
+    // The RLS policy checks the LIVE auth.uid(). State.user.id can be stale after
+    // a token refresh, so resolve the current user before inserting (same guard
+    // used for grader keys). created_by is only a label; ownership is enforced by
+    // the policy against the course's owner_id.
+    sb.auth.getUser().then(function(u){
+      var liveId=(u && u.data && u.data.user)?u.data.user.id:(State.user?State.user.id:null);
+      sb.from('sa_announcements').insert({ course_id:State.teachCourseId, title:title, body:body, created_by:liveId }).then(function(r){
+        $('annPost').disabled=false;
+        if(r.error){
+          e.className='msg err';
+          if(String(r.error.message||'').toLowerCase().indexOf('row-level security')>=0){
+            e.textContent='Could not post: this account does not own the selected course, or your session expired. Try signing out and back in; if it persists, check that the course is yours.';
+          } else {
+            e.textContent=r.error.message;
+          }
+          return;
+        }
+        $('annTitle').value=''; $('annBody').value=''; e.className='msg ok'; e.textContent='Posted. Students will see it on their Home page.';
+        loadAnnounceList();
+      });
     });
   });
   $('annEmail').addEventListener('click', function(){ emailStudents($('annTitle').value.trim(), $('annBody').value.trim()); });
@@ -4299,6 +4314,10 @@ function renderExamQuestion() {
   html += '<div class="q-card" style="border:none;background:none;padding:0;">';
   html += '<div class="q-meta">' + esc(item.item_type) + ' · ' + (item.points||1) + ' pt</div>';
   html += '<div class="q-prompt">' + esc(item.prompt) + '</div>';
+  // Payoff matrices and game trees must render in exams too. The quiz and practice
+  // renderers already did this; the exam renderer did not, so any question that
+  // referred to "the matrix below" showed only text.
+  if (item.figure) { html += renderFigure(item.figure); }
   if (item.item_type === 'multiple_choice' && item.options) {
     html += '<div class="q-options" id="examOpt">';
     item.options.forEach(function(opt, k) {
