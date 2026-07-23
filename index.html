@@ -411,7 +411,7 @@
    CONFIG
    ==================================================================== */
 var SUPABASE_URL = 'https://qgelvmefyexyzpwqupev.supabase.co';
-var SA_BUILD = 'figures+trees-2026-06';
+var SA_BUILD = '2026-07-22-grade-in-work';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZWx2bWVmeWV4eXpwd3F1cGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDY5ODAsImV4cCI6MjA5NjAyMjk4MH0.AR55GBLefKHfs9ncWWzEFks_VISPjJtbW8SezyjM3lc';
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Shared MacroNations proctoring engine. Point it at StrategyArena's existing
@@ -1221,7 +1221,13 @@ function saGradeBox(r){
   // Written answers can be graded here, through a security-definer function that
   // checks course ownership itself. This does not depend on the row policies, so
   // it works even when the Grading tab cannot read attempts.
-  if(!r || r.item_type !== 'free_response' || !r.attempt_id){ return ''; }
+  if(!r || r.item_type !== 'free_response'){ return ''; }
+  // If the review function has not been upgraded yet it returns no attempt_id,
+  // so there is nothing to grade against. Say so plainly rather than silently
+  // showing no box - that was previously indistinguishable from a bug.
+  if(!r.attempt_id){
+    return '<div style="margin-top:8px;font-size:11.5px;color:#FBBF24;">Hand-grading not enabled yet \u2014 run <b>70_grade_from_work_view.sql</b> in the Supabase SQL editor, then reopen this window.</div>';
+  }
   var maxP = (r.max_points===null||r.max_points===undefined) ? 1 : r.max_points;
   var cur  = (r.points_earned===null||r.points_earned===undefined) ? '' : r.points_earned;
   var fb   = r.instructor_feedback ? esc(r.instructor_feedback) : '';
