@@ -1217,6 +1217,128 @@ function saCorrectAnswerText(r){
   return 'Choice #'+(idx+1);
 }
 
+function saGradeBox(r){
+  // Written answers can be graded here, through a security-definer function that
+  // checks course ownership itself. This does not depend on the row policies, so
+  // it works even when the Grading tab cannot read attempts.
+  if(!r || r.item_type !== 'free_response' || !r.attempt_id){ return ''; }
+  var maxP = (r.max_points===null||r.max_points===undefined) ? 1 : r.max_points;
+  var cur  = (r.points_earned===null||r.points_earned===undefined) ? '' : r.points_earned;
+  var fb   = r.instructor_feedback ? esc(r.instructor_feedback) : '';
+  var done = (r.status === 'graded');
+  return '<div style="margin-top:9px;padding:9px 11px;border-radius:8px;background:rgba(124,92,255,.07);border:1px solid rgba(124,92,255,.2);">'+
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
+      '<label style="font-size:11.5px;color:var(--text-muted);">Score</label>'+
+      '<input type="number" step="0.5" min="0" max="'+esc(String(maxP))+'" value="'+esc(String(cur))+'" data-grade-pts="'+esc(r.attempt_id)+'" style="width:74px;font-size:13px;padding:4px 7px;">'+
+      '<span style="font-size:11.5px;color:var(--text-subtle);">of '+esc(String(maxP))+'</span>'+
+      '<input type="text" placeholder="Comment for the student (optional)" value="'+fb+'" data-grade-fb="'+esc(r.attempt_id)+'" style="flex:1;min-width:170px;font-size:12.5px;padding:4px 7px;">'+
+      '<button class="btn btn-primary btn-sm" data-grade-save="'+esc(r.attempt_id)+'">'+(done?'Update':'Save grade')+'</button>'+
+      '<span style="font-size:11.5px;" data-grade-msg="'+esc(r.attempt_id)+'"></span>'+
+    '</div></div>';
+}
+
+function saWireGradeBoxes(scope){
+  if(!scope){ return; }
+  Array.prototype.forEach.call(scope.querySelectorAll('[data-grade-save]'), function(btn){
+    btn.addEventListener('click', function(){
+      var id=btn.getAttribute('data-grade-save');
+      var ptsEl=scope.querySelector('[data-grade-pts="'+id+'"]');
+      var fbEl=scope.querySelector('[data-grade-fb="'+id+'"]');
+      var msg=scope.querySelector('[data-grade-msg="'+id+'"]');
+      var pts=parseFloat(ptsEl && ptsEl.value!=='' ? ptsEl.value : 'NaN');
+      if(isNaN(pts)){ if(msg){ msg.style.color='#FB7185'; msg.textContent='Enter a score.'; } return; }
+      btn.disabled=true; if(msg){ msg.style.color='var(--text-muted)'; msg.textContent='Saving\u2026'; }
+      sb.rpc('sa_instructor_grade_written',{ p_attempt_id:id, p_points:pts, p_feedback:(fbEl?fbEl.value:null) }).then(function(res){
+        btn.disabled=false;
+        if(res && res.error){
+          if(msg){ msg.style.color='#FB7185'; msg.textContent=String(res.error.message||res.error).indexOf('function')>=0?'Not installed \u2014 run 70.':'Failed: '+res.error.message; }
+          return;
+        }
+        btn.textContent='Update';
+        if(msg){ msg.style.color='#34D399'; msg.textContent='Saved'; }
+      }, function(e){
+        btn.disabled=false;
+        if(msg){ msg.style.color='#FB7185'; msg.textContent='Failed: '+String(e&&e.message?e.message:e); }
+      });
+    });
+  });
+}
+
+function openReschedule(courseId, studentId, studentName){
+  if(!courseId || !studentId){ return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:600px;"><h3 style="margin-bottom:4px;">Reschedule \u2014 '+esc(studentName||'student')+'</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Give this one student a later deadline or another sitting, without changing anything for the rest of the class. Leave a field blank to remove that adjustment.</p>'+
+    '<div id="rsBody">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:14px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="rsClose">Close</button></div></div>';
+  document.body.appendChild(ov);
+  $('rsClose').addEventListener('click', function(){ if(ov.parentNode){ document.body.removeChild(ov); } });
+
+  function notInstalled(){
+    $('rsBody').innerHTML='<div class="msg err" style="display:block;">Rescheduling is not installed yet. Run <b>71_student_rescheduling.sql</b> in the Supabase SQL editor, then reopen this window.</div>';
+  }
+
+  sb.from('sa_exams').select('id,title,closes_at').eq('course_id',courseId).then(function(ex){
+    if(ex && ex.error){ notInstalled(); return; }
+    var exams=(ex && ex.data)?ex.data:[];
+    var h='<div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Exams</div>';
+    if(exams.length===0){ h+='<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">No exams in this course.</div>'; }
+    exams.forEach(function(e){
+      var base=e.closes_at?(' \u00b7 class deadline '+new Date(e.closes_at).toLocaleString()):' \u00b7 no deadline';
+      h+='<div style="margin-bottom:10px;padding:9px 11px;border-radius:8px;background:var(--bg2);">'+
+        '<div style="font-size:13px;color:var(--text-bright);">'+esc(e.title)+'<span style="font-size:11px;color:var(--text-subtle);">'+esc(base)+'</span></div>'+
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">'+
+          '<label style="font-size:11.5px;color:var(--text-muted);">New deadline</label>'+
+          '<input type="datetime-local" data-ex-when="'+esc(e.id)+'" style="font-size:12.5px;padding:4px 7px;">'+
+          '<label style="font-size:11.5px;color:var(--text-muted);">Extra attempts</label>'+
+          '<input type="number" min="0" max="5" value="0" data-ex-att="'+esc(e.id)+'" style="width:62px;font-size:12.5px;padding:4px 7px;">'+
+          '<button class="btn btn-primary btn-sm" data-ex-save="'+esc(e.id)+'">Apply</button>'+
+          '<span style="font-size:11.5px;" data-ex-msg="'+esc(e.id)+'"></span>'+
+        '</div></div>';
+    });
+    h+='<div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px;">Chapter quiz</div>'+
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px 11px;border-radius:8px;background:var(--bg2);">'+
+        '<label style="font-size:11.5px;color:var(--text-muted);">Chapter</label>'+
+        '<input type="number" min="1" max="20" value="1" id="rsQzCh" style="width:62px;font-size:12.5px;padding:4px 7px;">'+
+        '<label style="font-size:11.5px;color:var(--text-muted);">New deadline</label>'+
+        '<input type="datetime-local" id="rsQzWhen" style="font-size:12.5px;padding:4px 7px;">'+
+        '<button class="btn btn-primary btn-sm" id="rsQzSave">Apply</button>'+
+        '<span style="font-size:11.5px;" id="rsQzMsg"></span>'+
+      '</div>';
+    $('rsBody').innerHTML=h;
+
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-ex-save]'), function(btn){
+      btn.addEventListener('click', function(){
+        var eid=btn.getAttribute('data-ex-save');
+        var when=ov.querySelector('[data-ex-when="'+eid+'"]').value;
+        var att=parseInt(ov.querySelector('[data-ex-att="'+eid+'"]').value||'0',10);
+        var msg=ov.querySelector('[data-ex-msg="'+eid+'"]');
+        btn.disabled=true; msg.style.color='var(--text-muted)'; msg.textContent='Saving\u2026';
+        sb.rpc('sa_set_exam_override',{ p_exam_id:eid, p_student_id:studentId,
+          p_closes_at: when?new Date(when).toISOString():null, p_extra_attempts:att, p_reason:'Instructor reschedule' }).then(function(r){
+          btn.disabled=false;
+          if(r && r.error){ msg.style.color='#FB7185'; msg.textContent=String(r.error.message||'').indexOf('function')>=0?'Run 71 first.':'Failed'; return; }
+          msg.style.color='#34D399'; msg.textContent=(when||att)?'Applied':'Cleared';
+        }, function(){ btn.disabled=false; msg.style.color='#FB7185'; msg.textContent='Failed'; });
+      });
+    });
+
+    $('rsQzSave').addEventListener('click', function(){
+      var ch=parseInt($('rsQzCh').value||'0',10);
+      var when=$('rsQzWhen').value;
+      var msg=$('rsQzMsg');
+      if(!ch){ msg.style.color='#FB7185'; msg.textContent='Enter a chapter.'; return; }
+      $('rsQzSave').disabled=true; msg.style.color='var(--text-muted)'; msg.textContent='Saving\u2026';
+      sb.rpc('sa_set_quiz_override',{ p_course_id:courseId, p_chapter:ch, p_student_id:studentId,
+        p_closes_at: when?new Date(when).toISOString():null, p_reason:'Instructor reschedule' }).then(function(r){
+        $('rsQzSave').disabled=false;
+        if(r && r.error){ msg.style.color='#FB7185'; msg.textContent=String(r.error.message||'').indexOf('function')>=0?'Run 71 first.':'Failed'; return; }
+        msg.style.color='#34D399'; msg.textContent=when?'Applied':'Cleared';
+      }, function(){ $('rsQzSave').disabled=false; msg.style.color='#FB7185'; msg.textContent='Failed'; });
+    });
+  }, function(){ notInstalled(); });
+}
+
 function openStudentWork(courseId, studentId, studentName){
   if(!courseId||!studentId){ return; }
   var ov=document.createElement('div'); ov.className='modal-overlay';
@@ -1238,20 +1360,29 @@ function openStudentWork(courseId, studentId, studentName){
       var badge = r.source==='exam' ? '<span class="tag violet">exam</span>'
                 : (r.source==='quiz' ? '<span class="tag">quiz</span>'
                 : '<span class="tag dim" title="Taken before quiz attempts were tracked separately, so this may be a graded quiz or practice">quiz or practice</span>');
-      var mark = r.is_correct ? '<span class="tag" style="background:rgba(52,211,153,.15);color:#34D399;">correct</span>'
-                              : '<span class="tag rose">missed</span>';
+      var st = r.status || (r.is_correct===null||r.is_correct===undefined ? 'awaiting grading' : (r.is_correct?'graded':'graded'));
+      var mark;
+      if (st === 'awaiting grading') { mark = '<span class="tag" style="background:rgba(251,191,36,.15);color:#FBBF24;">awaiting your grading</span>'; }
+      else if (st === 'not answered') { mark = '<span class="tag dim">not answered</span>'; }
+      else if (st === 'in progress') { mark = '<span class="tag dim">in progress</span>'; }
+      else if (r.is_correct) { mark = '<span class="tag" style="background:rgba(52,211,153,.15);color:#34D399;">correct</span>'; }
+      else { mark = '<span class="tag rose">missed</span>'; }
       var corr=saCorrectAnswerText(r);
+      var when = r.answered_at || r.graded_at;
+      var pts = (r.points_earned!==null&&r.points_earned!==undefined) ? (' \u00b7 ' + r.points_earned + '/' + (r.max_points||1) + ' pts') : '';
       html+='<div class="card" style="margin-bottom:8px;background:var(--bg2);">'+
         '<div style="font-size:11px;color:var(--text-subtle);display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'+badge+' '+mark+
           '<span>'+esc(r.context||'')+'</span><span>\u00b7</span><span>'+esc(r.item_id||'')+'</span>'+
-          (r.graded_at?('<span>\u00b7</span><span>'+new Date(r.graded_at).toLocaleString()+'</span>'):'')+'</div>'+
+          (when?('<span>\u00b7</span><span>'+new Date(when).toLocaleString()+'</span>'):'')+esc(pts)+'</div>'+
         '<div style="font-size:13.5px;color:var(--text-bright);margin:5px 0 6px;">'+esc(r.prompt||'')+'</div>'+
-        '<div style="font-size:12.5px;"><b>Their answer:</b> '+(r.submitted_value?esc(r.submitted_value):'<span style="color:var(--text-subtle);">(blank)</span>')+'</div>'+
+        '<div style="font-size:12.5px;white-space:pre-wrap;"><b>Their answer:</b> '+(r.submitted_value?esc(r.submitted_value):'<span style="color:var(--text-subtle);">(blank)</span>')+'</div>'+
         (corr?('<div style="font-size:12.5px;color:var(--green);margin-top:3px;"><b>Key:</b> '+corr+'</div>'):'')+
         (r.answer_notes?('<div style="font-size:12px;color:var(--text-muted);margin-top:3px;"><b>Notes:</b> '+esc(r.answer_notes)+'</div>'):'')+
+        saGradeBox(r)+
         '</div>';
     });
     body.innerHTML=html;
+    saWireGradeBoxes(body);
   }
 
   try{
@@ -1470,7 +1601,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
       '<td>'+pct(g.computed)+'</td>'+
       '<td><label class="sr-only" for="ovr-'+g.sid+'">Override percent for '+esc(g.name||g.email)+'</label><input id="ovr-'+g.sid+'" type="number" min="0" max="100" step="0.1" placeholder="\u2014" value="'+(g.override?g.override.pct:'')+'" style="width:64px;"></td>'+
       '<td style="font-weight:600;color:var(--text-bright);">'+pct(g.finalPct)+(g.override?' <span class="tag violet" title="manual override">ovr</span>':'')+'</td>'+
-      '<td><button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> <button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button></td></tr>';
+      '<td><button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> <button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button> <button class="btn btn-ghost btn-sm" data-resch="'+g.sid+'" data-rname="'+esc(g.name||g.email)+'" title="Give this student a later deadline or another attempt">Reschedule</button></td></tr>';
   });
   html+='</tbody></table></div>';
   host.innerHTML=html;
@@ -1479,6 +1610,9 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   if($('regradeBtn')){ $('regradeBtn').addEventListener('click', function(){ openRegradeNumeric(c.id, host); }); }
   Array.prototype.forEach.call(host.querySelectorAll('[data-work]'), function(b){
     b.addEventListener('click', function(){ openStudentWork(c.id, b.getAttribute('data-work'), b.getAttribute('data-wname')); });
+  });
+  Array.prototype.forEach.call(host.querySelectorAll('[data-resch]'), function(b){
+    b.addEventListener('click', function(){ openReschedule(c.id, b.getAttribute('data-resch'), b.getAttribute('data-rname')); });
   });
   Array.prototype.forEach.call(host.querySelectorAll('[data-saveovr]'), function(b){ b.addEventListener('click', function(){
     var sid=b.getAttribute('data-saveovr');
