@@ -610,8 +610,15 @@ function enterApp(user){
   show($('appScreen'));
   $('sideUser').textContent=user.email;
   var role=State.role;
-  $('sideRole').textContent = (role==='admin') ? 'Super Administrator' : (role==='instructor' ? 'Instructor' : 'Student');
-  if(role==='instructor' || role==='admin'){ show($('teachGroup')); } else { hide($('teachGroup')); }
+  // A TA may have a plain student profile. If they are on any course's teaching
+  // team, they still need the teaching menu - for the courses they staff only.
+  State.staff = State.staff || {};
+  var isStaffSomewhere = false;
+  for(var _k in State.staff){ if(Object.prototype.hasOwnProperty.call(State.staff,_k)){ isStaffSomewhere = true; break; } }
+  var teaches = (role==='instructor' || role==='admin' || isStaffSomewhere);
+  $('sideRole').textContent = (role==='admin') ? 'Super Administrator'
+    : (role==='instructor' ? 'Instructor' : (isStaffSomewhere ? 'Teaching Assistant' : 'Student'));
+  if(teaches){ show($('teachGroup')); } else { hide($('teachGroup')); }
   if(role==='admin'){ show($('adminGroup')); } else { hide($('adminGroup')); }
   // student self-study provisioning (own course for practice/progress)
   // platform settings (needed by the subscribe prompt for everyone) + access
@@ -646,6 +653,28 @@ function loadCourses(){
     : sb.from('sa_courses').select('*').eq('owner_id', State.user.id).order('created_at',{ascending:false});
   return q.then(function(res){
     State.courses = res.data ? res.data : [];
+    // Courses this person is a TA on are added to the same picker. Fails open:
+    // if the staff table is not installed, nothing changes for anyone.
+    return sb.from('sa_course_staff')
+      .select('course_id,can_view_work,can_grade,can_manage_deadlines,can_edit_items')
+      .eq('user_id', State.user.id)
+      .then(function(st){
+        State.staff = {};
+        var ids=[];
+        if(st && !st.error && st.data){
+          st.data.forEach(function(r){ State.staff[r.course_id]=r; if(ids.indexOf(r.course_id)<0){ ids.push(r.course_id); } });
+        }
+        var known={}; State.courses.forEach(function(c){ known[c.id]=true; });
+        var missing = ids.filter(function(id){ return !known[id]; });
+        if(missing.length===0){ return res; }
+        return sb.from('sa_courses').select('*').in('id', missing).then(function(extra){
+          if(extra && !extra.error && extra.data){
+            extra.data.forEach(function(c){ State.courses.push(c); });
+          }
+          return res;
+        });
+      }, function(){ State.staff={}; return res; });
+  }).then(function(res){
     var ownerNames = {};
     var finish = function(){
       var sel=$('coursePick'); sel.innerHTML='';
@@ -1345,6 +1374,81 @@ function openReschedule(courseId, studentId, studentName){
   }, function(){ notInstalled(); });
 }
 
+function openTeachingTeam(courseId){
+  if(!courseId){ return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:660px;"><h3 style="margin-bottom:4px;">Teaching team</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Give a TA access to grade this course. They see student work and can score written answers, but cannot change course settings, delete anything, or add other staff. Add extra permissions only if you want them.</p>'+
+    '<div id="ttBody">'+loadingCard()+'</div>'+
+    '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">'+
+      '<div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Add someone</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'+
+        '<input type="email" id="ttEmail" placeholder="ta@binghamton.edu" style="flex:1;min-width:210px;font-size:13px;padding:6px 9px;">'+
+        '<label style="font-size:12px;color:var(--text-muted);"><input type="checkbox" id="ttGrade" checked> can grade</label>'+
+        '<label style="font-size:12px;color:var(--text-muted);"><input type="checkbox" id="ttDeadlines"> can reschedule</label>'+
+        '<label style="font-size:12px;color:var(--text-muted);"><input type="checkbox" id="ttItems"> can edit questions</label>'+
+        '<button class="btn btn-primary btn-sm" id="ttAdd">Add</button>'+
+      '</div>'+
+      '<div id="ttMsg" style="font-size:12px;margin-top:7px;"></div>'+
+    '</div>'+
+    '<div class="inline-actions" style="margin-top:14px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="ttClose">Close</button></div></div>';
+  document.body.appendChild(ov);
+  $('ttClose').addEventListener('click', function(){ if(ov.parentNode){ document.body.removeChild(ov); } });
+
+  function notInstalled(){
+    $('ttBody').innerHTML='<div class="msg err" style="display:block;">Teaching team is not installed yet. Run <b>75_course_staff_ta.sql</b> in the Supabase SQL editor, then reopen this window.</div>';
+    if($('ttAdd')){ $('ttAdd').disabled=true; }
+  }
+
+  function load(){
+    sb.rpc('sa_list_course_staff',{p_course_id:courseId}).then(function(r){
+      if(r && r.error){ notInstalled(); return; }
+      var rows=(r && r.data)?r.data:[];
+      if(rows.length===0){ $('ttBody').innerHTML='<div class="card empty">No TAs yet. Add one below.</div>'; return; }
+      var h='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Person</th><th scope="col">Can do</th><th scope="col"></th></tr></thead><tbody>';
+      rows.forEach(function(m){
+        var perms=[];
+        if(m.can_view_work){ perms.push('see work'); }
+        if(m.can_grade){ perms.push('grade'); }
+        if(m.can_manage_deadlines){ perms.push('reschedule'); }
+        if(m.can_edit_items){ perms.push('edit questions'); }
+        h+='<tr><th scope="row" style="font-weight:400;"><div style="font-size:13px;">'+esc(m.email||m.user_id)+'</div>'+
+           '<div style="font-size:11px;color:var(--text-subtle);">'+esc(m.role_label||'TA')+'</div></th>'+
+           '<td style="font-size:12.5px;">'+esc(perms.join(', ')||'nothing')+'</td>'+
+           '<td><button class="btn btn-danger btn-sm" data-tt-rm="'+esc(m.user_id)+'">Remove</button></td></tr>';
+      });
+      h+='</tbody></table></div>';
+      $('ttBody').innerHTML=h;
+      Array.prototype.forEach.call(ov.querySelectorAll('[data-tt-rm]'), function(b){
+        b.addEventListener('click', function(){
+          if(!window.confirm('Remove this person from the teaching team? They will lose access to this course immediately.')){ return; }
+          b.disabled=true;
+          sb.rpc('sa_remove_course_staff',{p_course_id:courseId,p_user_id:b.getAttribute('data-tt-rm')}).then(function(){ load(); }, function(){ b.disabled=false; });
+        });
+      });
+    }, function(){ notInstalled(); });
+  }
+  load();
+
+  $('ttAdd').addEventListener('click', function(){
+    var em=$('ttEmail').value.trim();
+    var msg=$('ttMsg');
+    if(!em){ msg.style.color='#FB7185'; msg.textContent='Enter an email address.'; return; }
+    $('ttAdd').disabled=true; msg.style.color='var(--text-muted)'; msg.textContent='Adding\u2026';
+    sb.rpc('sa_add_course_staff',{ p_course_id:courseId, p_email:em,
+      p_can_grade:$('ttGrade').checked, p_can_view:true,
+      p_deadlines:$('ttDeadlines').checked, p_items:$('ttItems').checked, p_label:'TA' }).then(function(r){
+      $('ttAdd').disabled=false;
+      if(r && r.error){ msg.style.color='#FB7185'; msg.textContent=String(r.error.message||r.error); return; }
+      var out=(r && r.data)?String(r.data):'Added.';
+      msg.style.color = out.indexOf('No account')===0 ? '#FBBF24' : '#34D399';
+      msg.textContent=out;
+      $('ttEmail').value='';
+      load();
+    }, function(e){ $('ttAdd').disabled=false; msg.style.color='#FB7185'; msg.textContent=String(e&&e.message?e.message:e); });
+  });
+}
+
 function openStudentWork(courseId, studentId, studentName){
   if(!courseId||!studentId){ return; }
   var ov=document.createElement('div'); ov.className='modal-overlay';
@@ -1596,7 +1700,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   });
   var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
     '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data. <b>Assignments</b> are shown for reference; to fold them (or participation) into a student\u2019s final grade, use the <b>Override</b> column \u2014 an entered override becomes the Final grade and is what the CSV exports.</div>'+
-    '<div style="display:flex;gap:8px;"><button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button><button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
+    '<div style="display:flex;gap:8px;"><button class="btn btn-ghost btn-sm" id="staffBtn" title="Give a TA access to grade this course">Teaching team</button><button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button><button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
   html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col"></th></tr></thead><tbody>';
   computed.forEach(function(g){
     html+='<tr><th scope="row" style="font-weight:500;">'+esc(g.name||g.email)+'</th><td>'+subTag(g.sub)+'</td>'+
@@ -1614,6 +1718,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   $('csvBtn').addEventListener('click', function(){ exportCSV(c,computed); });
   if($('itemStatsBtn')){ $('itemStatsBtn').addEventListener('click', function(){ openItemStats(c.id); }); }
   if($('regradeBtn')){ $('regradeBtn').addEventListener('click', function(){ openRegradeNumeric(c.id, host); }); }
+  if($('staffBtn')){ $('staffBtn').addEventListener('click', function(){ openTeachingTeam(c.id); }); }
   Array.prototype.forEach.call(host.querySelectorAll('[data-work]'), function(b){
     b.addEventListener('click', function(){ openStudentWork(c.id, b.getAttribute('data-work'), b.getAttribute('data-wname')); });
   });
