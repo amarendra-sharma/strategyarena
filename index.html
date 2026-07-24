@@ -1383,6 +1383,7 @@ function openReschedule(courseId, studentId, studentName){
           '<label style="font-size:11.5px;color:var(--text-muted);">Extra attempts</label>'+
           '<input type="number" min="0" max="5" value="0" data-ex-att="'+esc(e.id)+'" style="width:62px;font-size:12.5px;padding:4px 7px;">'+
           '<button class="btn btn-primary btn-sm" data-ex-save="'+esc(e.id)+'">Apply</button>'+
+          '<button class="btn btn-ghost btn-sm" data-ex-finish="'+esc(e.id)+'" title="Reopen only the questions this student never answered">Let them finish unanswered</button>'+
           '<span style="font-size:11.5px;" data-ex-msg="'+esc(e.id)+'"></span>'+
         '</div></div>';
     });
@@ -1396,6 +1397,34 @@ function openReschedule(courseId, studentId, studentName){
         '<span style="font-size:11.5px;" id="rsQzMsg"></span>'+
       '</div>';
     $('rsBody').innerHTML=h;
+
+    // Reopen only the blank answers from an interrupted sitting.
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-ex-finish]'), function(btn){
+      btn.addEventListener('click', function(){
+        var eid=btn.getAttribute('data-ex-finish');
+        var msg=ov.querySelector('[data-ex-msg="'+eid+'"]');
+        btn.disabled=true; msg.style.color='var(--text-muted)'; msg.textContent='Checking\u2026';
+        sb.rpc('sa_unanswered_exam_preview',{ p_exam_id:eid, p_student_id:studentId }).then(function(pv){
+          btn.disabled=false;
+          if(pv && pv.error){
+            msg.style.color='#FB7185';
+            msg.textContent=String(pv.error.message||'').indexOf('function')>=0?'Run 88 first.':'Failed';
+            return;
+          }
+          var rows=(pv && pv.data)?pv.data:[];
+          if(rows.length===0){ msg.style.color='var(--text-muted)'; msg.textContent='No unanswered questions \u2014 nothing to reopen.'; return; }
+          if(!window.confirm('Reopen ' + rows.length + ' unanswered question' + (rows.length===1?'':'s') + ' for this student?\n\nThey will get a Resume option that serves ONLY those questions, with the same wording and numbers they originally saw. Questions they already answered are not touched and their score for those stays as it is.')){ return; }
+          btn.disabled=true; msg.textContent='Reopening\u2026';
+          sb.rpc('sa_reopen_unanswered_exam',{ p_exam_id:eid, p_student_id:studentId }).then(function(r){
+            btn.disabled=false;
+            if(r && r.error){ msg.style.color='#FB7185'; msg.textContent='Failed: '+String(r.error.message||r.error); return; }
+            var n=(r && r.data && r.data[0])?r.data[0].reopened:rows.length;
+            msg.style.color='#34D399';
+            msg.textContent='Reopened '+n+' question'+(n===1?'':'s')+'. They can resume now.';
+          }, function(e){ btn.disabled=false; msg.style.color='#FB7185'; msg.textContent='Failed'; });
+        }, function(){ btn.disabled=false; msg.style.color='#FB7185'; msg.textContent='Failed'; });
+      });
+    });
 
     Array.prototype.forEach.call(ov.querySelectorAll('[data-ex-save]'), function(btn){
       btn.addEventListener('click', function(){
@@ -4581,13 +4610,28 @@ function loadMyExams() {
       // Per-student rescheduling. Without this the student sees the CLASS dates
       // and is told the exam is closed even after the instructor moved it for
       // them. Fails open: no overrides table, or no row, means class dates.
+      // Questions reopened after an interrupted sitting show up as pending
+      // attempts. If any exist the card offers Resume instead of Start.
+      var resumeCount = {};
       var myOverride = {};
+      // Both lookups must finish before the cards render, or a reopened sitting
+      // would briefly show as Closed.
       sb.from('sa_exam_overrides')
         .select('exam_id,opens_at,closes_at,extra_attempts')
         .eq('student_id', State.user.id)
         .then(function(ovr){
           if(ovr && !ovr.error && ovr.data){
             ovr.data.forEach(function(o){ myOverride[o.exam_id]=o; });
+          }
+          return sb.from('sa_attempts').select('exam_id')
+            .eq('student_id', State.user.id).is('graded_at', null);
+        }, function(){
+          return sb.from('sa_attempts').select('exam_id')
+            .eq('student_id', State.user.id).is('graded_at', null);
+        })
+        .then(function(pd){
+          if(pd && !pd.error && pd.data){
+            pd.data.forEach(function(r){ if(r.exam_id){ resumeCount[r.exam_id]=(resumeCount[r.exam_id]||0)+1; } });
           }
           renderExamCards();
         }, function(){ renderExamCards(); });
@@ -4650,6 +4694,12 @@ function loadMyExams() {
           statusHtml='<span class="tag green">Completed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>No attempts left</button>'+reviewBtn;
         }
         else { statusHtml='<span class="tag amber">'+(sittings>0?('Attempt '+(sittings+1)):'Not taken')+'</span>'; action='<button class="btn btn-primary btn-sm" data-start="'+e.id+'">'+(sittings>0?'Retake':'Start exam')+'</button>'; }
+        // A reopened sitting takes priority over everything above: the student
+        // is finishing work already in progress, not starting a new attempt.
+        if(resumeCount[e.id]>0){
+          statusHtml='<span class="tag amber">Unfinished</span>';
+          action='<button class="btn btn-primary btn-sm" data-resume="'+e.id+'">Finish '+resumeCount[e.id]+' remaining question'+(resumeCount[e.id]===1?'':'s')+'</button>';
+        }
         var meta = nItems + ' questions · ' + (e.total_points||0) + ' pts';
         var reschedNote = '';
         if(ovr && (ovr.closes_at || ovr.opens_at || ovr.extra_attempts)){
@@ -4670,6 +4720,14 @@ function loadMyExams() {
       host.innerHTML = html;
       Array.prototype.forEach.call(host.querySelectorAll('[data-review]'), function(b) {
         b.addEventListener('click', function() { openExamReview(b.getAttribute('data-review')); });
+      });
+      Array.prototype.forEach.call(host.querySelectorAll('[data-resume]'), function(b) {
+        b.addEventListener('click', function() {
+          var eid = b.getAttribute('data-resume');
+          var exam = null; for (var i=0;i<exams.length;i++){ if(exams[i].id===eid){ exam=exams[i]; break; } }
+          var acc = exam?accomByCourse[exam.course_id]:null;
+          if (exam) { resumeExam(exam, acc); }
+        });
       });
       Array.prototype.forEach.call(host.querySelectorAll('[data-start]'), function(b) {
         b.addEventListener('click', function() {
@@ -4747,6 +4805,43 @@ function proceedStartExam(exam, accom) {
     return;
   }
   reallyStartExam(exam, accom);
+}
+
+// Finish an interrupted sitting. Serves ONLY the questions the student never
+// answered, using the attempt rows that already exist - so the wording, the
+// numbers and the option order are identical to what they first saw, and their
+// existing answers are untouched.
+function resumeExam(exam, accom){
+  var host=$('myExamsBody');
+  ExamState = { exam:exam, items:[], answers:{}, idx:0, courseId:exam.course_id, submitting:false, finished:false, timer:null, deadline:null, _consented:true, _resume:true };
+  host.innerHTML='<div class="card"><span class="spinner"></span> &nbsp;Loading your remaining questions\u2026</div>';
+  sb.functions.invoke('grade-attempt',{ body:{ action:'resume', exam_id:exam.id } }).then(function(fn){
+    if(fn.error || (fn.data && fn.data.error)){
+      host.innerHTML=errCard('Could not load your remaining questions: '+((fn.data&&fn.data.error)?fn.data.error:(fn.error?fn.error.message:'unknown'))+'. Please tell your instructor.');
+      return;
+    }
+    var items=(fn.data && fn.data.items)?fn.data.items:[];
+    if(items.length===0){
+      host.innerHTML='<div class="card empty">Nothing left to finish on this exam.</div>';
+      setTimeout(loadMyExams, 1200);
+      return;
+    }
+    ExamState.items=items;
+    // Fresh time allowance for the remainder, scaled by any accommodation.
+    if(exam.time_limit_minutes && exam.time_limit_minutes>0){
+      var mult=(accom && Number(accom.time_multiplier))?Number(accom.time_multiplier):1;
+      var share=Math.max(5, Math.round(exam.time_limit_minutes*mult*(items.length/Math.max(1,(exam.item_ids?exam.item_ids.length:items.length)))));
+      ExamState.deadline=Date.now()+share*60000;
+    }
+    startExamTimer();
+    renderExamQuestion();
+    if(typeof MNProctor!=='undefined'){
+      MNProctor.onAutoSubmit(function(){ if(!ExamState.finished && !ExamState.submitting){ gradeExam(true); } });
+      MNProctor.start(exam, State.user);
+    }
+  }, function(e){
+    host.innerHTML=errCard('Could not load your remaining questions. Please tell your instructor.');
+  });
 }
 
 function reallyStartExam(exam, accom) {
