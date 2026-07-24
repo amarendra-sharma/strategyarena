@@ -1357,7 +1357,8 @@ function openReschedule(courseId, studentId, studentName){
   if(!courseId || !studentId){ return; }
   var ov=document.createElement('div'); ov.className='modal-overlay';
   ov.innerHTML='<div class="modal" style="max-width:600px;"><h3 style="margin-bottom:4px;">Reschedule \u2014 '+esc(studentName||'student')+'</h3>'+
-    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Give this one student a later deadline or another sitting, without changing anything for the rest of the class. Leave a field blank to remove that adjustment.</p>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:8px;">Give this one student a later deadline or another sitting, without changing anything for the rest of the class. Leave a field blank to remove that adjustment.</p>'+
+    '<p style="font-size:12.5px;color:#FBBF24;margin-bottom:12px;">If the student has already used their attempt, a new deadline alone will not let them back in \u2014 they will still see \u201Cno attempts left\u201D. Set <b>extra attempts</b> to 1 as well.</p>'+
     '<div id="rsBody">'+loadingCard()+'</div>'+
     '<div class="inline-actions" style="margin-top:14px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="rsClose">Close</button></div></div>';
   document.body.appendChild(ov);
@@ -3747,12 +3748,26 @@ function startGradedQuiz(chapter) {
         if (dl && !dl.error && dl.data && dl.data.closes_at) {
           closesAt = new Date(dl.data.closes_at).getTime();
         }
-        if (closesAt !== null && Date.now() > closesAt) {
-          area.innerHTML = errCard('The Chapter ' + chapter + ' quiz closed on ' + new Date(closesAt).toLocaleString() + '. It can no longer be taken. You can review the questions you missed using "Review missed questions".');
-          return;
-        }
-        proceed(closesAt);
+        // A per-student reschedule replaces the class deadline for this student.
+        // Fails open: no table or no row leaves the class deadline in place.
+        sb.from('sa_quiz_deadline_overrides').select('closes_at')
+          .eq('course_id', courseId).eq('chapter', chapter)
+          .eq('student_id', uid).maybeSingle()
+          .then(function (ov) {
+            if (ov && !ov.error && ov.data) {
+              closesAt = ov.data.closes_at ? new Date(ov.data.closes_at).getTime() : null;
+            }
+            afterDeadline(closesAt);
+          }, function () { afterDeadline(closesAt); });
       }, function () { proceed(null); });
+
+    function afterDeadline(closesAt) {
+      if (closesAt !== null && Date.now() > closesAt) {
+        area.innerHTML = errCard('The Chapter ' + chapter + ' quiz closed on ' + new Date(closesAt).toLocaleString() + '. It can no longer be taken. You can review the questions you missed using "Review missed questions".');
+        return;
+      }
+      proceed(closesAt);
+    }
   } catch (e) { proceed(null); }
 }
 
@@ -4563,6 +4578,21 @@ function loadMyExams() {
       var accoms = r[2].data ? r[2].data : [];
       var accomByCourse = {}; accoms.forEach(function(a){ accomByCourse[a.course_id]=a; });
       if (exams.length === 0) { host.innerHTML = '<div class="card empty">No exams have been assigned yet.</div>'; return; }
+      // Per-student rescheduling. Without this the student sees the CLASS dates
+      // and is told the exam is closed even after the instructor moved it for
+      // them. Fails open: no overrides table, or no row, means class dates.
+      var myOverride = {};
+      sb.from('sa_exam_overrides')
+        .select('exam_id,opens_at,closes_at,extra_attempts')
+        .eq('student_id', State.user.id)
+        .then(function(ovr){
+          if(ovr && !ovr.error && ovr.data){
+            ovr.data.forEach(function(o){ myOverride[o.exam_id]=o; });
+          }
+          renderExamCards();
+        }, function(){ renderExamCards(); });
+
+      function renderExamCards(){
       // count graded SITTINGS per exam = graded attempts on that exam's first item
       var sittingsBy = {}; var lastPts = {};
       exams.forEach(function(e){ sittingsBy[e.id]=0; });
@@ -4598,30 +4628,43 @@ function loadMyExams() {
         var nItems = e.random_per_student ? (perSittingOf[e.id]||0) : (e.item_ids ? e.item_ids.length : 0);
         var sittings = sittingsBy[e.id]||0;
         var acc = accomByCourse[e.course_id];
+        var ovr = myOverride[e.id];
         var baseAtt = (e.max_attempts===null||e.max_attempts===undefined)?1:Number(e.max_attempts);
         var allowed = baseAtt===0 ? 0 : baseAtt + (acc?Number(acc.extra_attempts):0);
+        if(ovr && ovr.extra_attempts && allowed!==0){ allowed = allowed + Number(ovr.extra_attempts); }
+        // The instructor's dates for THIS student win over the class dates.
+        var effOpens  = (ovr && ovr.opens_at)  ? ovr.opens_at  : e.opens_at;
+        var effCloses = (ovr && ovr.closes_at) ? ovr.closes_at : e.closes_at;
         var now = Date.now();
-        var notOpen = e.opens_at && now < new Date(e.opens_at).getTime();
-        var closed = e.closes_at && now > new Date(e.closes_at).getTime();
+        var notOpen = effOpens && now < new Date(effOpens).getTime();
+        var closed = effCloses && now > new Date(effCloses).getTime();
         var attemptsLeft = (allowed===0) ? 'unlimited' : Math.max(0, allowed - sittings);
         var tmin = e.time_limit_minutes ? (acc && Number(acc.time_multiplier)!==1 ? Math.round(e.time_limit_minutes*Number(acc.time_multiplier)) : e.time_limit_minutes) : null;
         var statusHtml, action;
-        if (notOpen) { statusHtml='<span class="tag dim">Opens '+new Date(e.opens_at).toLocaleString()+'</span>'; action='<button class="btn btn-ghost btn-sm" disabled>Not open</button>'; }
+        if (notOpen) { statusHtml='<span class="tag dim">Opens '+new Date(effOpens).toLocaleString()+'</span>'; action='<button class="btn btn-ghost btn-sm" disabled>Not open</button>'; }
         else if (closed) { statusHtml='<span class="tag rose">Closed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>Closed</button>'; }
         else if (allowed!==0 && sittings>=allowed) {
           var pctS = e.total_points && earnedBy[e.id]!==undefined ? Math.round((earnedBy[e.id]/(e.total_points*Math.max(1,sittings)))*100) : null;
-          var canReview = (e.closes_at && now > new Date(e.closes_at).getTime()) || (!e.closes_at && sittings>0);
+          var canReview = (effCloses && now > new Date(effCloses).getTime()) || (!effCloses && sittings>0);
           var reviewBtn = canReview ? ' <button class="btn btn-ghost btn-sm" data-review="'+e.id+'">Review answers</button>' : '';
           statusHtml='<span class="tag green">Completed</span>'; action='<button class="btn btn-ghost btn-sm" disabled>No attempts left</button>'+reviewBtn;
         }
         else { statusHtml='<span class="tag amber">'+(sittings>0?('Attempt '+(sittings+1)):'Not taken')+'</span>'; action='<button class="btn btn-primary btn-sm" data-start="'+e.id+'">'+(sittings>0?'Retake':'Start exam')+'</button>'; }
         var meta = nItems + ' questions · ' + (e.total_points||0) + ' pts';
+        var reschedNote = '';
+        if(ovr && (ovr.closes_at || ovr.opens_at || ovr.extra_attempts)){
+          var bits=[];
+          if(ovr.opens_at){ bits.push('opens ' + new Date(ovr.opens_at).toLocaleString()); }
+          if(ovr.closes_at){ bits.push('due ' + new Date(ovr.closes_at).toLocaleString()); }
+          if(ovr.extra_attempts){ bits.push('+' + ovr.extra_attempts + ' attempt' + (Number(ovr.extra_attempts)===1?'':'s')); }
+          reschedNote = '<div style="font-size:12.5px;color:#34D399;margin-top:4px;">✓ Rescheduled for you — ' + esc(bits.join(' · ')) + '</div>';
+        }
         if (tmin) { meta += ' · ' + tmin + ' min' + (acc && Number(acc.time_multiplier)!==1 ? ' (incl. your accommodation)' : ''); }
         meta += ' · attempts left: ' + attemptsLeft;
         html += '<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
           '<div><div style="font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.07em;">' + esc(titleById[e.course_id]||'') + ' · ' + esc(e.kind) + '</div>' +
           '<div style="font-size:18px;color:var(--text-bright);font-family:Instrument Serif,serif;">' + esc(e.title) + '</div>' +
-          '<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">' + meta + '</div></div>' +
+          '<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">' + meta + '</div>' + reschedNote + '</div>' +
           '<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">' + statusHtml + action + '</div></div>';
       });
       host.innerHTML = html;
@@ -4636,6 +4679,7 @@ function loadMyExams() {
           if (exam) { startExam(exam, acc); }
         });
       });
+      } // end renderExamCards
     });
   });
 }
