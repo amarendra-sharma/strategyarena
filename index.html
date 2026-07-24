@@ -650,6 +650,14 @@ function applyTeachingNav(){
   if($('teachGroup')){
     if(teaches){ show($('teachGroup')); } else { hide($('teachGroup')); }
   }
+  // A TA sees only the teaching tabs they are permitted to open, so nothing in
+  // the menu leads to a dead end.
+  if(teaches && role!=='instructor' && role!=='admin'){
+    Array.prototype.forEach.call(document.querySelectorAll('#teachGroup [data-view]'), function(btn){
+      var v = btn.getAttribute('data-view');
+      if(viewAllowed(v)){ btn.classList.remove('hidden'); } else { btn.classList.add('hidden'); }
+    });
+  }
   if($('adminGroup')){
     if(role==='admin'){ show($('adminGroup')); } else { hide($('adminGroup')); }
   }
@@ -672,7 +680,7 @@ function loadCourses(){
     // Courses this person is a TA on are added to the same picker. Fails open:
     // if the staff table is not installed, nothing changes for anyone.
     return sb.from('sa_course_staff')
-      .select('course_id,can_view_work,can_grade,can_manage_deadlines,can_edit_items')
+      .select('*')
       .eq('user_id', State.user.id)
       .then(function(st){
         State.staff = {};
@@ -764,10 +772,40 @@ Array.prototype.forEach.call(document.querySelectorAll('.nav-item'), function(it
 function isStudentView(v){ for(var i=0;i<STUDENT_VIEWS.length;i++){ if(STUDENT_VIEWS[i]===v){ return true; } } return false; }
 var INSTRUCTOR_VIEWS = ['dashboard','courses','roster','materials','announce','gradebook','analytics','exams','assignments','grading'];
 var ADMIN_VIEWS = ['platform','people','subscriptions','diagnostics'];
+// Which teaching screens a TA may open, and the permission each one needs.
+// Anything not listed here stays owner/instructor only - a TA never reaches
+// course settings, the roster, materials, or announcements.
+var STAFF_VIEW_PERM = {
+  gradebook:   'gradebook',
+  assignments: 'assignments',
+  grading:     'grade',
+  analytics:   'view_work'
+};
+
+// True if the signed-in user is staff on ANY course with this permission.
+// Per-course enforcement still happens in the database on every read and write;
+// this only decides whether the screen opens.
+function staffCan(perm){
+  var st = State.staff || {};
+  for(var k in st){
+    if(!Object.prototype.hasOwnProperty.call(st, k)){ continue; }
+    var r = st[k] || {};
+    if(perm==='gradebook'   && r.can_view_gradebook   !== false){ return true; }
+    if(perm==='assignments' && r.can_view_assignments !== false){ return true; }
+    if(perm==='grade'       && r.can_grade){ return true; }
+    if(perm==='view_work'   && r.can_view_work){ return true; }
+  }
+  return false;
+}
+
 function viewAllowed(view){
   if(isStudentView(view)){ return true; }
   if(ADMIN_VIEWS.indexOf(view)>=0){ return State.role==='admin'; }
-  if(INSTRUCTOR_VIEWS.indexOf(view)>=0){ return State.role==='instructor' || State.role==='admin'; }
+  if(INSTRUCTOR_VIEWS.indexOf(view)>=0){
+    if(State.role==='instructor' || State.role==='admin'){ return true; }
+    var perm = STAFF_VIEW_PERM[view];
+    return perm ? staffCan(perm) : false;
+  }
   return true;
 }
 function switchView(view){
@@ -1400,6 +1438,8 @@ function openTeachingTeam(courseId){
       '<div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Add someone</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'+
         '<input type="email" id="ttEmail" placeholder="ta@binghamton.edu" style="flex:1;min-width:210px;font-size:13px;padding:6px 9px;">'+
+        '<label style="font-size:12px;color:var(--text-muted);"><input type="checkbox" id="ttGradebook" checked> gradebook</label>'+
+        '<label style="font-size:12px;color:var(--text-muted);"><input type="checkbox" id="ttAssign" checked> assignments</label>'+
         '<label style="font-size:12px;color:var(--text-muted);"><input type="checkbox" id="ttGrade" checked> can grade</label>'+
         '<label style="font-size:12px;color:var(--text-muted);"><input type="checkbox" id="ttDeadlines"> can reschedule</label>'+
         '<label style="font-size:12px;color:var(--text-muted);"><input type="checkbox" id="ttItems"> can edit questions</label>'+
@@ -1424,6 +1464,8 @@ function openTeachingTeam(courseId){
       var h='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Person</th><th scope="col">Can do</th><th scope="col"></th></tr></thead><tbody>';
       rows.forEach(function(m){
         var perms=[];
+        if(m.can_view_gradebook !== false){ perms.push('gradebook'); }
+        if(m.can_view_assignments !== false){ perms.push('assignments'); }
         if(m.can_view_work){ perms.push('see work'); }
         if(m.can_grade){ perms.push('grade'); }
         if(m.can_manage_deadlines){ perms.push('reschedule'); }
@@ -1453,7 +1495,8 @@ function openTeachingTeam(courseId){
     $('ttAdd').disabled=true; msg.style.color='var(--text-muted)'; msg.textContent='Adding\u2026';
     sb.rpc('sa_add_course_staff',{ p_course_id:courseId, p_email:em,
       p_can_grade:$('ttGrade').checked, p_can_view:true,
-      p_deadlines:$('ttDeadlines').checked, p_items:$('ttItems').checked, p_label:'TA' }).then(function(r){
+      p_deadlines:$('ttDeadlines').checked, p_items:$('ttItems').checked, p_label:'TA',
+      p_gradebook:$('ttGradebook').checked, p_assignments:$('ttAssign').checked }).then(function(r){
       $('ttAdd').disabled=false;
       if(r && r.error){ msg.style.color='#FB7185'; msg.textContent=String(r.error.message||r.error); return; }
       var out=(r && r.data)?String(r.data):'Added.';
