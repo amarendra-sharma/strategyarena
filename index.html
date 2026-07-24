@@ -609,17 +609,8 @@ function onSignedIn(user){
 function enterApp(user){
   show($('appScreen'));
   $('sideUser').textContent=user.email;
-  var role=State.role;
-  // A TA may have a plain student profile. If they are on any course's teaching
-  // team, they still need the teaching menu - for the courses they staff only.
   State.staff = State.staff || {};
-  var isStaffSomewhere = false;
-  for(var _k in State.staff){ if(Object.prototype.hasOwnProperty.call(State.staff,_k)){ isStaffSomewhere = true; break; } }
-  var teaches = (role==='instructor' || role==='admin' || isStaffSomewhere);
-  $('sideRole').textContent = (role==='admin') ? 'Super Administrator'
-    : (role==='instructor' ? 'Instructor' : (isStaffSomewhere ? 'Teaching Assistant' : 'Student'));
-  if(teaches){ show($('teachGroup')); } else { hide($('teachGroup')); }
-  if(role==='admin'){ show($('adminGroup')); } else { hide($('adminGroup')); }
+  applyTeachingNav();
   // student self-study provisioning (own course for practice/progress)
   // platform settings (needed by the subscribe prompt for everyone) + access
   loadPlatformSettings();
@@ -632,12 +623,37 @@ function enterApp(user){
     renderChapters(); renderArenas(); fillPracticeChapters();
     maybeHandleInboundCourse();
   });
-  // teaching data (only matters if they teach, but harmless otherwise)
-  if(role==='instructor' || role==='admin'){
-    loadCourses().then(function(){ switchView('home'); });
-  } else {
+  // Teaching data. This ALWAYS runs now, because a TA usually has a plain
+  // student profile - the only way to know they are on a teaching team is to
+  // look. loadCourses fills State.staff, so the nav is re-applied afterwards.
+  loadCourses().then(function(){
+    applyTeachingNav();
     switchView('home');
+  }, function(){
+    applyTeachingNav();
+    switchView('home');
+  });
+}
+
+// Shows or hides the teaching menu. Safe to call more than once: it is called
+// at sign-in (before we know about staff roles) and again once they load.
+function applyTeachingNav(){
+  var role = State.role;
+  var isStaff = false;
+  var st = State.staff || {};
+  for(var k in st){ if(Object.prototype.hasOwnProperty.call(st, k)){ isStaff = true; break; } }
+  var teaches = (role==='instructor' || role==='admin' || isStaff);
+  if($('sideRole')){
+    $('sideRole').textContent = (role==='admin') ? 'Super Administrator'
+      : (role==='instructor' ? 'Instructor' : (isStaff ? 'Teaching Assistant' : 'Student'));
   }
+  if($('teachGroup')){
+    if(teaches){ show($('teachGroup')); } else { hide($('teachGroup')); }
+  }
+  if($('adminGroup')){
+    if(role==='admin'){ show($('adminGroup')); } else { hide($('adminGroup')); }
+  }
+  return teaches;
 }
 function loadPlatformSettings(){
   return sb.from('sa_platform_settings').select('*').eq('id',1).maybeSingle().then(function(res){
