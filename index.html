@@ -2235,60 +2235,119 @@ function renderGraderKeyCard(){
   });
 }
 
-// Shared renderer for the Grading tab. Rows arrive either from the definer RPC
-// (which carries prompt/points/email inline) or from the older direct read.
+// Shared renderer for the Grading tab.
+// Answers are grouped: exams first, then chapter quizzes, then practice. Inside
+// each group they are grouped by QUESTION, with the students who answered it
+// listed underneath. That way you read the prompt once and grade the whole class
+// against it, instead of scrolling past the same question nineteen times.
+var GradingRows = [];
+var GradingShowGraded = false;
+
+function gradingGroupKey(r){
+  if(r.source==='exam'){ return 'A|' + (r.exam_title || 'Exam'); }
+  if(r.source==='quiz'){ return 'B|Chapter ' + (r.chapter===null||r.chapter===undefined?'?':r.chapter) + ' quiz'; }
+  return 'C|Practice \u00b7 Chapter ' + (r.chapter===null||r.chapter===undefined?'?':r.chapter);
+}
+
 function renderPendingWritten(rows){
   var body=$('gradingBody'); if(!body){ return; }
-  if(!rows || rows.length===0){
-    body.innerHTML='<div class="card empty">No written answers are waiting to be graded in this course. Auto-graded questions (multiple choice, numeric) are scored on submission and do not appear here.</div>';
+  GradingRows = rows || [];
+
+  var toolbar =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">' +
+      '<div style="font-size:13px;color:var(--text-muted);" id="gqCount"></div>' +
+      '<div class="inline-actions">' +
+        '<label style="font-size:12px;color:var(--text-muted);margin-right:6px;"><input type="checkbox" id="gqGraded"' + (GradingShowGraded?' checked':'') + '> show already graded</label>' +
+        '<button class="btn btn-ghost btn-sm" id="gqExpand">Expand all</button>' +
+        '<button class="btn btn-ghost btn-sm" id="aiAll">Run AI grading on all</button>' +
+        '<button class="btn btn-primary btn-sm" id="finAll">Finalize all reviewed</button>' +
+      '</div></div>';
+
+  if(GradingRows.length===0){
+    body.innerHTML = toolbar + '<div class="card empty">Nothing is waiting to be graded here. Auto-graded questions are scored on submission, and anything you have already scored is hidden \u2014 tick <b>show already graded</b> to see it.</div>';
+    wireGradingToolbar();
     return;
   }
-  var pendingAI=rows.filter(function(a){ return !a.ai_graded_at; }).length;
-  var head='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">' +
-    '<div style="font-size:13px;color:var(--text-muted);">' + rows.length + ' written ' + (rows.length===1?'answer':'answers') + ' awaiting review' + (pendingAI>0?(' \u00b7 ' + pendingAI + ' not yet AI-graded'):'') + '</div>' +
-    '<div class="inline-actions"><button class="btn btn-ghost btn-sm" id="aiAll">Run AI grading on all</button><button class="btn btn-primary btn-sm" id="finAll">Finalize all reviewed</button></div></div>';
-  var html='';
-  rows.forEach(function(a){
-    var maxP = (a._max===null||a._max===undefined) ? 1 : a._max;
-    var who  = a._email || a.student_id;
-    var aiBlock = a.ai_graded_at
-      ? '<div style="margin-top:8px;padding:9px 11px;border-radius:8px;background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.22);">' +
-          '<div style="font-size:11px;color:var(--violet);text-transform:uppercase;letter-spacing:.06em;">AI suggestion</div>' +
-          '<div style="font-size:13px;color:var(--text-bright);margin-top:2px;">Score: ' + a.ai_score + ' / ' + maxP + '</div>' +
-          '<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">' + esc(a.ai_feedback||'') + '</div>' +
-          '<button class="btn btn-ghost btn-sm" data-useai="' + a.id + '" style="margin-top:6px;">Use this score</button></div>'
-      : '<div style="margin-top:8px;font-size:12px;color:var(--text-subtle);">No AI suggestion yet.</div>';
-    html +=
-      '<div class="card" style="margin-bottom:12px;" data-attempt="' + a.id + '">' +
-        '<div style="font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;">' + esc(who) + ' \u00b7 ' + esc(a.item_id||'') + ' \u00b7 ' + maxP + ' pts</div>' +
-        '<div style="font-size:14px;color:var(--text-bright);margin:4px 0 8px;">' + esc(a._prompt||'') + '</div>' +
-        '<div style="font-size:13px;color:var(--text);background:var(--bg2);border-radius:8px;padding:10px;white-space:pre-wrap;">' + (a.submitted_value?esc(a.submitted_value):'<span style="color:var(--text-subtle);">(left blank)</span>') + '</div>' +
-        aiBlock +
-        '<div style="display:flex;gap:10px;align-items:flex-end;margin-top:12px;flex-wrap:wrap;">' +
-          '<div class="field" style="max-width:120px;margin:0;"><label>Score (/' + maxP + ')</label><input class="gradeScore" data-id="' + a.id + '" type="number" min="0" max="' + maxP + '" step="0.5" value="' + (a.ai_graded_at?a.ai_score:'') + '"></div>' +
-          '<div class="field" style="flex:1;min-width:220px;margin:0;"><label>Feedback (optional)</label><input class="gradeFb" data-id="' + a.id + '" value="' + esc(a.ai_feedback||'') + '"></div>' +
-          '<button class="btn btn-ghost btn-sm" data-ai="' + a.id + '">Run AI</button>' +
-          '<button class="btn btn-primary btn-sm" data-final="' + a.id + '">Finalize</button>' +
-        '</div>' +
-      '</div>';
+
+  // group -> question -> students
+  var groups={}, order=[];
+  GradingRows.forEach(function(r){
+    var gk=gradingGroupKey(r);
+    if(!groups[gk]){ groups[gk]={ label:gk.slice(2), items:{}, itemOrder:[], n:0 }; order.push(gk); }
+    var g=groups[gk];
+    if(!g.items[r.item_id]){ g.items[r.item_id]={ prompt:r.prompt, rubric:r.rubric, max:r.max_points, rows:[] }; g.itemOrder.push(r.item_id); }
+    g.items[r.item_id].rows.push(r);
+    g.n++;
   });
-  body.innerHTML=head+html;
-  $('aiAll').addEventListener('click', function(){ runAIGrade(null); });
-  if($('finAll')){ $('finAll').addEventListener('click', function(){
-    if(!window.confirm('Finalize all answers that have an AI suggestion, accepting the AI score? You can still re-grade individuals afterward.')){ return; }
-    $('finAll').disabled=true; $('finAll').textContent='Finalizing\u2026';
-    sb.functions.invoke('ai-grade',{ body:{ action:'finalize_all', course_id:State.teachCourseId } }).then(function(fn){
-      if(fn.error || (fn.data && fn.data.error)){ $('finAll').disabled=false; $('finAll').textContent='Finalize all reviewed'; alert((fn.data&&fn.data.error)?fn.data.error:(fn.error?fn.error.message:'Failed')); return; }
-      loadPendingWritten();
+  order.sort();
+
+  var ungraded = GradingRows.filter(function(r){ return !r.graded_at; }).length;
+  var noAI     = GradingRows.filter(function(r){ return !r.graded_at && !r.ai_graded_at; }).length;
+
+  var html='';
+  order.forEach(function(gk){
+    var g=groups[gk];
+    html += '<details class="gqGroup" open style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden;">' +
+      '<summary style="cursor:pointer;padding:10px 13px;background:var(--bg2);font-size:13.5px;color:var(--text-bright);">' +
+        esc(g.label) + ' <span style="font-size:11.5px;color:var(--text-subtle);">\u00b7 ' + g.n + ' answer' + (g.n===1?'':'s') + '</span></summary>' +
+      '<div style="padding:12px 13px;">';
+
+    g.itemOrder.forEach(function(iid){
+      var q=g.items[iid];
+      var maxP=(q.max===null||q.max===undefined)?1:q.max;
+      html += '<div style="margin-bottom:16px;">' +
+        '<div style="font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;">' + esc(iid) + ' \u00b7 ' + maxP + ' pts \u00b7 ' + q.rows.length + ' student' + (q.rows.length===1?'':'s') + '</div>' +
+        '<div style="font-size:14px;color:var(--text-bright);margin:4px 0 6px;">' + esc(q.prompt||'') + '</div>' +
+        (q.rubric?('<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;"><b>Rubric:</b> ' + esc(q.rubric) + '</div>'):'');
+
+      q.rows.forEach(function(a){
+        var who = a.student_name || a.student_email || a.student_id;
+        var done = !!a.graded_at;
+        var aiBlock = a.ai_graded_at
+          ? '<div style="margin-top:7px;padding:8px 10px;border-radius:8px;background:rgba(124,92,255,.08);border:1px solid rgba(124,92,255,.22);">' +
+              '<div style="font-size:11px;color:var(--violet);text-transform:uppercase;letter-spacing:.06em;">AI suggestion \u00b7 ' + a.ai_score + ' / ' + maxP + '</div>' +
+              '<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">' + esc(a.ai_feedback||'') + '</div>' +
+              '<button class="btn btn-ghost btn-sm" data-useai="' + a.attempt_id + '" style="margin-top:6px;">Use this score</button></div>'
+          : '';
+        html +=
+          '<div class="card" style="margin-bottom:9px;background:var(--bg2);" data-attempt="' + a.attempt_id + '">' +
+            '<div style="font-size:12px;color:var(--text-subtle);display:flex;gap:7px;align-items:center;flex-wrap:wrap;">' +
+              '<b style="color:var(--text);">' + esc(who) + '</b>' +
+              (done?('<span class="tag" style="background:rgba(52,211,153,.15);color:#34D399;">graded ' + (a.points_earned===null||a.points_earned===undefined?'':a.points_earned + '/' + maxP) + '</span>')
+                   :'<span class="tag rose">needs a score</span>') + '</div>' +
+            '<div style="font-size:13px;color:var(--text);margin-top:6px;white-space:pre-wrap;">' + (a.submitted_value?esc(a.submitted_value):'<span style="color:var(--text-subtle);">(left blank)</span>') + '</div>' +
+            aiBlock +
+            '<div style="display:flex;gap:9px;align-items:flex-end;margin-top:10px;flex-wrap:wrap;">' +
+              '<div class="field" style="max-width:110px;margin:0;"><label>Score (/' + maxP + ')</label>' +
+                '<input class="gradeScore" data-id="' + a.attempt_id + '" type="number" min="0" max="' + maxP + '" step="0.5" value="' + (done && a.points_earned!==null && a.points_earned!==undefined ? a.points_earned : (a.ai_graded_at?a.ai_score:'')) + '"></div>' +
+              '<div class="field" style="flex:1;min-width:200px;margin:0;"><label>Feedback (optional)</label>' +
+                '<input class="gradeFb" data-id="' + a.attempt_id + '" value="' + esc(a.ai_feedback||'') + '"></div>' +
+              '<button class="btn btn-ghost btn-sm" data-ai="' + a.attempt_id + '">Run AI</button>' +
+              '<button class="btn btn-primary btn-sm" data-final="' + a.attempt_id + '">' + (done?'Update':'Finalize') + '</button>' +
+            '</div>' +
+          '</div>';
+      });
+      html += '</div>';
     });
-  }); }
+    html += '</div></details>';
+  });
+
+  body.innerHTML = toolbar + html;
+  var cnt=$('gqCount');
+  if(cnt){
+    cnt.innerHTML = ungraded + ' answer' + (ungraded===1?'':'s') + ' still need a score' +
+      (noAI>0?(' \u00b7 ' + noAI + ' with no AI suggestion yet'):'') +
+      (GradingShowGraded?(' \u00b7 showing ' + GradingRows.length + ' total'):'');
+  }
+  wireGradingToolbar();
+
   Array.prototype.forEach.call(body.querySelectorAll('[data-ai]'), function(b){
     b.addEventListener('click', function(){ runAIGrade(b.getAttribute('data-ai')); });
   });
   Array.prototype.forEach.call(body.querySelectorAll('[data-useai]'), function(b){
     b.addEventListener('click', function(){
       var id=b.getAttribute('data-useai');
-      var a=rows.filter(function(x){ return x.id===id; })[0];
+      var a=GradingRows.filter(function(x){ return x.attempt_id===id; })[0];
       var sc=body.querySelector('.gradeScore[data-id="'+id+'"]'); if(sc&&a){ sc.value=a.ai_score; }
       var fb=body.querySelector('.gradeFb[data-id="'+id+'"]'); if(fb&&a){ fb.value=a.ai_feedback||''; }
     });
@@ -2296,6 +2355,34 @@ function renderPendingWritten(rows){
   Array.prototype.forEach.call(body.querySelectorAll('[data-final]'), function(b){
     b.addEventListener('click', function(){ finalizeGrade(b.getAttribute('data-final')); });
   });
+}
+
+function wireGradingToolbar(){
+  var body=$('gradingBody'); if(!body){ return; }
+  if($('aiAll')){ $('aiAll').addEventListener('click', function(){ runAIGrade(null); }); }
+  if($('gqGraded')){
+    $('gqGraded').addEventListener('change', function(){
+      GradingShowGraded = $('gqGraded').checked;
+      loadPendingWritten();
+    });
+  }
+  if($('gqExpand')){
+    $('gqExpand').addEventListener('click', function(){
+      var open = $('gqExpand').textContent.indexOf('Expand')>=0;
+      Array.prototype.forEach.call(body.querySelectorAll('details.gqGroup'), function(d){ d.open = open; });
+      $('gqExpand').textContent = open ? 'Collapse all' : 'Expand all';
+    });
+  }
+  if($('finAll')){
+    $('finAll').addEventListener('click', function(){
+      if(!window.confirm('Finalize all answers that have an AI suggestion, accepting the AI score? You can still re-grade individuals afterward.')){ return; }
+      $('finAll').disabled=true; $('finAll').textContent='Finalizing\u2026';
+      sb.functions.invoke('ai-grade',{ body:{ action:'finalize_all', course_id:State.teachCourseId } }).then(function(fn){
+        if(fn.error || (fn.data && fn.data.error)){ $('finAll').disabled=false; $('finAll').textContent='Finalize all reviewed'; alert((fn.data&&fn.data.error)?fn.data.error:(fn.error?fn.error.message:'Failed')); return; }
+        loadPendingWritten();
+      });
+    });
+  }
 }
 
 function loadPendingWritten(){
@@ -2307,15 +2394,9 @@ function loadPendingWritten(){
   // policies on sa_attempts. That direct read returns nothing for some courses
   // even when you own them, which is why this tab looked empty and the AI
   // grading panel never appeared. Falls back to the old read if 83 is not in.
-  sb.rpc('sa_instructor_pending_written',{ p_course_id: State.teachCourseId }).then(function(rp){
+  sb.rpc('sa_instructor_pending_written',{ p_course_id: State.teachCourseId, p_include_graded: GradingShowGraded }).then(function(rp){
     if(rp && !rp.error && rp.data){
-      var rows = rp.data.map(function(r){
-        return { id:r.attempt_id, student_id:r.student_id, item_id:r.item_id, exam_id:r.exam_id,
-                 submitted_value:r.submitted_value, ai_score:r.ai_score, ai_feedback:r.ai_feedback,
-                 ai_graded_at:r.ai_graded_at, graded_at:null, points_earned:null,
-                 _prompt:r.prompt, _max:r.max_points, _email:r.student_email };
-      });
-      renderPendingWritten(rows, true);
+      renderPendingWritten(rp.data);
       return;
     }
     legacyLoadPendingWritten();
