@@ -1410,7 +1410,7 @@ function openReschedule(courseId, studentId, studentName){
     $('rsBody').innerHTML='<div class="msg err" style="display:block;">Rescheduling is not installed yet. Run <b>71_student_rescheduling.sql</b> in the Supabase SQL editor, then reopen this window.</div>';
   }
 
-  var exOver={}, qzOver=[];
+  var exOver={}, qzOver=[], unfin={};
   sb.from('sa_exams').select('id,title,closes_at').eq('course_id',courseId).then(function(ex){
     if(ex && ex.error){ notInstalled(); return null; }
     var exams=(ex && ex.data)?ex.data:[];
@@ -1426,16 +1426,40 @@ function openReschedule(courseId, studentId, studentName){
           .eq('course_id',courseId).eq('student_id',studentId)
           .then(function(qo){
             if(qo && !qo.error && qo.data){ qzOver=qo.data.slice().sort(function(a,b){ return a.chapter-b.chapter; }); }
-            return exams;
+            // How much unfinished work this student has on EACH exam. Several
+            // exams can share a title, so this is the only way to tell which
+            // record actually holds their answers.
+            return sb.rpc('sa_student_unfinished_by_exam',{ p_course_id:courseId, p_student_id:studentId })
+              .then(function(uf){
+                if(uf && !uf.error && uf.data){ uf.data.forEach(function(r){ unfin[r.exam_id]=r; }); }
+                return exams;
+              }, function(){ return exams; });
           }, function(){ return exams; });
       }, function(){ return exams; });
   }, function(){ notInstalled(); return null; }).then(function(exams){
     if(!exams){ return; }
     var h='<div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Exams</div>';
     if(exams.length===0){ h+='<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">No exams in this course.</div>'; }
+    exams.sort(function(a,b){
+      var ra=(unfin[a.id]?Number(unfin[a.id].rows_present):0);
+      var rb=(unfin[b.id]?Number(unfin[b.id].rows_present):0);
+      return rb-ra;
+    });
     exams.forEach(function(e){
       var base=e.closes_at?(' \u00b7 class deadline '+new Date(e.closes_at).toLocaleString()):' \u00b7 no deadline';
       var o=exOver[e.id];
+      var u=unfin[e.id];
+      var workLine='';
+      if(u && Number(u.rows_present)>0){
+        var wb=[];
+        wb.push(u.answered+' answered');
+        if(Number(u.blank)>0){ wb.push('<b style="color:#FB7185;">'+u.blank+' unanswered</b>'); }
+        if(Number(u.never_issued)>0){ wb.push('<b style="color:#FBBF24;">'+u.never_issued+' never shown</b>'); }
+        if(Number(u.already_open)>0){ wb.push('<span style="color:#34D399;">'+u.already_open+' already reopened</span>'); }
+        workLine='<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">This student here: '+wb.join(' \u00b7 ')+'</div>';
+      } else {
+        workLine='<div style="font-size:12px;color:var(--text-subtle);margin-top:3px;">This student has not taken this exam.</div>';
+      }
       var setLine='';
       if(o && (o.closes_at || o.opens_at || o.extra_attempts)){
         var bits=[];
@@ -1449,6 +1473,7 @@ function openReschedule(courseId, studentId, studentName){
       }
       h+='<div style="margin-bottom:10px;padding:9px 11px;border-radius:8px;background:var(--bg2);">'+
         '<div style="font-size:13px;color:var(--text-bright);">'+esc(e.title)+'<span style="font-size:11px;color:var(--text-subtle);">'+esc(base)+'</span></div>'+
+        workLine+
         setLine+
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">'+
           '<label style="font-size:11.5px;color:var(--text-muted);">New deadline</label>'+
@@ -1500,7 +1525,16 @@ function openReschedule(courseId, studentId, studentName){
           }
           var rows=(pv && pv.data)?pv.data:[];
           if(rows.length===0){ msg.style.color='var(--text-muted)'; msg.textContent='No unanswered questions \u2014 nothing to reopen.'; return; }
-          if(!window.confirm('Reopen ' + rows.length + ' unanswered question' + (rows.length===1?'':'s') + ' for this student?\n\nThey will get a Resume option that serves ONLY those questions, with the same wording and numbers they originally saw. Questions they already answered are not touched and their score for those stays as it is.')){ return; }
+          var nWritten=rows.filter(function(r){ return r.item_type==='free_response'; }).length;
+          var nAuto=rows.length-nWritten;
+          var already=rows.filter(function(r){ return r.already_open; }).length;
+          var detail=[];
+          if(nWritten){ detail.push(nWritten+' written'); }
+          if(nAuto){ detail.push(nAuto+' auto-graded'); }
+          if(!window.confirm('Reopen ' + rows.length + ' unanswered question' + (rows.length===1?'':'s') + ' for this student?' +
+             (detail.length?('\n\n(' + detail.join(', ') + ')'):'') +
+             (already?('\n' + already + ' of these ' + (already===1?'is':'are') + ' already open for them.'):'') +
+             '\n\nThey will get a Resume option that serves ONLY those questions, with the same wording and numbers they originally saw. Questions they already answered are not touched and their score for those stays as it is.')){ return; }
           btn.disabled=true; msg.textContent='Reopening\u2026';
           sb.rpc('sa_reopen_unanswered_exam',{ p_exam_id:eid, p_student_id:studentId }).then(function(r){
             btn.disabled=false;
@@ -4724,15 +4758,16 @@ function loadMyExams() {
           if(ovr && !ovr.error && ovr.data){
             ovr.data.forEach(function(o){ myOverride[o.exam_id]=o; });
           }
-          return sb.from('sa_attempts').select('exam_id')
-            .eq('student_id', State.user.id).is('graded_at', null);
+          return sb.rpc('sa_my_resume_counts');
         }, function(){
-          return sb.from('sa_attempts').select('exam_id')
-            .eq('student_id', State.user.id).is('graded_at', null);
+          return sb.rpc('sa_my_resume_counts');
         })
         .then(function(pd){
+          // Counts only questions the instructor reopened that are still blank.
+          // A written answer awaiting grading is NOT counted - it is finished
+          // work, just not marked yet.
           if(pd && !pd.error && pd.data){
-            pd.data.forEach(function(r){ if(r.exam_id){ resumeCount[r.exam_id]=(resumeCount[r.exam_id]||0)+1; } });
+            pd.data.forEach(function(r){ if(r.exam_id){ resumeCount[r.exam_id]=Number(r.remaining)||0; } });
           }
           renderExamCards();
         }, function(){ renderExamCards(); });
