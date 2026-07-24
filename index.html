@@ -1353,6 +1353,48 @@ function saWireGradeBoxes(scope){
   });
 }
 
+// Everything the instructor has rescheduled in this course, in one place.
+function openRescheduleList(courseId){
+  if(!courseId){ return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:760px;"><h3 style="margin-bottom:4px;">Reschedules in this course</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Every deadline change and extra attempt you have granted to an individual student. Use the Reschedule button on a student\u2019s row to change or remove one.</p>'+
+    '<div id="rlBody" style="max-height:60vh;overflow:auto;">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:12px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="rlClose">Close</button></div></div>';
+  document.body.appendChild(ov);
+  $('rlClose').addEventListener('click', function(){ if(ov.parentNode){ document.body.removeChild(ov); } });
+
+  sb.rpc('sa_list_overrides',{ p_course_id:courseId }).then(function(r){
+    var body=$('rlBody'); if(!body){ return; }
+    if(r && r.error){
+      body.innerHTML='<div class="msg err" style="display:block;">Rescheduling is not installed yet. Run <b>71_student_rescheduling.sql</b>, then reopen this window.</div>';
+      return;
+    }
+    var rows=(r && r.data)?r.data:[];
+    if(rows.length===0){
+      body.innerHTML='<div class="card empty">Nothing has been rescheduled in this course yet.</div>';
+      return;
+    }
+    var h='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">What</th><th scope="col">New deadline</th><th scope="col">Extra</th><th scope="col">Note</th></tr></thead><tbody>';
+    rows.forEach(function(o){
+      var when=o.closes_at?new Date(o.closes_at):null;
+      var overdue = when && when.getTime() < Date.now();
+      h+='<tr>'+
+        '<th scope="row" style="font-weight:400;font-size:12.5px;">'+esc(o.email||o.student_id||'')+'</th>'+
+        '<td style="font-size:12.5px;">'+(o.kind==='exam'?'<span class="tag violet">exam</span> ':'<span class="tag">quiz</span> ')+esc(o.label||'')+'</td>'+
+        '<td style="font-size:12.5px;'+(overdue?'color:#FB7185;':'')+'">'+(when?esc(when.toLocaleString())+(overdue?' (passed)':''):'\u2014')+'</td>'+
+        '<td style="font-size:12.5px;">'+((o.extra_attempts&&Number(o.extra_attempts)>0)?('+'+o.extra_attempts):'\u2014')+'</td>'+
+        '<td style="font-size:12px;color:var(--text-muted);">'+esc(o.reason||'')+'</td>'+
+      '</tr>';
+    });
+    h+='</tbody></table></div>';
+    body.innerHTML=h;
+  }, function(){
+    var body=$('rlBody');
+    if(body){ body.innerHTML='<div class="msg err" style="display:block;">Could not load reschedules.</div>'; }
+  });
+}
+
 function openReschedule(courseId, studentId, studentName){
   if(!courseId || !studentId){ return; }
   var ov=document.createElement('div'); ov.className='modal-overlay';
@@ -1368,26 +1410,71 @@ function openReschedule(courseId, studentId, studentName){
     $('rsBody').innerHTML='<div class="msg err" style="display:block;">Rescheduling is not installed yet. Run <b>71_student_rescheduling.sql</b> in the Supabase SQL editor, then reopen this window.</div>';
   }
 
+  var exOver={}, qzOver=[];
   sb.from('sa_exams').select('id,title,closes_at').eq('course_id',courseId).then(function(ex){
-    if(ex && ex.error){ notInstalled(); return; }
+    if(ex && ex.error){ notInstalled(); return null; }
     var exams=(ex && ex.data)?ex.data:[];
+    // Read back what is already set for THIS student, so the window shows the
+    // current state instead of blank fields every time it is opened.
+    return sb.from('sa_exam_overrides')
+      .select('exam_id,opens_at,closes_at,extra_attempts,reason,updated_at')
+      .eq('student_id',studentId)
+      .then(function(eo){
+        if(eo && !eo.error && eo.data){ eo.data.forEach(function(o){ exOver[o.exam_id]=o; }); }
+        return sb.from('sa_quiz_deadline_overrides')
+          .select('chapter,closes_at,reason,updated_at')
+          .eq('course_id',courseId).eq('student_id',studentId)
+          .then(function(qo){
+            if(qo && !qo.error && qo.data){ qzOver=qo.data.slice().sort(function(a,b){ return a.chapter-b.chapter; }); }
+            return exams;
+          }, function(){ return exams; });
+      }, function(){ return exams; });
+  }, function(){ notInstalled(); return null; }).then(function(exams){
+    if(!exams){ return; }
     var h='<div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Exams</div>';
     if(exams.length===0){ h+='<div style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">No exams in this course.</div>'; }
     exams.forEach(function(e){
       var base=e.closes_at?(' \u00b7 class deadline '+new Date(e.closes_at).toLocaleString()):' \u00b7 no deadline';
+      var o=exOver[e.id];
+      var setLine='';
+      if(o && (o.closes_at || o.opens_at || o.extra_attempts)){
+        var bits=[];
+        if(o.closes_at){ bits.push('due '+new Date(o.closes_at).toLocaleString()); }
+        if(o.opens_at){ bits.push('opens '+new Date(o.opens_at).toLocaleString()); }
+        if(o.extra_attempts){ bits.push('+'+o.extra_attempts+' attempt'+(Number(o.extra_attempts)===1?'':'s')); }
+        setLine='<div style="font-size:12px;color:#34D399;margin-top:4px;">\u2713 Currently set for this student: '+esc(bits.join(' \u00b7 '))+
+          (o.updated_at?('<span style="color:var(--text-subtle);"> \u00b7 saved '+new Date(o.updated_at).toLocaleString()+'</span>'):'')+'</div>';
+      } else {
+        setLine='<div style="font-size:12px;color:var(--text-subtle);margin-top:4px;">No change set for this student \u2014 they follow the class deadline.</div>';
+      }
       h+='<div style="margin-bottom:10px;padding:9px 11px;border-radius:8px;background:var(--bg2);">'+
         '<div style="font-size:13px;color:var(--text-bright);">'+esc(e.title)+'<span style="font-size:11px;color:var(--text-subtle);">'+esc(base)+'</span></div>'+
+        setLine+
         '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">'+
           '<label style="font-size:11.5px;color:var(--text-muted);">New deadline</label>'+
-          '<input type="datetime-local" data-ex-when="'+esc(e.id)+'" style="font-size:12.5px;padding:4px 7px;">'+
+          '<input type="datetime-local" data-ex-when="'+esc(e.id)+'" value="'+(o&&o.closes_at?dtLocalValue(o.closes_at):'')+'" style="font-size:12.5px;padding:4px 7px;">'+
           '<label style="font-size:11.5px;color:var(--text-muted);">Extra attempts</label>'+
-          '<input type="number" min="0" max="5" value="0" data-ex-att="'+esc(e.id)+'" style="width:62px;font-size:12.5px;padding:4px 7px;">'+
+          '<input type="number" min="0" max="5" value="'+((o&&o.extra_attempts)?o.extra_attempts:0)+'" data-ex-att="'+esc(e.id)+'" style="width:62px;font-size:12.5px;padding:4px 7px;">'+
           '<button class="btn btn-primary btn-sm" data-ex-save="'+esc(e.id)+'">Apply</button>'+
           '<button class="btn btn-ghost btn-sm" data-ex-finish="'+esc(e.id)+'" title="Reopen only the questions this student never answered">Let them finish unanswered</button>'+
           '<span style="font-size:11.5px;" data-ex-msg="'+esc(e.id)+'"></span>'+
         '</div></div>';
     });
-    h+='<div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px;">Chapter quiz</div>'+
+    h+='<div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px;">Chapter quiz</div>';
+    if(qzOver.length){
+      h+='<div style="margin-bottom:8px;padding:9px 11px;border-radius:8px;background:var(--bg2);">'+
+         '<div style="font-size:12px;color:var(--text-muted);margin-bottom:5px;">Already set for this student:</div>';
+      qzOver.forEach(function(q){
+        h+='<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:3px 0;">'+
+             '<span style="font-size:12.5px;color:#34D399;">\u2713 Chapter '+q.chapter+' \u2014 due '+esc(new Date(q.closes_at).toLocaleString())+'</span>'+
+             '<button class="btn btn-ghost btn-sm" data-qz-clear="'+q.chapter+'">Clear</button>'+
+           '</div>';
+      });
+      h+='</div>';
+    } else {
+      h+='<div style="font-size:12.5px;color:var(--text-subtle);margin-bottom:8px;">No quiz deadlines changed for this student.</div>';
+    }
+    h+=''+
       '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px 11px;border-radius:8px;background:var(--bg2);">'+
         '<label style="font-size:11.5px;color:var(--text-muted);">Chapter</label>'+
         '<input type="number" min="1" max="20" value="1" id="rsQzCh" style="width:62px;font-size:12.5px;padding:4px 7px;">'+
@@ -1438,7 +1525,20 @@ function openReschedule(courseId, studentId, studentName){
           btn.disabled=false;
           if(r && r.error){ msg.style.color='#FB7185'; msg.textContent=String(r.error.message||'').indexOf('function')>=0?'Run 71 first.':'Failed'; return; }
           msg.style.color='#34D399'; msg.textContent=(when||att)?'Applied':'Cleared';
+          if(exOver){ exOver[eid]={ closes_at:(when?new Date(when).toISOString():null), extra_attempts:att, updated_at:new Date().toISOString() }; }
         }, function(){ btn.disabled=false; msg.style.color='#FB7185'; msg.textContent='Failed'; });
+      });
+    });
+
+    Array.prototype.forEach.call(ov.querySelectorAll('[data-qz-clear]'), function(b){
+      b.addEventListener('click', function(){
+        var ch=parseInt(b.getAttribute('data-qz-clear'),10);
+        if(!window.confirm('Remove the Chapter '+ch+' extension for this student? They will go back to the class deadline.')){ return; }
+        b.disabled=true;
+        sb.rpc('sa_set_quiz_override',{ p_course_id:courseId, p_chapter:ch, p_student_id:studentId, p_closes_at:null, p_reason:null }).then(function(){
+          if(ov.parentNode){ document.body.removeChild(ov); }
+          openReschedule(courseId, studentId, studentName);
+        }, function(){ b.disabled=false; });
       });
     });
 
@@ -1789,7 +1889,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   });
   var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
     '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data. <b>Assignments</b> are shown for reference; to fold them (or participation) into a student\u2019s final grade, use the <b>Override</b> column \u2014 an entered override becomes the Final grade and is what the CSV exports.</div>'+
-    '<div style="display:flex;gap:8px;"><button class="btn btn-ghost btn-sm" id="staffBtn" title="Give a TA access to grade this course">Teaching team</button><button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button><button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
+    '<div style="display:flex;gap:8px;"><button class="btn btn-ghost btn-sm" id="reschedListBtn" title="See every deadline change and extra attempt you have granted in this course">Reschedules</button><button class="btn btn-ghost btn-sm" id="staffBtn" title="Give a TA access to grade this course">Teaching team</button><button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button><button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
   html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col"></th></tr></thead><tbody>';
   computed.forEach(function(g){
     html+='<tr><th scope="row" style="font-weight:500;">'+esc(g.name||g.email)+'</th><td>'+subTag(g.sub)+'</td>'+
@@ -1808,6 +1908,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   if($('itemStatsBtn')){ $('itemStatsBtn').addEventListener('click', function(){ openItemStats(c.id); }); }
   if($('regradeBtn')){ $('regradeBtn').addEventListener('click', function(){ openRegradeNumeric(c.id, host); }); }
   if($('staffBtn')){ $('staffBtn').addEventListener('click', function(){ openTeachingTeam(c.id); }); }
+  if($('reschedListBtn')){ $('reschedListBtn').addEventListener('click', function(){ openRescheduleList(c.id); }); }
   Array.prototype.forEach.call(host.querySelectorAll('[data-work]'), function(b){
     b.addEventListener('click', function(){ openStudentWork(c.id, b.getAttribute('data-work'), b.getAttribute('data-wname')); });
   });
