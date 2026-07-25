@@ -1304,24 +1304,33 @@ function saGradeBox(r){
   // Written answers can be graded here, through a security-definer function that
   // checks course ownership itself. This does not depend on the row policies, so
   // it works even when the Grading tab cannot read attempts.
-  if(!r || r.item_type !== 'free_response'){ return ''; }
+  if(!r){ return ''; }
   // If the review function has not been upgraded yet it returns no attempt_id,
   // so there is nothing to grade against. Say so plainly rather than silently
   // showing no box - that was previously indistinguishable from a bug.
   if(!r.attempt_id){
     return '<div style="margin-top:8px;font-size:11.5px;color:#FBBF24;">Hand-grading not enabled yet \u2014 run <b>70_grade_from_work_view.sql</b> in the Supabase SQL editor, then reopen this window.</div>';
   }
+  var isWritten = (r.item_type === 'free_response');
   var maxP = (r.max_points===null||r.max_points===undefined) ? 1 : r.max_points;
   var cur  = (r.points_earned===null||r.points_earned===undefined) ? '' : r.points_earned;
   var fb   = r.instructor_feedback ? esc(r.instructor_feedback) : '';
   var done = (r.status === 'graded');
-  return '<div style="margin-top:9px;padding:9px 11px;border-radius:8px;background:rgba(124,92,255,.07);border:1px solid rgba(124,92,255,.2);">'+
+  // Auto-graded questions can be overridden too. A student who writes out their
+  // working in a numeric box ("...which equals 9") is marked wrong by the
+  // grader even when the reasoning and the value are right, and without this
+  // there is no way to correct it.
+  var head = isWritten
+    ? ''
+    : '<div style="font-size:11px;color:#FBBF24;margin-bottom:5px;">Auto-graded \u2014 setting a score here overrides the machine verdict.</div>';
+  return '<div style="margin-top:9px;padding:9px 11px;border-radius:8px;background:'+(isWritten?'rgba(124,92,255,.07)':'rgba(251,191,36,.07)')+';border:1px solid '+(isWritten?'rgba(124,92,255,.2)':'rgba(251,191,36,.25)')+';">'+
+    head+
     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'+
       '<label style="font-size:11.5px;color:var(--text-muted);">Score</label>'+
       '<input type="number" step="0.5" min="0" max="'+esc(String(maxP))+'" value="'+esc(String(cur))+'" data-grade-pts="'+esc(r.attempt_id)+'" style="width:74px;font-size:13px;padding:4px 7px;">'+
       '<span style="font-size:11.5px;color:var(--text-subtle);">of '+esc(String(maxP))+'</span>'+
       '<input type="text" placeholder="Comment for the student (optional)" value="'+fb+'" data-grade-fb="'+esc(r.attempt_id)+'" style="flex:1;min-width:170px;font-size:12.5px;padding:4px 7px;">'+
-      '<button class="btn btn-primary btn-sm" data-grade-save="'+esc(r.attempt_id)+'">'+(done?'Update':'Save grade')+'</button>'+
+      '<button class="btn btn-primary btn-sm" data-grade-save="'+esc(r.attempt_id)+'">'+(isWritten?(done?'Update':'Save grade'):'Override score')+'</button>'+
       '<span style="font-size:11.5px;" data-grade-msg="'+esc(r.attempt_id)+'"></span>'+
     '</div></div>';
 }
@@ -1354,6 +1363,65 @@ function saWireGradeBoxes(scope){
 }
 
 // Everything the instructor has rescheduled in this course, in one place.
+// Chapter quiz scores are stored when the quiz is submitted, so a regrade or a
+// manual override corrects the attempt but not the stored score. This brings
+// them back into line. Dry run first, always.
+function openRecomputeQuiz(courseId, gradebookHost){
+  if(!courseId){ return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:640px;"><h3 style="margin-bottom:4px;">Recompute quiz scores</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Exam grades update themselves, but a chapter quiz score is saved at submission time. After a regrade or a manual override the attempt is right while the stored quiz score is stale. This recalculates it from the attempts that quiz actually used.</p>'+
+    '<div id="rqBody">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:14px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="rqClose">Close</button><button class="btn btn-primary btn-sm" id="rqApply" style="display:none;">Apply changes</button></div></div>';
+  document.body.appendChild(ov);
+  function shut(){ if(ov.parentNode){ document.body.removeChild(ov); } }
+  $('rqClose').addEventListener('click', shut);
+
+  function fail(m){ $('rqBody').innerHTML='<div class="msg err" style="display:block;">'+esc(m)+'</div>'; if($('rqApply')){ $('rqApply').style.display='none'; } }
+
+  function run(dry){ return sb.rpc('sa_recompute_all_quiz_scores',{ p_course_id:courseId, p_dry_run:dry }); }
+
+  run(true).then(function(r){
+    if(r && r.error){
+      fail(String(r.error.message||'').indexOf('function')>=0
+        ? 'Not installed yet \u2014 run 98_recompute_quiz_scores.sql, then reopen this window.'
+        : ('Could not check: '+r.error.message));
+      return;
+    }
+    var rows=(r && r.data)?r.data:[];
+    if(rows.length===0){
+      $('rqBody').innerHTML='<div class="card empty">Every stored quiz score already matches its attempts. Nothing to change.</div>';
+      return;
+    }
+    var h='<div style="font-size:13px;margin-bottom:8px;"><b>'+rows.length+'</b> quiz score'+(rows.length===1?'':'s')+' would change.</div>'+
+      '<div style="max-height:38vh;overflow:auto;"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Ch</th><th scope="col">Now</th><th scope="col">Becomes</th></tr></thead><tbody>';
+    rows.forEach(function(x){
+      var o=(x.old_score===null||x.old_score===undefined)?null:Math.round(Number(x.old_score)*1000)/10;
+      var n=Math.round(Number(x.new_score)*1000)/10;
+      var up=(o===null)||(n>o);
+      h+='<tr><td style="font-size:12.5px;">'+esc(x.student_email||'')+'</td><td>'+esc(String(x.chapter))+'</td>'+
+         '<td style="font-size:12.5px;">'+(o===null?'\u2014':(o+'%'))+'</td>'+
+         '<td style="font-size:12.5px;font-weight:600;color:'+(up?'#34D399':'#FB7185')+';">'+n+'%</td></tr>';
+    });
+    h+='</tbody></table></div>'+
+      '<div style="font-size:11.5px;color:var(--text-subtle);margin-top:8px;">Quizzes taken before attempt tracking was added are skipped rather than guessed at. Written answers still awaiting your grading count as zero until you mark them.</div>';
+    $('rqBody').innerHTML=h;
+    if($('rqApply')){ $('rqApply').style.display=''; }
+  }, function(e){ fail('Could not check: '+String(e&&e.message?e.message:e)); });
+
+  $('rqApply').addEventListener('click', function(){
+    var b=$('rqApply'); b.disabled=true; b.textContent='Applying\u2026';
+    run(false).then(function(r){
+      b.disabled=false;
+      if(r && r.error){ b.textContent='Apply changes'; fail('Could not apply: '+r.error.message); return; }
+      var n=(r && r.data)?r.data.length:0;
+      $('rqBody').innerHTML='<div class="msg ok" style="display:block;">Updated '+n+' quiz score'+(n===1?'':'s')+'.</div>';
+      b.style.display='none';
+      if(gradebookHost){ renderGradebook(gradebookHost); }
+    }, function(e){ b.disabled=false; b.textContent='Apply changes'; fail('Could not apply: '+String(e&&e.message?e.message:e)); });
+  });
+}
+
 function openRescheduleList(courseId){
   if(!courseId){ return; }
   var ov=document.createElement('div'); ov.className='modal-overlay';
@@ -1923,7 +1991,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   });
   var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
     '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data. <b>Assignments</b> are shown for reference; to fold them (or participation) into a student\u2019s final grade, use the <b>Override</b> column \u2014 an entered override becomes the Final grade and is what the CSV exports.</div>'+
-    '<div style="display:flex;gap:8px;"><button class="btn btn-ghost btn-sm" id="reschedListBtn" title="See every deadline change and extra attempt you have granted in this course">Reschedules</button><button class="btn btn-ghost btn-sm" id="staffBtn" title="Give a TA access to grade this course">Teaching team</button><button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button><button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
+    '<div style="display:flex;gap:8px;"><button class="btn btn-ghost btn-sm" id="recalcQuizBtn" title="Update stored chapter quiz scores after regrades or manual overrides">Recompute quiz scores</button><button class="btn btn-ghost btn-sm" id="reschedListBtn" title="See every deadline change and extra attempt you have granted in this course">Reschedules</button><button class="btn btn-ghost btn-sm" id="staffBtn" title="Give a TA access to grade this course">Teaching team</button><button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button><button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
   html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col"></th></tr></thead><tbody>';
   computed.forEach(function(g){
     html+='<tr><th scope="row" style="font-weight:500;">'+esc(g.name||g.email)+'</th><td>'+subTag(g.sub)+'</td>'+
@@ -1943,6 +2011,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   if($('regradeBtn')){ $('regradeBtn').addEventListener('click', function(){ openRegradeNumeric(c.id, host); }); }
   if($('staffBtn')){ $('staffBtn').addEventListener('click', function(){ openTeachingTeam(c.id); }); }
   if($('reschedListBtn')){ $('reschedListBtn').addEventListener('click', function(){ openRescheduleList(c.id); }); }
+  if($('recalcQuizBtn')){ $('recalcQuizBtn').addEventListener('click', function(){ openRecomputeQuiz(c.id, host); }); }
   Array.prototype.forEach.call(host.querySelectorAll('[data-work]'), function(b){
     b.addEventListener('click', function(){ openStudentWork(c.id, b.getAttribute('data-work'), b.getAttribute('data-wname')); });
   });
@@ -4036,6 +4105,7 @@ function renderQuizQuestion() {
   } else {
     var savedN = (QuizState.answers[QuizState.idx] !== undefined) ? esc(QuizState.answers[QuizState.idx]) : '';
     html += '<input type="text" class="num-input" id="quizNum" placeholder="Your answer" value="' + savedN + '" style="margin-top:8px;">';
+    html += '<div style=\"font-size:11.5px;color:var(--text-subtle);margin-top:5px;line-height:1.5;\">Enter the number only \u2014 <b>0.556</b>, <b>5/9</b>, <b>55.6%</b> and <b>$12</b> all work. Please don\u2019t write a sentence: a full explanation cannot be marked automatically.</div>';
   }
   html += '<div class="inline-actions" style="margin-top:16px;justify-content:space-between;">';
   html += '<button class="btn btn-ghost" id="quizPrev"' + (QuizState.idx === 0 ? ' disabled' : '') + '>Back</button>';
@@ -4290,7 +4360,8 @@ function renderQuestion(item) {
       '<button class="q-option" data-val="no">No</button></div>';
   } else {
     html += '<div class="field" style="max-width:260px;"><label>Your answer</label>' +
-      '<input id="numAnswer" type="text" inputmode="decimal" placeholder="e.g. 30 or 0.55"></div>';
+      '<input id="numAnswer" type="text" inputmode="decimal" placeholder="e.g. 30 or 0.55">' +
+      '<div style=\"font-size:11.5px;color:var(--text-subtle);margin-top:5px;line-height:1.5;\">Enter the number only \u2014 <b>0.556</b>, <b>5/9</b>, <b>55.6%</b> and <b>$12</b> all work. Please don\u2019t write a sentence: a full explanation cannot be marked automatically.</div></div>';
   }
   html += '<button class="btn btn-primary" id="submitAnsBtn" style="width:auto;">Submit answer</button>';
   html += '<div class="feedback" id="qFeedback"></div>';
@@ -5098,7 +5169,8 @@ function renderExamQuestion() {
       '<div style="font-size:12px;color:var(--text-subtle);margin-top:4px;">Short answer &middot; graded by your instructor.</div></div>';
   } else {
     html += '<div class="field" style="max-width:260px;"><label>Your answer</label>' +
-      '<input id="examNum" type="text" inputmode="decimal" placeholder="e.g. 30 or 0.55" value="' + (saved!==undefined?esc(saved):'') + '"></div>';
+      '<input id="examNum" type="text" inputmode="decimal" placeholder="e.g. 30 or 0.55" value="' + (saved!==undefined?esc(saved):'') + '">' +
+      '<div style=\"font-size:11.5px;color:var(--text-subtle);margin-top:5px;line-height:1.5;\">Enter the number only \u2014 <b>0.556</b>, <b>5/9</b>, <b>55.6%</b> and <b>$12</b> all work. Please don\u2019t write a sentence: a full explanation cannot be marked automatically.</div></div>';
   }
   html += '</div>';
   html += '<div style="display:flex;justify-content:space-between;margin-top:18px;gap:10px;">';
