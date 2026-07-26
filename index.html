@@ -2742,6 +2742,25 @@ function runAIGrade(attemptId, continuing){
     var rem = (fn.data && fn.data.remaining) ? Number(fn.data.remaining) : 0;
     var did = (fn.data && fn.data.graded) ? Number(fn.data.graded) : 0;
     AIBatch.done += did;
+    // The AI can legitimately do nothing (already proposed, already finalized,
+    // wrong question type). Say so, rather than reloading and looking broken.
+    if(did===0 && fn.data && fn.data.nothing_to_do){
+      AIBatch.running=false;
+      note.innerHTML='<div class="card" style="background:var(--bg2);"><b>No change:</b> '+esc(fn.data.nothing_to_do)+'</div>';
+      setTimeout(function(){ if(note.parentNode){ note.parentNode.removeChild(note); } }, 6000);
+      return;
+    }
+    // Any per-answer failures (bad key, model refused, unparseable reply) come
+    // back in results - surface the first one instead of swallowing it.
+    if(did===0 && fn.data && fn.data.results && fn.data.results.length){
+      var firstErr=null;
+      for(var ri=0; ri<fn.data.results.length; ri++){ if(fn.data.results[ri].error){ firstErr=fn.data.results[ri].error; break; } }
+      if(firstErr){
+        AIBatch.running=false;
+        note.innerHTML='<div class="feedback wrong" style="display:block;">The AI could not grade this: '+esc(String(firstErr))+'</div>';
+        return;
+      }
+    }
     if(rem>0 && !attemptId && AIBatch.running){
       // Keep going by itself. Google's free tier is rate-limited, so the edge
       // function paces its own requests; we simply queue the next batch rather
