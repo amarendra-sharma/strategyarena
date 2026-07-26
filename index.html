@@ -2752,6 +2752,20 @@ function runAIGrade(attemptId, continuing){
     var rem = (fn.data && fn.data.remaining) ? Number(fn.data.remaining) : 0;
     var did = (fn.data && fn.data.graded) ? Number(fn.data.graded) : 0;
     AIBatch.done += did;
+    // A quota refusal is not a failure of the grading itself: whatever was done
+    // before it is saved. Stop the automatic run, say plainly where it got to,
+    // and offer to continue rather than retrying into the same wall.
+    if(fn.data && fn.data.quota_exceeded){
+      AIBatch.running=false;
+      note.innerHTML='<div class="card" style="background:var(--bg2);border-left:3px solid #FBBF24;">'+
+        '<div style="font-size:13px;color:var(--text-bright);margin-bottom:4px;">AI grading paused \u2014 daily quota reached</div>'+
+        '<div style="font-size:12.5px;color:var(--text-muted);">'+esc(String(fn.data.message||''))+'</div>'+
+        '<button class="btn btn-ghost btn-sm" id="aiResumeBtn" style="margin-top:8px;">Try again now</button></div>';
+      var rb=document.getElementById('aiResumeBtn');
+      if(rb){ rb.addEventListener('click', function(){ runAIGrade(null); }); }
+      loadPendingWritten();
+      return;
+    }
     // The AI can legitimately do nothing (already proposed, already finalized,
     // wrong question type). Say so, rather than reloading and looking broken.
     if(did===0 && fn.data && fn.data.nothing_to_do){
@@ -2779,7 +2793,7 @@ function runAIGrade(attemptId, continuing){
         ' <button class="btn btn-ghost btn-sm" id="aiStopBtn" style="margin-left:8px;">Stop</button>';
       var stop=document.getElementById('aiStopBtn');
       if(stop){ stop.addEventListener('click', function(){ AIBatch.running=false; note.innerHTML='<div class="card empty">Stopped. '+AIBatch.done+' answer'+(AIBatch.done===1?'':'s')+' graded so far.</div>'; loadPendingWritten(); }); }
-      setTimeout(function(){ if(AIBatch.running){ runAIGrade(null, true); } }, 1200);
+      setTimeout(function(){ if(AIBatch.running){ runAIGrade(null, true); } }, 3000);
       return;
     }
     AIBatch.running=false;
