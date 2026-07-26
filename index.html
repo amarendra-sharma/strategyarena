@@ -411,7 +411,7 @@
    CONFIG
    ==================================================================== */
 var SUPABASE_URL = 'https://qgelvmefyexyzpwqupev.supabase.co';
-var SA_BUILD = '2026-07-22-grade-in-work';
+var SA_BUILD = '2026-07-26-ai-never-silent';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZWx2bWVmeWV4eXpwd3F1cGV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDY5ODAsImV4cCI6MjA5NjAyMjk4MH0.AR55GBLefKHfs9ncWWzEFks_VISPjJtbW8SezyjM3lc';
 var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Shared MacroNations proctoring engine. Point it at StrategyArena's existing
@@ -2814,12 +2814,31 @@ function runAIGrade(attemptId, continuing){
       return;
     }
     AIBatch.running=false;
-    if(!attemptId && AIBatch.done>0){
-      var bl=(fn.data && fn.data.blanks_scored)?Number(fn.data.blanks_scored):0;
+    // ALWAYS say something. Previously a single-answer run, or a batch that
+    // graded nothing, fell through here and simply reloaded - which is what
+    // "nothing happens" looked like from the outside.
+    var bl=(fn.data && fn.data.blanks_scored)?Number(fn.data.blanks_scored):0;
+    var d=fn.data||{};
+    if(attemptId){
+      if(did>0){
+        note.innerHTML='<div class="feedback right" style="display:block;">Graded. The AI\u2019s suggested score now appears on that answer below.</div>';
+      } else {
+        note.innerHTML='<div class="card" style="background:var(--bg2);">The AI returned nothing for this answer. '+
+          '<div style="font-size:12px;color:var(--text-muted);margin-top:5px;">Response: '+
+          esc(JSON.stringify({graded:d.graded, remaining:d.remaining, requests_used:d.requests_used, provider:d.provider, results:(d.results||[]).length}))+
+          '</div><div style="font-size:12px;color:var(--text-muted);margin-top:5px;">If this keeps happening, open Supabase \u2192 Edge Functions \u2192 ai-grade \u2192 Logs; the real error is there.</div></div>';
+      }
+    } else if(AIBatch.done>0){
       note.innerHTML='<div class="feedback right" style="display:block;">AI proposed scores for '+AIBatch.done+' answer'+(AIBatch.done===1?'':'s')+
         (bl>0?(' (including '+bl+' left blank, scored 0 without using the model)'):'')+
         '. Review each one below and finalize.</div>';
+    } else {
+      note.innerHTML='<div class="card" style="background:var(--bg2);">No answers were graded this run.'+
+        '<div style="font-size:12px;color:var(--text-muted);margin-top:5px;">Response: '+
+        esc(JSON.stringify({graded:d.graded, remaining:d.remaining, requests_used:d.requests_used, blanks:d.blanks_scored, provider:d.provider, errors:(d.results||[]).filter(function(x){return x && x.error;}).length}))+
+        '</div><div style="font-size:12px;color:var(--text-muted);margin-top:5px;">If remaining is above zero but nothing grades, open Supabase \u2192 Edge Functions \u2192 ai-grade \u2192 Logs \u2014 the real error is recorded there.</div></div>';
     }
+    setTimeout(function(){ if(note.parentNode && note.textContent.indexOf('Response:')<0){ note.parentNode.removeChild(note); } }, 8000);
     loadPendingWritten();
   }, function(err){
     // Without this, a rejected call (network drop, function error) vanished
