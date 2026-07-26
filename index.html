@@ -2476,6 +2476,9 @@ function renderGraderKeyCard(){
 // against it, instead of scrolling past the same question nineteen times.
 var GradingRows = [];
 var GradingShowGraded = false;
+// Practice short-answers are students working on their own. They are not graded
+// work and are hidden here by default - this course had ~1,300 of them.
+var GradingShowPractice = false;
 
 function gradingGroupKey(r){
   if(r.source==='exam'){ return 'A|' + (r.exam_title || 'Exam'); }
@@ -2492,6 +2495,7 @@ function renderPendingWritten(rows){
       '<div style="font-size:13px;color:var(--text-muted);" id="gqCount"></div>' +
       '<div class="inline-actions">' +
         '<label style="font-size:12px;color:var(--text-muted);margin-right:6px;"><input type="checkbox" id="gqGraded"' + (GradingShowGraded?' checked':'') + '> show already graded</label>' +
+        '<label style="font-size:12px;color:var(--text-muted);margin-right:6px;"><input type="checkbox" id="gqPractice"' + (GradingShowPractice?' checked':'') + '> include practice</label>' +
         '<button class="btn btn-ghost btn-sm" id="gqExpand">Expand all</button>' +
         '<button class="btn btn-ghost btn-sm" id="aiAll">Run AI grading on all</button>' +
         '<button class="btn btn-primary btn-sm" id="finAll">Finalize all reviewed</button>' +
@@ -2600,6 +2604,12 @@ function wireGradingToolbar(){
       loadPendingWritten();
     });
   }
+  if($('gqPractice')){
+    $('gqPractice').addEventListener('change', function(){
+      GradingShowPractice = $('gqPractice').checked;
+      loadPendingWritten();
+    });
+  }
   if($('gqExpand')){
     $('gqExpand').addEventListener('click', function(){
       var open = $('gqExpand').textContent.indexOf('Expand')>=0;
@@ -2628,7 +2638,7 @@ function loadPendingWritten(){
   // policies on sa_attempts. That direct read returns nothing for some courses
   // even when you own them, which is why this tab looked empty and the AI
   // grading panel never appeared. Falls back to the old read if 83 is not in.
-  sb.rpc('sa_instructor_pending_written',{ p_course_id: State.teachCourseId, p_include_graded: GradingShowGraded }).then(function(rp){
+  sb.rpc('sa_instructor_pending_written',{ p_course_id: State.teachCourseId, p_include_graded: GradingShowGraded, p_include_practice: GradingShowPractice }).then(function(rp){
     if(rp && !rp.error && rp.data){
       renderPendingWritten(rp.data);
       return;
@@ -2774,7 +2784,10 @@ function runAIGrade(attemptId, continuing){
     }
     AIBatch.running=false;
     if(!attemptId && AIBatch.done>0){
-      note.innerHTML='<div class="feedback right" style="display:block;">AI proposed scores for '+AIBatch.done+' answer'+(AIBatch.done===1?'':'s')+'. Review each one below and finalize.</div>';
+      var bl=(fn.data && fn.data.blanks_scored)?Number(fn.data.blanks_scored):0;
+      note.innerHTML='<div class="feedback right" style="display:block;">AI proposed scores for '+AIBatch.done+' answer'+(AIBatch.done===1?'':'s')+
+        (bl>0?(' (including '+bl+' left blank, scored 0 without using the model)'):'')+
+        '. Review each one below and finalize.</div>';
     }
     loadPendingWritten();
   });
