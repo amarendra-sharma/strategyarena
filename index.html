@@ -2743,7 +2743,24 @@ function runAIGrade(attemptId, continuing){
   body.insertBefore(note, body.firstChild);
   var payload={ action:'propose', course_id:State.teachCourseId };
   if(attemptId){ payload.attempt_id=attemptId; }
+  // If the call never comes back - the function was cut off, the network
+  // dropped - show something rather than spinning forever. Any answers already
+  // graded are saved server-side, so retrying simply continues.
+  var settled=false;
+  var watchdog=setTimeout(function(){
+    if(settled){ return; }
+    settled=true; AIBatch.running=false;
+    note.innerHTML='<div class="card" style="background:var(--bg2);border-left:3px solid #FBBF24;">'+
+      '<div style="font-size:13px;color:var(--text-bright);margin-bottom:4px;">No response from the grader</div>'+
+      '<div style="font-size:12.5px;color:var(--text-muted);">The request timed out. Anything already graded has been saved \u2014 press Run AI grading again to carry on from where it stopped.</div>'+
+      '<button class="btn btn-ghost btn-sm" id="aiRetryBtn" style="margin-top:8px;">Try again</button></div>';
+    var rt=document.getElementById('aiRetryBtn');
+    if(rt){ rt.addEventListener('click', function(){ runAIGrade(null); }); }
+    loadPendingWritten();
+  }, 100000);
   sb.functions.invoke('ai-grade',{ body:payload }).then(function(fn){
+    if(settled){ return; }
+    settled=true; clearTimeout(watchdog);
     if(fn.error || (fn.data && fn.data.error)){
       var msg=(fn.data&&fn.data.message)?fn.data.message:((fn.data&&fn.data.error)?fn.data.error:(fn.error?fn.error.message:'AI grading failed'));
       note.innerHTML='<div class="feedback wrong" style="display:block;">'+esc(msg)+'</div>';
@@ -2789,7 +2806,7 @@ function runAIGrade(attemptId, continuing){
       // Keep going by itself. Google's free tier is rate-limited, so the edge
       // function paces its own requests; we simply queue the next batch rather
       // than making you click again for every twelve answers.
-      note.innerHTML='<span class="spinner"></span> &nbsp;AI grading in progress \u2014 '+AIBatch.done+' done, '+rem+' to go. You can leave this open; it continues on its own.'+
+      note.innerHTML='<span class="spinner"></span> &nbsp;AI grading in progress \u2014 '+AIBatch.done+' done, '+rem+' to go. This runs in short bursts so it cannot stall; leave the tab open.'+
         ' <button class="btn btn-ghost btn-sm" id="aiStopBtn" style="margin-left:8px;">Stop</button>';
       var stop=document.getElementById('aiStopBtn');
       if(stop){ stop.addEventListener('click', function(){ AIBatch.running=false; note.innerHTML='<div class="card empty">Stopped. '+AIBatch.done+' answer'+(AIBatch.done===1?'':'s')+' graded so far.</div>'; loadPendingWritten(); }); }
@@ -2803,6 +2820,15 @@ function runAIGrade(attemptId, continuing){
         (bl>0?(' (including '+bl+' left blank, scored 0 without using the model)'):'')+
         '. Review each one below and finalize.</div>';
     }
+    loadPendingWritten();
+  }, function(err){
+    // Without this, a rejected call (network drop, function error) vanished
+    // silently and the spinner simply stayed on screen.
+    if(settled){ return; }
+    settled=true; clearTimeout(watchdog); AIBatch.running=false;
+    note.innerHTML='<div class="feedback wrong" style="display:block;">AI grading failed: '+
+      esc(String(err && err.message ? err.message : err))+
+      '<div style="font-size:12px;margin-top:5px;">Anything already graded is saved. Press Run AI grading again to continue.</div></div>';
     loadPendingWritten();
   });
 }
