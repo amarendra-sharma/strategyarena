@@ -2176,11 +2176,39 @@ function exportCSV(c,rows){
 /* ====================================================================
    ANALYTICS — concept-mastery heatmap + chapter engagement
    ==================================================================== */
+// Fetch every matching row, a page at a time.
+//
+// PostgREST returns at most a fixed number of rows per request (commonly 1000)
+// and does NOT signal that it truncated. A course-wide query that ignores this
+// silently loses data: it under-counted the Gradebook, and it skews analytics
+// the same way once a course passes the cap. buildQuery() must return a FRESH
+// query each call, ordered by a unique column so pages do not overlap.
+function saFetchAllPaged(buildQuery, pageSize){
+  var PAGE = pageSize || 1000;
+  var all = [];
+  function page(from){
+    return buildQuery().range(from, from + PAGE - 1).then(function(res){
+      if(res && res.error){ return { data: all, error: res.error }; }
+      var got = (res && res.data) ? res.data : [];
+      all = all.concat(got);
+      if(got.length < PAGE){ return { data: all }; }
+      if(from > 200000){ return { data: all }; }   // hard stop
+      return page(from + PAGE);
+    }, function(err){ return { data: all, error: err }; });
+  }
+  return page(0);
+}
+
 function renderAnalytics(host){
   if(!needCourse(host)){ return; }
   host.innerHTML=loadingCard();
   Promise.all([
-    sb.from('sa_attempts').select('is_correct,sa_assessment_items(concept_tag,chapter)').eq('course_id',State.teachCourseId).not('graded_at','is',null),
+    saFetchAllPaged(function(){
+      return sb.from('sa_attempts')
+        .select('is_correct,sa_assessment_items(concept_tag,chapter)')
+        .eq('course_id',State.teachCourseId).not('graded_at','is',null)
+        .order('id',{ascending:true});
+    }),
     sb.from('sa_gradebook_v').select('chapters_read,quizzes_passed').eq('course_id',State.teachCourseId)
   ]).then(function(r){
     var att=r[0].data?r[0].data:[];
@@ -2888,9 +2916,12 @@ function loadPendingWritten(){
 
 function legacyLoadPendingWritten(){
   var body=$('gradingBody'); if(!body){ return; }
-  sb.from('sa_attempts')
-    .select('id,student_id,item_id,exam_id,submitted_value,ai_score,ai_feedback,ai_graded_at,graded_at,points_earned')
-    .eq('course_id',State.teachCourseId).is('graded_at',null)
+  saFetchAllPaged(function(){
+    return sb.from('sa_attempts')
+      .select('id,student_id,item_id,exam_id,submitted_value,ai_score,ai_feedback,ai_graded_at,graded_at,points_earned')
+      .eq('course_id',State.teachCourseId).is('graded_at',null)
+      .order('id',{ascending:true});
+  })
     .then(function(at){
       if(at.error){ body.innerHTML='<div class="card empty">Could not load attempts: '+esc(at.error.message)+'</div>'; return; }
       var raw=at.data?at.data:[];
