@@ -1902,6 +1902,58 @@ function openRegradeNumeric(courseId, gradebookHost){
   });
 }
 
+// Everything a student is graded on, grouped by category. Readings and arenas
+// contribute to the weighted total, so leaving them out meant the headline
+// figure could not be reconciled with anything shown on the page.
+function saFullGradesTable(rows){
+  var SA_CAT_LABEL = {
+    reading:'Readings', quiz:'Chapter quizzes', arena:'Arenas',
+    assignment:'Assignments', exam:'Exams'
+  };
+  if(!rows || rows.length===0){
+    return '<div class="card empty">Nothing graded yet. Your scores appear here as you work through the course.</div>';
+  }
+  var order=['exam','quiz','assignment','arena','reading'];
+  var byCat={};
+  rows.forEach(function(r){ if(!byCat[r.category]){ byCat[r.category]=[]; } byCat[r.category].push(r); });
+  var h='';
+  order.forEach(function(cat){
+    var list=byCat[cat];
+    if(!list || list.length===0){ return; }
+    h+='<div style="margin-bottom:18px;">'+
+       '<div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">'+
+         esc(SA_CAT_LABEL[cat]||cat)+'</div>'+
+       '<div class="tbl-wrap"><table class="tbl gradebook"><thead><tr>'+
+         '<th scope="col">Item</th><th scope="col">Detail</th>'+
+         '<th scope="col">Points</th><th scope="col">Score</th><th scope="col">Status</th>'+
+       '</tr></thead><tbody>';
+    list.forEach(function(r){
+      var p=(r.pct===null||r.pct===undefined)?null:Number(r.pct);
+      var col=(p===null)?'var(--text-muted)':(p>=80?'#34D399':(p>=60?'#FBBF24':'#FB7185'));
+      var pts='\u2014';
+      if(r.points_earned!==null && r.points_earned!==undefined &&
+         r.points_possible!==null && r.points_possible!==undefined){
+        pts=Number(r.points_earned)+' / '+Number(r.points_possible);
+      }
+      var st=String(r.status||'');
+      var stTag = (st.indexOf('awaiting')>=0)
+        ? '<span class="tag" style="background:rgba(251,191,36,.15);color:#FBBF24;">'+esc(st)+'</span>'
+        : (st==='not submitted' || st==='not taken')
+          ? '<span class="tag rose">'+esc(st)+'</span>'
+          : '<span class="tag dim">'+esc(st)+'</span>';
+      h+='<tr>'+
+        '<th scope="row">'+esc(r.label||'')+'</th>'+
+        '<td style="font-size:12.5px;color:var(--text-muted);">'+esc(r.detail||'')+'</td>'+
+        '<td>'+pts+'</td>'+
+        '<td style="font-weight:700;color:'+col+';">'+(p===null?'\u2014':(p+'%'))+'</td>'+
+        '<td>'+stTag+'</td>'+
+      '</tr>';
+    });
+    h+='</tbody></table></div></div>';
+  });
+  return h;
+}
+
 // Per-assessment breakdown, shared by the instructor Gradebook and the student
 // My Grades page. A single percentage hides where the marks went; this shows
 // correct out of answered for every exam and quiz.
@@ -5122,8 +5174,8 @@ function renderMyGrades(host, exams, examScore, asgs, subBy, summary){
   html+=gradeSummaryCard(summary);
   // A place for the question-by-question breakdown, filled in once it loads so
   // the rest of the page is not held up.
-  html+='<div class="card" style="margin-bottom:16px;"><h3 style="font-size:15px;margin-bottom:4px;">How you did on each assessment</h3>'+
-    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">Questions you answered correctly on every exam and chapter quiz.</p>'+
+  html+='<div class="card" style="margin-bottom:16px;"><h3 style="font-size:15px;margin-bottom:4px;">Everything you are graded on</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">Readings, quizzes, arenas, assignments and exams \u2014 every component that feeds your course grade.</p>'+
     '<div id="myBreakdown"><div class="q-card"><span class="spinner"></span> &nbsp;Loading\u2026</div></div></div>';
   // Exams table
   html+='<div class="card" style="margin-bottom:16px;"><h3 style="font-size:15px;margin-bottom:10px;">Exams</h3>';
@@ -5161,21 +5213,32 @@ function renderMyGrades(host, exams, examScore, asgs, subBy, summary){
     var cid = State.payCourseId || State.selfCourseId;
     var slot = $('myBreakdown');
     if(!slot || !cid){ if(slot){ slot.innerHTML=''; } return; }
-    sb.rpc('sa_grade_breakdown',{ p_course_id: cid }).then(function(r){
+    function fallback(){
+      return sb.rpc('sa_grade_breakdown',{ p_course_id: cid }).then(function(r2){
+        if(!slot){ return; }
+        if(r2 && r2.error){
+          slot.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">Detailed scores are not available yet.</div>';
+          return;
+        }
+        var rr=(r2 && r2.data)?r2.data:[];
+        slot.innerHTML = rr.length
+          ? saBreakdownTable(rr, { note:'Exams are scored out of the whole paper, so a question you never reached counts as zero.' })
+          : '<div style="font-size:12.5px;color:var(--text-subtle);">Nothing graded yet.</div>';
+      }, function(){
+        if(slot){ slot.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">Detailed scores are not available yet.</div>'; }
+      });
+    }
+    sb.rpc('sa_student_full_grades',{ p_course_id: cid }).then(function(r){
       if(!slot){ return; }
-      if(r && r.error){
-        slot.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">Detailed scores are not available yet.</div>';
-        return;
-      }
+      if(r && r.error){ return fallback(); }   // 122 not installed yet
       var rows=(r && r.data)?r.data:[];
       if(rows.length===0){
-        slot.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">Nothing graded yet. Your scores will appear here after you take a quiz or exam.</div>';
+        slot.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">Nothing graded yet. Your scores will appear here as you work through the course.</div>';
         return;
       }
-      slot.innerHTML=saBreakdownTable(rows, { note:'Exams are scored out of the whole paper, so a question you never reached counts as zero. Practice questions are not counted.' });
-    }, function(){
-      if(slot){ slot.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">Detailed scores are not available yet.</div>'; }
-    });
+      slot.innerHTML=saFullGradesTable(rows)+
+        '<div style="font-size:12px;color:var(--text-subtle);margin-top:6px;">Exams are scored out of the whole paper, so a question you never reached counts as zero. Practice questions are not counted.</div>';
+    }, function(){ fallback(); });
   })();
 }
 
