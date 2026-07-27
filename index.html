@@ -91,6 +91,20 @@
   table.tbl th, table.tbl td { text-align:left; padding:9px 11px; border-bottom:1px solid var(--border); white-space:nowrap; }
   table.tbl th { color:var(--text-subtle); font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:.07em; position:sticky; top:0; background:var(--bg-deep); }
   table.tbl tbody tr:hover { background:var(--surface); }
+  /* Gradebook readability: the default table was too low-contrast to scan a
+     class list. Names get full brightness and a larger size; rows alternate. */
+  table.tbl.gradebook tbody tr:nth-child(even) { background:rgba(255,255,255,.028); }
+  table.tbl.gradebook tbody tr:hover { background:rgba(124,92,255,.10); }
+  table.tbl.gradebook th[scope="row"] {
+    color:#F4F2FF; font-weight:600; font-size:14px; letter-spacing:.01em;
+    position:sticky; left:0; background:var(--bg-deep); z-index:1;
+    border-right:1px solid var(--border);
+  }
+  table.tbl.gradebook tbody tr:nth-child(even) th[scope="row"] { background:#15122b; }
+  table.tbl.gradebook tbody tr:hover th[scope="row"] { background:#1d1740; }
+  table.tbl.gradebook th[scope="row"] .gb-email { display:block; font-size:11.5px; font-weight:400; color:var(--text-subtle); margin-top:2px; }
+  table.tbl.gradebook td { color:var(--text); font-size:13.5px; }
+  table.tbl.gradebook thead th { background:#100d24; color:#B9B2E8; font-size:11.5px; }
   .tbl-wrap { overflow-x:auto; border:1px solid var(--border); border-radius:12px; }
   .tag { font-size:11px; padding:2px 9px; border-radius:999px; display:inline-block; }
   .tag.green { background:rgba(52,211,153,.16); color:#6ee7b7; }
@@ -1888,6 +1902,68 @@ function openRegradeNumeric(courseId, gradebookHost){
   });
 }
 
+// Per-assessment breakdown, shared by the instructor Gradebook and the student
+// My Grades page. A single percentage hides where the marks went; this shows
+// correct out of answered for every exam and quiz.
+function saBreakdownTable(rows, opts){
+  opts = opts || {};
+  if(!rows || rows.length===0){
+    return '<div class="card empty">Nothing graded yet.</div>';
+  }
+  var h='<div class="tbl-wrap"><table class="tbl gradebook"><thead><tr>'+
+    '<th scope="col">Assessment</th>'+
+    '<th scope="col">Correct</th>'+
+    '<th scope="col">Points</th>'+
+    '<th scope="col">Score</th>'+
+    '<th scope="col">Status</th>'+
+    '</tr></thead><tbody>';
+  rows.forEach(function(r){
+    var q=Number(r.questions)||0;
+    var ok=Number(r.correct)||0;
+    var part=Number(r.partial)||0;
+    var un=Number(r.ungraded)||0;
+    var pctv=(r.pct===null||r.pct===undefined)?null:Number(r.pct);
+    var col = (pctv===null)?'var(--text-muted)':(pctv>=80?'#34D399':(pctv>=60?'#FBBF24':'#FB7185'));
+    var badge = r.kind==='exam'
+      ? '<span class="tag violet">exam</span> '
+      : '<span class="tag">quiz</span> ';
+    var status = un>0
+      ? '<span class="tag" style="background:rgba(251,191,36,.15);color:#FBBF24;">'+un+' awaiting marking</span>'
+      : (part>0 ? '<span class="tag dim">'+part+' partial credit</span>' : '<span class="tag dim">complete</span>');
+    h+='<tr>'+
+      '<th scope="row">'+badge+esc(r.label||'')+'</th>'+
+      '<td><b>'+ok+'</b> of '+q+'</td>'+
+      '<td>'+(r.points_earned===null?'\u2014':Number(r.points_earned))+' / '+(r.points_possible===null?'\u2014':Number(r.points_possible))+'</td>'+
+      '<td style="font-weight:700;color:'+col+';">'+(pctv===null?'\u2014':(pctv+'%'))+'</td>'+
+      '<td>'+status+'</td>'+
+    '</tr>';
+  });
+  h+='</tbody></table></div>';
+  if(opts.note){ h+='<div style="font-size:12px;color:var(--text-subtle);margin-top:8px;">'+esc(opts.note)+'</div>'; }
+  return h;
+}
+
+function saBreakdownNotInstalled(){
+  return '<div class="msg err" style="display:block;">The detailed breakdown is not installed yet. Run <b>112_grade_breakdown.sql</b> in the Supabase SQL editor, then reopen this.</div>';
+}
+
+// Instructor view: one student's breakdown.
+function openGradeBreakdown(courseId, studentId, studentName){
+  if(!courseId || !studentId){ return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:760px;"><h3 style="margin-bottom:4px;">Score detail \u2014 '+esc(studentName||'student')+'</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">How many questions this student answered correctly on each exam and chapter quiz.</p>'+
+    '<div id="bdBody">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:12px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="bdClose">Close</button></div></div>';
+  document.body.appendChild(ov);
+  $('bdClose').addEventListener('click', function(){ if(ov.parentNode){ document.body.removeChild(ov); } });
+  sb.rpc('sa_grade_breakdown',{ p_course_id:courseId, p_student_id:studentId }).then(function(r){
+    var b=$('bdBody'); if(!b){ return; }
+    if(r && r.error){ b.innerHTML=saBreakdownNotInstalled(); return; }
+    b.innerHTML=saBreakdownTable((r && r.data)?r.data:[], { note:'Practice questions are not counted here \u2014 only graded quizzes and exams.' });
+  }, function(){ var b=$('bdBody'); if(b){ b.innerHTML=saBreakdownNotInstalled(); } });
+}
+
 function renderGradebook(host){
   if(!needCourse(host)){ return; }
   host.innerHTML=loadingCard();
@@ -1992,9 +2068,26 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   var html='<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">'+
     '<div style="font-size:12.5px;color:var(--text-muted);"><b>Grade on work completed so far.</b> The weighted total renormalizes over components that have data. <b>Assignments</b> are shown for reference; to fold them (or participation) into a student\u2019s final grade, use the <b>Override</b> column \u2014 an entered override becomes the Final grade and is what the CSV exports.</div>'+
     '<div style="display:flex;gap:8px;"><button class="btn btn-ghost btn-sm" id="recalcQuizBtn" title="Update stored chapter quiz scores after regrades or manual overrides">Recompute quiz scores</button><button class="btn btn-ghost btn-sm" id="reschedListBtn" title="See every deadline change and extra attempt you have granted in this course">Reschedules</button><button class="btn btn-ghost btn-sm" id="staffBtn" title="Give a TA access to grade this course">Teaching team</button><button class="btn btn-ghost btn-sm" id="regradeBtn" title="Re-check answers that were marked wrong only because they were typed as fractions, currency or percentages">Fix fraction grading</button><button class="btn btn-ghost btn-sm" id="itemStatsBtn" title="See which questions the class is getting wrong most often">Item analysis</button><button class="btn btn-ghost btn-sm" id="csvBtn">Export CSV</button></div></div>';
-  html+='<div class="tbl-wrap"><table class="tbl"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col"></th></tr></thead><tbody>';
+  html+='<div class="tbl-wrap"><table class="tbl gradebook"><thead><tr><th scope="col">Student</th><th scope="col">Sub</th><th scope="col">Reading</th><th scope="col">Quizzes</th><th scope="col">Arenas</th><th scope="col">Assign</th><th scope="col">Midterm</th><th scope="col">Final exam</th><th scope="col">Weighted</th><th scope="col">Override %</th><th scope="col">Final</th><th scope="col"></th></tr></thead><tbody>';
+  // Alphabetical by LAST name. Falls back to the email local part when no name
+  // is recorded, so unnamed accounts still land somewhere sensible.
+  function lastNameKey(g){
+    var n=(g.name||'').trim();
+    if(n){
+      var parts=n.split(/\s+/);
+      var last=parts[parts.length-1];
+      return (last+' '+parts.slice(0,-1).join(' ')).toLowerCase();
+    }
+    return String(g.email||'').toLowerCase();
+  }
+  computed.sort(function(a,b){
+    var ka=lastNameKey(a), kb=lastNameKey(b);
+    return ka<kb?-1:(ka>kb?1:0);
+  });
   computed.forEach(function(g){
-    html+='<tr><th scope="row" style="font-weight:500;">'+esc(g.name||g.email)+'</th><td>'+subTag(g.sub)+'</td>'+
+    var nm=g.name?esc(g.name):esc(g.email||'');
+    var em=(g.name&&g.email)?('<span class="gb-email">'+esc(g.email)+'</span>'):'';
+    html+='<tr><th scope="row">'+nm+em+'</th><td>'+subTag(g.sub)+'</td>'+
       '<td>'+pct(g.reading)+'</td><td>'+pct(g.quizzes)+'</td><td>'+pct(g.arenas)+'</td>'+
       '<td>'+(g.assignments===null?'<span class="tag dim">--</span>':pct(g.assignments))+'</td>'+
       '<td>'+(g.midterm===null?'<span class="tag dim">--</span>':pct(g.midterm))+'</td>'+
@@ -2002,7 +2095,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
       '<td>'+pct(g.computed)+'</td>'+
       '<td><label class="sr-only" for="ovr-'+g.sid+'">Override percent for '+esc(g.name||g.email)+'</label><input id="ovr-'+g.sid+'" type="number" min="0" max="100" step="0.1" placeholder="\u2014" value="'+(g.override?g.override.pct:'')+'" style="width:64px;"></td>'+
       '<td style="font-weight:600;color:var(--text-bright);">'+pct(g.finalPct)+(g.override?' <span class="tag violet" title="manual override">ovr</span>':'')+'</td>'+
-      '<td><button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> <button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button> <button class="btn btn-ghost btn-sm" data-resch="'+g.sid+'" data-rname="'+esc(g.name||g.email)+'" title="Give this student a later deadline or another attempt">Reschedule</button></td></tr>';
+      '<td><button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> <button class="btn btn-ghost btn-sm" data-detail="'+g.sid+'" data-dname="'+esc(g.name||g.email)+'" title="Scores broken down by exam and quiz">Detail</button> <button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button> <button class="btn btn-ghost btn-sm" data-resch="'+g.sid+'" data-rname="'+esc(g.name||g.email)+'" title="Give this student a later deadline or another attempt">Reschedule</button></td></tr>';
   });
   html+='</tbody></table></div>';
   host.innerHTML=html;
@@ -2012,6 +2105,9 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   if($('staffBtn')){ $('staffBtn').addEventListener('click', function(){ openTeachingTeam(c.id); }); }
   if($('reschedListBtn')){ $('reschedListBtn').addEventListener('click', function(){ openRescheduleList(c.id); }); }
   if($('recalcQuizBtn')){ $('recalcQuizBtn').addEventListener('click', function(){ openRecomputeQuiz(c.id, host); }); }
+  Array.prototype.forEach.call(host.querySelectorAll('[data-detail]'), function(b){
+    b.addEventListener('click', function(){ openGradeBreakdown(c.id, b.getAttribute('data-detail'), b.getAttribute('data-dname')); });
+  });
   Array.prototype.forEach.call(host.querySelectorAll('[data-work]'), function(b){
     b.addEventListener('click', function(){ openStudentWork(c.id, b.getAttribute('data-work'), b.getAttribute('data-wname')); });
   });
@@ -4961,6 +5057,11 @@ function renderMyGrades(host, exams, examScore, asgs, subBy, summary){
   var html='';
   // Weighted grade summary (reading + quizzes + arenas + exams) at the top.
   html+=gradeSummaryCard(summary);
+  // A place for the question-by-question breakdown, filled in once it loads so
+  // the rest of the page is not held up.
+  html+='<div class="card" style="margin-bottom:16px;"><h3 style="font-size:15px;margin-bottom:4px;">How you did on each assessment</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:10px;">Questions you answered correctly on every exam and chapter quiz.</p>'+
+    '<div id="myBreakdown"><div class="q-card"><span class="spinner"></span> &nbsp;Loading\u2026</div></div></div>';
   // Exams table
   html+='<div class="card" style="margin-bottom:16px;"><h3 style="font-size:15px;margin-bottom:10px;">Exams</h3>';
   if(exams.length===0){ html+='<div style="font-size:13px;color:var(--text-subtle);">No exams yet.</div>'; }
@@ -4992,6 +5093,27 @@ function renderMyGrades(host, exams, examScore, asgs, subBy, summary){
   }
   html+='</div>';
   host.innerHTML=html;
+  // Fills in on its own; fails quietly to a short message if 112 is not in yet.
+  (function(){
+    var cid = State.payCourseId || State.selfCourseId;
+    var slot = $('myBreakdown');
+    if(!slot || !cid){ if(slot){ slot.innerHTML=''; } return; }
+    sb.rpc('sa_grade_breakdown',{ p_course_id: cid }).then(function(r){
+      if(!slot){ return; }
+      if(r && r.error){
+        slot.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">Detailed scores are not available yet.</div>';
+        return;
+      }
+      var rows=(r && r.data)?r.data:[];
+      if(rows.length===0){
+        slot.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">Nothing graded yet. Your scores will appear here after you take a quiz or exam.</div>';
+        return;
+      }
+      slot.innerHTML=saBreakdownTable(rows, { note:'Practice questions are not counted \u2014 only graded quizzes and exams.' });
+    }, function(){
+      if(slot){ slot.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">Detailed scores are not available yet.</div>'; }
+    });
+  })();
 }
 
 function loadMyExams() {
