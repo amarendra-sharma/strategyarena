@@ -2403,15 +2403,27 @@ function renderGraderKeyCard(){
     card.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
         '<div><div style="font-size:16px;color:var(--text-bright);">AI grading assistant ' + status + '</div>' +
-        '<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">Uses <b>your own</b> API key. Choose <b>Anthropic</b> (paid, pennies per exam) or <b>Google Gemini</b> (has a free tier). The key is stored securely and never shown again; AI proposes scores you review and finalize.</div></div>' +
+        '<div style="font-size:12.5px;color:var(--text-muted);margin-top:3px;">Uses <b>your own</b> API key. Choose <b>Anthropic</b> (paid, pennies per exam), <b>Google Gemini</b> (small free tier), or a <b>Groq / Cerebras / OpenRouter / Mistral</b> key (larger free tiers). The key is stored securely and never shown again; AI proposes scores you review and finalize.</div></div>' +
         '<button class="btn btn-ghost btn-sm" id="gkEdit">' + (hasKey?'Update key':'Add API key') + '</button>' +
       '</div>' +
       '<div id="gkForm" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px;">' +
         '<div id="gkMsg" class="msg"></div>' +
         '<div style="display:grid;grid-template-columns:1fr 2fr 1fr;gap:12px;">' +
-        '<div class="field"><label>Provider</label><select id="gkProv"><option value="anthropic">Anthropic (paid)</option><option value="google">Google Gemini (free tier)</option></select></div>' +
+        '<div class="field"><label>Provider</label><select id="gkProv">' +
+          '<option value="anthropic">Anthropic (paid)</option>' +
+          '<option value="google">Google Gemini (small free tier)</option>' +
+          '<option value="openai_compatible">Groq / Cerebras / OpenRouter / Mistral (free tiers)</option>' +
+        '</select></div>' +
         '<div class="field"><label>API key</label><input id="gkKey" type="password" placeholder="sk-ant-..." autocomplete="off"></div>' +
         '<div class="field"><label>Model (optional)</label><input id="gkModel" placeholder="claude-3-5-haiku-latest"></div>' +
+        '</div>' +
+        '<div id="gkBaseWrap" style="display:none;margin-top:8px;">' +
+          '<div class="field"><label>API base URL</label><input id="gkBase" placeholder="https://api.groq.com/openai/v1"></div>' +
+          '<div style="font-size:12px;color:var(--text-subtle);margin-top:4px;">' +
+            'Groq: <b>https://api.groq.com/openai/v1</b> \u00b7 model <b>llama-3.3-70b-versatile</b><br>' +
+            'Cerebras: <b>https://api.cerebras.ai/v1</b> \u00b7 OpenRouter: <b>https://openrouter.ai/api/v1</b><br>' +
+            'Mistral: <b>https://api.mistral.ai/v1</b>' +
+          '</div>' +
         '</div>' +
         '<div style="font-size:12px;color:var(--text-subtle);margin-top:2px;" id="gkHint">Get an Anthropic key at console.anthropic.com.</div>' +
         '<div class="inline-actions" style="justify-content:flex-end;">' +
@@ -2427,10 +2439,16 @@ function renderGraderKeyCard(){
       if(pv==='google'){
         if($('gkKey')){ $('gkKey').placeholder='AIza...'; }
         if($('gkModel')){ $('gkModel').placeholder='gemini-2.5-flash'; }
+        if($('gkBaseWrap')){ $('gkBaseWrap').style.display='none'; }
         if($('gkHint')){ $('gkHint').innerHTML='Get a FREE Gemini key at aistudio.google.com (Get API key) \u2014 no credit card. Note: free-tier requests may be used by Google to improve its models, so avoid sending sensitive data.'; }
       } else {
         if($('gkKey')){ $('gkKey').placeholder='sk-ant-...'; }
         if($('gkModel')){ $('gkModel').placeholder='claude-3-5-haiku-latest'; }
+        if($('gkBaseWrap')){ $('gkBaseWrap').style.display=(pv==='openai_compatible')?'':'none'; }
+        if(pv==='openai_compatible'){
+          if($('gkKey')){ $('gkKey').placeholder='gsk_... / csk-... / sk-or-...'; }
+          if($('gkModel')){ $('gkModel').placeholder='llama-3.3-70b-versatile'; }
+        }
         if($('gkHint')){ $('gkHint').textContent='Get an Anthropic key at console.anthropic.com (paid, but only pennies per exam).'; }
       }
     }
@@ -2438,8 +2456,14 @@ function renderGraderKeyCard(){
     if($('gkCancel')){ $('gkCancel').addEventListener('click', function(){ $('gkForm').style.display='none'; }); }
     if($('gkSave')){ $('gkSave').addEventListener('click', function(){
       var key=$('gkKey').value.trim(); var model=$('gkModel').value.trim();
+      var baseUrl=$('gkBase')?$('gkBase').value.trim():'';
       var prov=$('gkProv')?$('gkProv').value:'anthropic';
       if(!key){ var e=$('gkMsg'); e.className='msg err'; e.textContent='Enter your API key.'; return; }
+      if(prov==='openai_compatible' && !baseUrl){
+        var e2=$('gkMsg'); e2.className='msg err';
+        e2.textContent='Enter the API base URL for that provider, e.g. https://api.groq.com/openai/v1';
+        return;
+      }
       $('gkSave').disabled=true;
       // Use the LIVE session user id (auth.uid()) so it always matches the RLS
       // check (owner_id = auth.uid()::text). State.user can be stale across
@@ -2453,6 +2477,9 @@ function renderGraderKeyCard(){
           return;
         }
         var payload={ owner_id:liveId, provider:prov, api_key:key, model:(model||null) };
+        // Only send base_url for the generic provider, so installs without the
+        // 107 column keep working for Anthropic and Google.
+        if(prov==='openai_compatible'){ payload.base_url = baseUrl || null; }
         sb.from('sa_grader_keys').upsert(payload,{onConflict:'owner_id'}).then(function(r){
           $('gkSave').disabled=false;
           if(r.error){ var e=$('gkMsg'); e.className='msg err'; e.textContent=r.error.message; return; }
