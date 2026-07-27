@@ -2497,6 +2497,7 @@ function renderPendingWritten(rows){
         '<label style="font-size:12px;color:var(--text-muted);margin-right:6px;"><input type="checkbox" id="gqGraded"' + (GradingShowGraded?' checked':'') + '> show already graded</label>' +
         '<label style="font-size:12px;color:var(--text-muted);margin-right:6px;"><input type="checkbox" id="gqPractice"' + (GradingShowPractice?' checked':'') + '> include practice</label>' +
         '<button class="btn btn-ghost btn-sm" id="gqExpand">Expand all</button>' +
+        '<button class="btn btn-ghost btn-sm" id="zeroBlanks" title="Score every unanswered written question 0 in one go">Score blanks 0</button>' +
         '<button class="btn btn-ghost btn-sm" id="aiAll">Run AI grading on all</button>' +
         '<button class="btn btn-primary btn-sm" id="finAll">Finalize all reviewed</button>' +
       '</div></div>';
@@ -2560,6 +2561,11 @@ function renderPendingWritten(rows){
                 '<input class="gradeScore" data-id="' + a.attempt_id + '" type="number" min="0" max="' + maxP + '" step="0.5" value="' + (done && a.points_earned!==null && a.points_earned!==undefined ? a.points_earned : (a.ai_graded_at?a.ai_score:'')) + '"></div>' +
               '<div class="field" style="flex:1;min-width:200px;margin:0;"><label>Feedback (optional)</label>' +
                 '<input class="gradeFb" data-id="' + a.attempt_id + '" value="' + esc(a.ai_feedback||'') + '"></div>' +
+              '<span style="display:flex;gap:4px;align-items:center;">' +
+                '<button class="btn btn-ghost btn-sm" data-quick="' + a.attempt_id + '" data-pts="0" title="No credit">0</button>' +
+                '<button class="btn btn-ghost btn-sm" data-quick="' + a.attempt_id + '" data-pts="' + (Math.round((maxP/2)*2)/2) + '" title="Half credit">\u00bd</button>' +
+                '<button class="btn btn-ghost btn-sm" data-quick="' + a.attempt_id + '" data-pts="' + maxP + '" title="Full marks">' + maxP + '</button>' +
+              '</span>' +
               '<button class="btn btn-ghost btn-sm" data-ai="' + a.attempt_id + '">Run AI</button>' +
               '<button class="btn btn-primary btn-sm" data-final="' + a.attempt_id + '">' + (done?'Update':'Finalize') + '</button>' +
             '</div>' +
@@ -2593,6 +2599,51 @@ function renderPendingWritten(rows){
   Array.prototype.forEach.call(body.querySelectorAll('[data-final]'), function(b){
     b.addEventListener('click', function(){ finalizeGrade(b.getAttribute('data-final')); });
   });
+  // One click = score and save. This is the fast path: most answers are clearly
+  // full marks, clearly nothing, or somewhere in between.
+  Array.prototype.forEach.call(body.querySelectorAll('[data-quick]'), function(b){
+    b.addEventListener('click', function(){
+      var id=b.getAttribute('data-quick');
+      var sc=body.querySelector('.gradeScore[data-id="'+id+'"]');
+      if(sc){ sc.value=b.getAttribute('data-pts'); }
+      finalizeGrade(id);
+    });
+  });
+  // Typing a score and pressing Enter saves it and moves on.
+  Array.prototype.forEach.call(body.querySelectorAll('.gradeScore'), function(inp){
+    inp.addEventListener('keydown', function(ev){
+      if(ev.key==='Enter'){ ev.preventDefault(); finalizeGrade(inp.getAttribute('data-id')); }
+    });
+  });
+  if($('zeroBlanks')){
+    $('zeroBlanks').addEventListener('click', function(){ zeroAllBlanks(); });
+  }
+}
+
+// Score every unanswered written question 0 in a single call. Only genuinely
+// empty answers are touched - a real answer, however short, is never zeroed.
+function zeroAllBlanks(){
+  var btn=$('zeroBlanks'); if(!btn){ return; }
+  btn.disabled=true; btn.textContent='Checking\u2026';
+  sb.rpc('sa_count_blank_written',{ p_course_id: State.teachCourseId }).then(function(c){
+    btn.disabled=false; btn.textContent='Score blanks 0';
+    if(c && c.error){
+      alert(String(c.error.message||'').indexOf('function')>=0
+        ? 'Not installed yet \u2014 run 105_bulk_manual_grading.sql, then try again.'
+        : ('Could not check: '+c.error.message));
+      return;
+    }
+    var row=(c && c.data && c.data[0])?c.data[0]:null;
+    var n=row?Number(row.blank_pending):0;
+    if(n===0){ alert('No unanswered written questions are waiting.'); return; }
+    if(!window.confirm('Score '+n+' unanswered written question'+(n===1?'':'s')+' as 0?\n\nOnly genuinely blank answers are affected. Anything a student actually wrote is left alone, and you can still change any score afterwards.')){ return; }
+    btn.disabled=true; btn.textContent='Scoring\u2026';
+    sb.rpc('sa_grade_blanks_zero',{ p_course_id: State.teachCourseId }).then(function(r){
+      btn.disabled=false; btn.textContent='Score blanks 0';
+      if(r && r.error){ alert('Failed: '+r.error.message); return; }
+      loadPendingWritten();
+    }, function(e){ btn.disabled=false; btn.textContent='Score blanks 0'; alert('Failed: '+String(e&&e.message?e.message:e)); });
+  }, function(e){ btn.disabled=false; btn.textContent='Score blanks 0'; alert('Could not check: '+String(e&&e.message?e.message:e)); });
 }
 
 function wireGradingToolbar(){
