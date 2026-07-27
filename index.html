@@ -2476,21 +2476,54 @@ function renderGraderKeyCard(){
           e.textContent='Your session looks expired. Please log out and back in, then save your key again.';
           return;
         }
-        var payload={ owner_id:liveId, provider:prov, api_key:key, model:(model||null) };
-        // Only send base_url for the generic provider, so installs without the
-        // 107 column keep working for Anthropic and Google.
-        if(prov==='openai_compatible'){ payload.base_url = baseUrl || null; }
-        sb.from('sa_grader_keys').upsert(payload,{onConflict:'owner_id'}).then(function(r){
+        // Save through a security-definer function. A direct upsert fails once a
+        // key row already exists: the table has no SELECT policy (so nobody can
+        // read a key back), but ON CONFLICT DO UPDATE has to read the row it is
+        // updating, and that read is refused - which surfaced as "new row
+        // violates row-level security policy".
+        function legacySave(){
+          var payload={ owner_id:liveId, provider:prov, api_key:key, model:(model||null) };
+          if(prov==='openai_compatible'){ payload.base_url = baseUrl || null; }
+          return sb.from('sa_grader_keys').upsert(payload,{onConflict:'owner_id'});
+        }
+        sb.rpc('sa_save_grader_key',{ p_provider:prov, p_api_key:key,
+                                      p_model:(model||null), p_base_url:(baseUrl||null) })
+          .then(function(rr){
+            if(rr && rr.error && String(rr.error.message||'').indexOf('function')>=0){
+              return legacySave();   // 109 not installed yet
+            }
+            return rr;
+          }, function(){ return legacySave(); })
+          .then(function(r){
           $('gkSave').disabled=false;
-          if(r.error){ var e=$('gkMsg'); e.className='msg err'; e.textContent=r.error.message; return; }
+          if(r && r.error){
+            var e=$('gkMsg'); e.className='msg err';
+            var m=String(r.error.message||'');
+            if(m.toLowerCase().indexOf('row-level security')>=0){
+              e.textContent='Could not save the key. Run 109_save_grader_key_rpc.sql in the Supabase SQL editor \u2014 replacing an existing key needs it. If you have already run it, sign out and back in, then try again.';
+            } else { e.textContent=m; }
+            return;
+          }
+          var e2=$('gkMsg'); e2.className='msg ok'; e2.textContent='Key saved.';
           renderGraderKeyCard();
+        }, function(err){
+          $('gkSave').disabled=false;
+          var e3=$('gkMsg'); e3.className='msg err';
+          e3.textContent='Could not save the key: '+String(err&&err.message?err.message:err);
         });
       });
     }); }
     if(hasKey && $('gkClear')){ $('gkClear').addEventListener('click', function(){
       sb.auth.getUser().then(function(u){
         var liveId=(u&&u.data&&u.data.user)?u.data.user.id:State.user.id;
-        sb.from('sa_grader_keys').delete().eq('owner_id',liveId).then(function(){ renderGraderKeyCard(); });
+        sb.rpc('sa_delete_grader_key').then(function(rr){
+          if(rr && rr.error){
+            return sb.from('sa_grader_keys').delete().eq('owner_id',liveId).then(function(){ renderGraderKeyCard(); });
+          }
+          renderGraderKeyCard();
+        }, function(){
+          sb.from('sa_grader_keys').delete().eq('owner_id',liveId).then(function(){ renderGraderKeyCard(); });
+        });
       });
     }); }
   });
