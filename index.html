@@ -1930,9 +1930,17 @@ function saBreakdownTable(rows, opts){
     var status = un>0
       ? '<span class="tag" style="background:rgba(251,191,36,.15);color:#FBBF24;">'+un+' awaiting marking</span>'
       : (part>0 ? '<span class="tag dim">'+part+' partial credit</span>' : '<span class="tag dim">complete</span>');
+    // If fewer questions were answered than the assessment contains, say so.
+    // That gap is the whole reason a detail figure can differ from the
+    // Gradebook: the Gradebook always scores against the full paper.
+    var onAsmt=(r.questions_on_assessment===null||r.questions_on_assessment===undefined)?q:Number(r.questions_on_assessment);
+    var missed=(onAsmt>q)?(onAsmt-q):0;
+    var missNote=missed>0
+      ? '<div style="font-size:11.5px;color:#FBBF24;margin-top:2px;">'+missed+' question'+(missed===1?'':'s')+' never answered</div>'
+      : '';
     h+='<tr>'+
-      '<th scope="row">'+badge+esc(r.label||'')+'</th>'+
-      '<td><b>'+ok+'</b> of '+q+'</td>'+
+      '<th scope="row">'+badge+esc(r.label||'')+missNote+'</th>'+
+      '<td><b>'+ok+'</b> of '+onAsmt+(missed>0?(' <span style="color:var(--text-subtle);">('+q+' attempted)</span>'):'')+'</td>'+
       '<td>'+(r.points_earned===null?'\u2014':Number(r.points_earned))+' / '+(r.points_possible===null?'\u2014':Number(r.points_possible))+'</td>'+
       '<td style="font-weight:700;color:'+col+';">'+(pctv===null?'\u2014':(pctv+'%'))+'</td>'+
       '<td>'+status+'</td>'+
@@ -1960,7 +1968,7 @@ function openGradeBreakdown(courseId, studentId, studentName){
   sb.rpc('sa_grade_breakdown',{ p_course_id:courseId, p_student_id:studentId }).then(function(r){
     var b=$('bdBody'); if(!b){ return; }
     if(r && r.error){ b.innerHTML=saBreakdownNotInstalled(); return; }
-    b.innerHTML=saBreakdownTable((r && r.data)?r.data:[], { note:'Practice questions are not counted here \u2014 only graded quizzes and exams.' });
+    b.innerHTML=saBreakdownTable((r && r.data)?r.data:[], { note:'Scored against the whole paper, the same way the Gradebook does it, so the two always agree. Practice questions are not counted.' });
   }, function(){ var b=$('bdBody'); if(b){ b.innerHTML=saBreakdownNotInstalled(); } });
 }
 
@@ -5109,7 +5117,7 @@ function renderMyGrades(host, exams, examScore, asgs, subBy, summary){
         slot.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">Nothing graded yet. Your scores will appear here after you take a quiz or exam.</div>';
         return;
       }
-      slot.innerHTML=saBreakdownTable(rows, { note:'Practice questions are not counted \u2014 only graded quizzes and exams.' });
+      slot.innerHTML=saBreakdownTable(rows, { note:'Exams are scored out of the whole paper, so a question you never reached counts as zero. Practice questions are not counted.' });
     }, function(){
       if(slot){ slot.innerHTML='<div style="font-size:12.5px;color:var(--text-subtle);">Detailed scores are not available yet.</div>'; }
     });
