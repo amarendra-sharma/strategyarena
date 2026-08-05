@@ -169,14 +169,38 @@
     // explicitly signals completion via SAProgress.reportArenaNow(). We do NOT
     // poll during play: polling recorded a fresh row every time the score
     // changed, so a single match created many rows.
+    // Leaving the page no longer records an attempt BY ITSELF.
+    //
+    // These listeners existed as a safety net for games that never called
+    // reportArenaNow(). But every arena now ends with an explicit "Finish & save
+    // score", and the net did real harm: switching tabs mid-game wrote whatever
+    // partial state existed at that moment. In the coalition arena that scores
+    // 0.3, and since only the first two attempts count toward the grade and are
+    // averaged, an accidental 30% could not be undone by replaying.
+    //
+    // A flush on leaving now happens ONLY if the game has already signalled that
+    // the session is complete, so a finished-but-unsaved result is still not
+    // lost.
+    function flushIfComplete() {
+      try {
+        if (global.SAProgress && global.SAProgress._sessionComplete) { flush(); }
+      } catch (e) { /* never let a page-exit handler throw */ }
+    }
     document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'hidden') { flush(); }
+      if (document.visibilityState === 'hidden') { flushIfComplete(); }
     });
-    window.addEventListener('pagehide', flush);
-    window.addEventListener('beforeunload', flush);
+    window.addEventListener('pagehide', flushIfComplete);
+    window.addEventListener('beforeunload', flushIfComplete);
+
+    // A game calls this when the match is genuinely over. reportArenaNow() sets
+    // it automatically, so existing arenas need no change.
+    global.SAProgress.markComplete = function () { global.SAProgress._sessionComplete = true; };
     // Explicit "match complete" trigger the game can call for a reliable, timely
     // single write (recommended: call SAProgress.reportArenaNow() at match end).
-    global.SAProgress.reportArenaNow = flush;
+    global.SAProgress.reportArenaNow = function () {
+      global.SAProgress._sessionComplete = true;   // an explicit save IS completion
+      return flush();
+    };
   }
 
   function makeNoop(reason) {
@@ -184,7 +208,7 @@
     return {
       markReadingDone: noop, recordQuiz: noop, recordArena: noop,
       logEvent: noop, isSignedIn: function () { return Promise.resolve(false); },
-      initArena: function () {}, reportArenaNow: function () {},
+      initArena: function () {}, reportArenaNow: function () {}, markComplete: function () {},
       trackReading: function () {}, _disabled: reason
     };
   }

@@ -2008,6 +2008,68 @@ function saBreakdownNotInstalled(){
 }
 
 // Instructor view: one student's breakdown.
+// Arena attempts for one student, with the ability to void one that was
+// recorded by accident. This matters because only the first two attempts count
+// toward the grade and they are averaged - so a stray attempt cannot be undone
+// by replaying, only by removing it.
+function openArenaAttempts(courseId, studentId, studentName){
+  if(!courseId || !studentId){ return; }
+  var ov=document.createElement('div'); ov.className='modal-overlay';
+  ov.innerHTML='<div class="modal" style="max-width:800px;"><h3 style="margin-bottom:4px;">Arena attempts \u2014 '+esc(studentName||'student')+'</h3>'+
+    '<p style="font-size:12.5px;color:var(--text-muted);margin-bottom:12px;">Only the first two attempts in each arena count toward the grade, and they are averaged. If an attempt was recorded by accident, void it \u2014 that restores the average and frees the slot for a real replay.</p>'+
+    '<div id="aaBody">'+loadingCard()+'</div>'+
+    '<div class="inline-actions" style="margin-top:12px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="aaClose">Close</button></div></div>';
+  document.body.appendChild(ov);
+  $('aaClose').addEventListener('click', function(){ if(ov.parentNode){ document.body.removeChild(ov); } });
+
+  function load(){
+    sb.rpc('sa_student_arena_attempts',{ p_course_id:courseId, p_student_id:studentId }).then(function(r){
+      var b=$('aaBody'); if(!b){ return; }
+      if(r && r.error){
+        b.innerHTML='<div class="msg err" style="display:block;">Not installed yet \u2014 run <b>126_arena_attempt_admin.sql</b>, then reopen this window.</div>';
+        return;
+      }
+      var rows=(r && r.data)?r.data:[];
+      if(rows.length===0){ b.innerHTML='<div class="card empty">This student has no arena attempts.</div>'; return; }
+      var h='<div class="tbl-wrap"><table class="tbl gradebook"><thead><tr>'+
+        '<th scope="col">Arena</th><th scope="col">Attempt</th><th scope="col">Score</th>'+
+        '<th scope="col">Outcome</th><th scope="col">Played</th><th scope="col"></th></tr></thead><tbody>';
+      rows.forEach(function(a){
+        var p=(a.score_pct===null||a.score_pct===undefined)?null:Number(a.score_pct);
+        var col=(p===null)?'var(--text-muted)':(p>=80?'#34D399':(p>=50?'#FBBF24':'#FB7185'));
+        var counts=a.counts_toward_grade
+          ? '<span class="tag" style="background:rgba(52,211,153,.15);color:#34D399;">counts</span>'
+          : '<span class="tag dim">extra</span>';
+        h+='<tr>'+
+          '<th scope="row">'+esc(a.arena_slug||'')+'</th>'+
+          '<td>#'+a.attempt_no+' '+counts+'</td>'+
+          '<td style="font-weight:700;color:'+col+';">'+(p===null?'\u2014':(p+'%'))+'</td>'+
+          '<td style="font-size:12.5px;color:var(--text-muted);">'+esc(a.outcome||'\u2014')+'</td>'+
+          '<td style="font-size:12px;color:var(--text-muted);">'+(a.played_at?esc(new Date(a.played_at).toLocaleString()):'\u2014')+'</td>'+
+          '<td><button class="btn btn-danger btn-sm" data-void="'+esc(a.attempt_id)+'" data-vslug="'+esc(a.arena_slug||'')+'" data-vno="'+a.attempt_no+'">Void</button></td>'+
+        '</tr>';
+      });
+      h+='</tbody></table></div>';
+      b.innerHTML=h;
+      Array.prototype.forEach.call(ov.querySelectorAll('[data-void]'), function(btn){
+        btn.addEventListener('click', function(){
+          var slug=btn.getAttribute('data-vslug'), no=btn.getAttribute('data-vno');
+          if(!window.confirm('Void attempt #'+no+' in '+slug+' for this student?\n\nThe attempt is removed and their arena score is recalculated from what remains. This cannot be undone.')){ return; }
+          btn.disabled=true; btn.textContent='Voiding\u2026';
+          sb.rpc('sa_void_arena_attempt',{ p_attempt_id:btn.getAttribute('data-void') }).then(function(rr){
+            if(rr && rr.error){ btn.disabled=false; btn.textContent='Void'; alert('Failed: '+rr.error.message); return; }
+            load();
+          }, function(e){ btn.disabled=false; btn.textContent='Void'; alert('Failed: '+String(e&&e.message?e.message:e)); });
+        });
+      });
+    }, function(){
+      var b=$('aaBody');
+      if(b){ b.innerHTML='<div class="msg err" style="display:block;">Not installed yet \u2014 run <b>126_arena_attempt_admin.sql</b>.</div>'; }
+    });
+  }
+  load();
+}
+
 function openGradeBreakdown(courseId, studentId, studentName){
   if(!courseId || !studentId){ return; }
   var ov=document.createElement('div'); ov.className='modal-overlay';
@@ -2179,7 +2241,7 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
       '<td>'+pct(g.computed)+'</td>'+
       '<td><label class="sr-only" for="ovr-'+g.sid+'">Override percent for '+esc(g.name||g.email)+'</label><input id="ovr-'+g.sid+'" type="number" min="0" max="100" step="0.1" placeholder="\u2014" value="'+(g.override?g.override.pct:'')+'" style="width:64px;"></td>'+
       '<td style="font-weight:600;color:var(--text-bright);">'+pct(g.finalPct)+(g.override?' <span class="tag violet" title="manual override">ovr</span>':'')+'</td>'+
-      '<td><button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> <button class="btn btn-ghost btn-sm" data-detail="'+g.sid+'" data-dname="'+esc(g.name||g.email)+'" title="Scores broken down by exam and quiz">Detail</button> <button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button> <button class="btn btn-ghost btn-sm" data-resch="'+g.sid+'" data-rname="'+esc(g.name||g.email)+'" title="Give this student a later deadline or another attempt">Reschedule</button></td></tr>';
+      '<td><button class="btn btn-ghost btn-sm" data-saveovr="'+g.sid+'">Save</button> <button class="btn btn-ghost btn-sm" data-detail="'+g.sid+'" data-dname="'+esc(g.name||g.email)+'" title="Scores broken down by exam and quiz">Detail</button> <button class="btn btn-ghost btn-sm" data-arena="'+g.sid+'" data-aname="'+esc(g.name||g.email)+'" title="Arena attempts, and void one recorded by accident">Arenas</button> <button class="btn btn-ghost btn-sm" data-work="'+g.sid+'" data-wname="'+esc(g.name||g.email)+'" title="See every graded answer this student gave">Work</button> <button class="btn btn-ghost btn-sm" data-resch="'+g.sid+'" data-rname="'+esc(g.name||g.email)+'" title="Give this student a later deadline or another attempt">Reschedule</button></td></tr>';
   });
   html+='</tbody></table></div>';
   host.innerHTML=html;
@@ -2191,6 +2253,9 @@ function buildGradebook(host,c,weights,rows,midterm,fin,examScore,asgScore,overr
   if($('recalcQuizBtn')){ $('recalcQuizBtn').addEventListener('click', function(){ openRecomputeQuiz(c.id, host); }); }
   Array.prototype.forEach.call(host.querySelectorAll('[data-detail]'), function(b){
     b.addEventListener('click', function(){ openGradeBreakdown(c.id, b.getAttribute('data-detail'), b.getAttribute('data-dname')); });
+  });
+  Array.prototype.forEach.call(host.querySelectorAll('[data-arena]'), function(b){
+    b.addEventListener('click', function(){ openArenaAttempts(c.id, b.getAttribute('data-arena'), b.getAttribute('data-aname')); });
   });
   Array.prototype.forEach.call(host.querySelectorAll('[data-work]'), function(b){
     b.addEventListener('click', function(){ openStudentWork(c.id, b.getAttribute('data-work'), b.getAttribute('data-wname')); });
