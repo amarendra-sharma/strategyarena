@@ -1207,6 +1207,8 @@ async function playN(n, intervalMs = 250) {
     State.scoreYou += payoff;
     State.scoreOpp -= payoff;
     State.rounds++;
+    if (!State.playedOpps) { State.playedOpps = {}; }
+    State.playedOpps[State.oppKey] = true;
     State.busy = false;
 
     // Update charts every round for smooth visuals
