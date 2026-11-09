@@ -1,0 +1,42 @@
+{
+  "generatedBy": "tools/build-voice-bundles.mjs",
+  "pinned": {
+    "@huggingface/transformers": "3.5.1",
+    "kokoro-js": "1.2.1",
+    "esbuild": "0.25.5"
+  },
+  "files": {
+    "LICENSE.kokoro-js": {
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "LICENSE.transformers.js": {
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "asr-worker.bundle.js": {
+      "bytes": 833072,
+      "sha256": "3f5caa1137c964af81a8c51dbf4f9f6f75630a621cc973f71fd7e5dc4a8a15f1"
+    },
+    "asr-worker.bundle.js.LEGAL.txt": {
+      "bytes": 2647,
+      "sha256": "7e4add40aa2a5a3a5b1a92efc70cfffd37a253d144a08e4a2a6c303b1e7543e8"
+    },
+    "ort-wasm-simd-threaded.jsep.mjs": {
+      "bytes": 44484,
+      "sha256": "08fb86ec433c78bfb032c5d84a68b8e8e5a8d81268fa39e24314179a5767a5b9"
+    },
+    "ort-wasm-simd-threaded.jsep.wasm": {
+      "bytes": 21596019,
+      "sha256": "c46655e8a94afc45338d4cb2b840475f88e5012d524509916e505079c00bfa39"
+    },
+    "tts-worker.bundle.js": {
+      "bytes": 2173718,
+      "sha256": "e1008bb0235dec26672da4027280bd3af62d71cf99dba2b9905c0e2e35971ad6"
+    },
+    "tts-worker.bundle.js.LEGAL.txt": {
+      "bytes": 2647,
+      "sha256": "7e4add40aa2a5a3a5b1a92efc70cfffd37a253d144a08e4a2a6c303b1e7543e8"
+    }
+  }
+}
