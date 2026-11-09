@@ -4,7 +4,7 @@
 import { buildFigure } from './figure-render.js?v=20261021a';
 import { buildScan } from './scan-render.js?v=20261021c';
 import { buildMissed } from './missed-render.js?v=20261025d';
-import { matrixSvg, treeSvg } from './diagrams.js?v=20261109a';
+import { matrixSvg, treeSvg, simplexSvg } from './diagrams.js?v=20261109b';
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fin = (v) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= 1e6;
 const COLORS = ['#1f5fbf', '#c2410c', '#15803d', '#7e22ce', '#b45309', '#0e7490'];
@@ -18,7 +18,8 @@ const fmt = (v) => { var r = Math.round(v * 100) / 100; return String(r); };
 /** @returns {string} an <svg> string, or '' when the spec is not drawable */
 export function graphToSvg(spec, opt) {
   opt = opt || {};
-  if (!spec || spec.kind !== 'graph' || !Array.isArray(spec.series) || !spec.series.length || spec.series.length > 6) return '';
+  var regs = spec && Array.isArray(spec.regions) ? spec.regions.filter((r) => r && Array.isArray(r.points) && r.points.length >= 3 && r.points.length <= 14 && r.points.every((p) => Array.isArray(p) && fin(p[0]) && fin(p[1]))).slice(0, 4) : [];
+  if (!spec || spec.kind !== 'graph' || !Array.isArray(spec.series) || (!spec.series.length && !regs.length) || spec.series.length > 6) return '';
   var W = opt.width || 480, H = opt.height || 320, L = 56, R = 16, T = spec.title ? 34 : 16, B = 48, pw = W - L - R, ph = H - T - B;
   var xs = [0], ys = [0], i, j;
   for (i = 0; i < spec.series.length; i++) {
@@ -27,6 +28,7 @@ export function graphToSvg(spec, opt) {
   }
   var markers = (spec.markers || []).filter((m) => m && fin(m.x) && fin(m.y)).slice(0, 8);
   markers.forEach((m) => { xs.push(m.x); ys.push(m.y); });
+  regs.forEach((r) => r.points.forEach((p) => { xs.push(p[0]); ys.push(p[1]); }));
   var xmax = fin(spec.x_max) && spec.x_max > 0 ? spec.x_max : Math.max.apply(null, xs), ymax = fin(spec.y_max) && spec.y_max > 0 ? spec.y_max : Math.max.apply(null, ys);
   var xmin = Math.min(0, Math.min.apply(null, xs)), ymin = Math.min(0, Math.min.apply(null, ys));
   if (xmax <= xmin) xmax = xmin + 1; if (ymax <= ymin) ymax = ymin + 1;
@@ -38,6 +40,10 @@ export function graphToSvg(spec, opt) {
   for (v = Math.ceil(ymin / yt) * yt; v <= ymax + 1e-9; v += yt) out.push('<line x1="' + L + '" y1="' + sy(v).toFixed(1) + '" x2="' + (L + pw) + '" y2="' + sy(v).toFixed(1) + '" stroke="currentColor" stroke-opacity=".12"/><text x="' + (L - 6) + '" y="' + (sy(v) + 4).toFixed(1) + '" text-anchor="end" fill="currentColor">' + esc(fmt(v)) + '</text>');
   out.push('<rect x="' + L + '" y="' + T + '" width="' + pw + '" height="' + ph + '" fill="none" stroke="currentColor" stroke-opacity=".5"/>');
   out.push('<defs><clipPath id="gclip"><rect x="' + L + '" y="' + T + '" width="' + pw + '" height="' + ph + '"/></clipPath></defs>');
+  regs.forEach(function (r, k) {
+    var cc = COLORS[(k + 3) % COLORS.length], pts = r.points.map((p) => sx(p[0]).toFixed(1) + ',' + sy(p[1]).toFixed(1)).join(' '), cx = r.points.reduce((s, p) => s + p[0], 0) / r.points.length, cy = r.points.reduce((s, p) => s + p[1], 0) / r.points.length;
+    out.push('<polygon points="' + pts + '" fill="' + cc + '" fill-opacity=".22" stroke="' + cc + '" stroke-width="1.8" clip-path="url(#gclip)"/><text x="' + sx(cx).toFixed(1) + '" y="' + sy(cy).toFixed(1) + '" text-anchor="middle" fill="' + cc + '" font-weight="600">' + esc(r.label) + '</text>');
+  });
   spec.series.forEach(function (s, k) {
     var d = s.points.map((p, n) => (n ? 'L' : 'M') + sx(p[0]).toFixed(1) + ' ' + sy(p[1]).toFixed(1)).join(' '), c = COLORS[k % COLORS.length];
     out.push('<path d="' + d + '" fill="none" stroke="' + c + '" stroke-width="2.2" clip-path="url(#gclip)"' + (s.dashed ? ' stroke-dasharray="6 4"' : '') + '/>');
@@ -78,6 +84,7 @@ export function mountVisual(spec, host, katex) {
     fg.svgs.forEach(function (sv) { sv.style.cssText += ';width:100%;height:auto;display:block'; box.appendChild(sv); });
   }
   else if (spec.kind === 'equation') { if (!renderEquation(spec, box, katex)) return null; }
+  else if (spec.kind === 'simplex') { var sp = simplexSvg(spec, { board: false }); if (!sp) return null; box.innerHTML = sp.svg; }
   else if (spec.kind === 'matrix' || spec.kind === 'tree') { var dg = (spec.kind === 'matrix' ? matrixSvg : treeSvg)(spec, { board: false }); if (!dg) return null; box.innerHTML = dg.svg; }   // game-theory diagrams: built only from escaped labels and checked numbers
   else return null;
   host.appendChild(box); return box;

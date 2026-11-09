@@ -4,7 +4,7 @@
 import { buildFigure } from '../figure-render.js?v=20261021a';
 import { buildScan } from '../scan-render.js?v=20261021c';
 import { buildMissed } from '../missed-render.js?v=20261025d';
-import { matrixSvg, treeSvg } from '../diagrams.js?v=20261109a';
+import { matrixSvg, treeSvg, simplexSvg } from '../diagrams.js?v=20261109b';
 var CSS = [
 '.mnai-board{order:1;display:flex;flex-direction:column;min-width:0;background:#15302c;color:#f3f1e7;border:7px solid #7b5b3a;border-radius:12px;box-shadow:inset 0 0 40px rgba(0,0,0,.45),0 6px 20px rgba(0,0,0,.4);padding:8px 10px 10px}',
 '.mnai-board[hidden]{display:none}',
@@ -47,7 +47,8 @@ function pathD(P) {
 }
 function niceCeil(v, step) { return Math.ceil(v / step - 1e-9) * step; }
 export function graphBoardSvg(spec, uid) {
-  if (!spec || spec.kind !== 'graph' || !Array.isArray(spec.series) || !spec.series.length || spec.series.length > 6) return null;
+  var regs = spec && Array.isArray(spec.regions) ? spec.regions.filter(function (r) { return r && Array.isArray(r.points) && r.points.length >= 3 && r.points.length <= 14 && r.points.every(function (p) { return Array.isArray(p) && fin(p[0]) && fin(p[1]); }); }).slice(0, 4) : [];
+  if (!spec || spec.kind !== 'graph' || !Array.isArray(spec.series) || (!spec.series.length && !regs.length) || spec.series.length > 6) return null;
   var W = 520, H = 360, L = 58, R = 24, T = spec.title ? 40 : 20, B = 52, pw = W - L - R, ph = H - T - B, xs = [0], ys = [0], i, j;
   for (i = 0; i < spec.series.length; i++) {
     var pts = spec.series[i].points; if (!Array.isArray(pts) || pts.length < 2 || pts.length > 200) return null;
@@ -55,6 +56,7 @@ export function graphBoardSvg(spec, uid) {
   }
   var markers = (spec.markers || []).filter(function (m) { return m && fin(m.x) && fin(m.y); }).slice(0, 8);
   markers.forEach(function (m) { xs.push(m.x); ys.push(m.y); });
+  regs.forEach(function (r) { r.points.forEach(function (p) { xs.push(p[0]); ys.push(p[1]); }); });
   var xmin = Math.min(0, Math.min.apply(null, xs)), ymin = Math.min(0, Math.min.apply(null, ys));
   var xmax = Math.max.apply(null, xs), ymax = Math.max.apply(null, ys);
   if (xmax <= xmin) xmax = xmin + 1; if (ymax <= ymin) ymax = ymin + 1;
@@ -74,6 +76,11 @@ export function graphBoardSvg(spec, uid) {
   o.push('<path d="M' + L + ' ' + T + ' L' + L + ' ' + (T + ph) + ' L' + (L + pw) + ' ' + (T + ph) + '" fill="none" stroke="' + ink + '" stroke-width="2"/>');
   o.push('<text x="' + (L + pw / 2) + '" y="' + (H - 10) + '" text-anchor="middle" font-weight="600">' + esc(spec.x_label) + '</text>');
   o.push('<text transform="rotate(-90)" x="' + -(T + ph / 2) + '" y="16" text-anchor="middle" font-weight="600">' + esc(spec.y_label) + '</text></g>');
+  // one step per shaded region: fills in, then its name
+  regs.forEach(function (r, k) {
+    var cc = CHALK[(k + 3) % CHALK.length], pts = r.points.map(function (p) { return sx(p[0]).toFixed(1) + ',' + sy(p[1]).toFixed(1); }).join(' '), cx = r.points.reduce(function (s, p) { return s + p[0]; }, 0) / r.points.length, cy = r.points.reduce(function (s, p) { return s + p[1]; }, 0) / r.points.length;
+    o.push('<g class="wb-step" data-s="' + (n++) + '" data-cap="' + esc('<b>' + esc(r.label) + '.</b> ' + esc(typeof r.note === 'string' ? r.note : '')) + '"><polygon points="' + pts + '" fill="' + cc + '" fill-opacity=".25" stroke="' + cc + '" stroke-width="2.4"/><text x="' + sx(cx).toFixed(1) + '" y="' + sy(cy).toFixed(1) + '" text-anchor="middle" fill="' + cc + '" font-weight="700" font-size="14" paint-order="stroke" stroke="#15302c" stroke-width="3">' + esc(r.label) + '</text></g>');
+  });
   // one step per curve: traced on by a chalk tip, glowing while it is the one being explained; its name fades in
   spec.series.forEach(function (s, k) {
     var P = s.points.map(function (p) { return [sx(p[0]), sy(p[1])]; }), d = pathD(P), c = CHALK[k % CHALK.length], last = s.points[s.points.length - 1], id = uid + '_' + k;
@@ -125,8 +132,8 @@ Whiteboard.prototype.add = function (spec, katex, baseline) {
       holder.querySelectorAll('[data-s]').forEach(function (n) { n._cap = cap; this.steps.push(n); }, this);
       this.body.appendChild(holder); this.body.appendChild(cap); ok = this.steps.length > base;
     }
-  } else if (spec && (spec.kind === 'matrix' || spec.kind === 'tree')) {
-    var dg = (spec.kind === 'matrix' ? matrixSvg : treeSvg)(spec, { board: true });
+  } else if (spec && (spec.kind === 'matrix' || spec.kind === 'tree' || spec.kind === 'simplex')) {
+    var dg = (spec.kind === 'matrix' ? matrixSvg : spec.kind === 'simplex' ? simplexSvg : treeSvg)(spec, { board: true });
     if (dg) {
       var dh = d.createElement('div'); dh.innerHTML = dg.svg;                  // built only from escaped labels and checked numbers
       var dbase = this.steps.length, dcap = d.createElement('div'); dcap.className = 'wb-cap'; dcap.setAttribute('aria-live', 'polite');

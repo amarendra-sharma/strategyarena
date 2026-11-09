@@ -6,7 +6,7 @@
 // Graded-work review: when the course owner has turned it on, a "Graded-work review" button opens a screen where the STUDENT allows or withdraws permission for the AI to read
 // their own closed work (the model has no way to do this), or asks the TA or professor for a meeting instead.
 import { AiInstructorBackend, BackendError } from './backend-client.js?v=20261021a';
-import { mountVisual } from './graph-render.js?v=20261109a';
+import { mountVisual } from './graph-render.js?v=20261109b';
 
 // A list containing '*' means every course (used for Macroeconomics: Asha is on for all current and future courses; the server still checks each course's own settings).
 const inList = (list, id) => !!id && (list.indexOf('*') >= 0 || list.indexOf(id) >= 0);
@@ -140,7 +140,7 @@ function init() {
       turnDone: () => { if (bubble && !bubble.textContent.trim() && !bubble.querySelector('.ai-visual')) bubble.remove(); bubble = null; current = null; },
     };
     try {
-      const m = await import('./talk/talk.js?v=20261109a');
+      const m = await import('./talk/talk.js?v=20261109b');
       let beats = 0, keep = null;
       talk = m.openTalk({ backend, getMode: () => mode.value || undefined, baseUrl: CONFIG.talkBase, hooks, onClose: () => { talk = null; current = null; if (keep) clearInterval(keep); talkBtn.focus(); } });
       if (!clsBox.hidden) { joined = true; lastStep = null; setTimeout(pollClass, 1500); }   // opening Talk during a live class means attending it by voice
