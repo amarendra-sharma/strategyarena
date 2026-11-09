@@ -1,10 +1,10 @@
 /* MacroNations AI instructor (Asha) for Game Theory. Own file so replacing index.html cannot remove it.
    On for all courses; each course's sa_ai_settings row decides whether Asha is actually enabled.
-   Widget code is shared with Microeconomics and loaded from there. It needs window.sb (global var in this portal) and window.State ({user, role, currentCourseId, payCourseId, teachCourseId}). */
+   Widget and Talk voice files are served from this site (ai-instructor/): the voice workers must be same-origin. It needs window.sb (global var in this portal) and window.State ({user, role, currentCourseId, payCourseId, teachCourseId}). */
 (function () {
   try {
     if (window.__aiInstructorHook) return; window.__aiInstructorHook = true;
-    var base = 'https://microeconomics.macronations.com/ai-instructor/';
+    var base = './ai-instructor/';
     var url = 'https://qgelvmefyexyzpwqupev.supabase.co';
     var fn = url + '/functions/v1/sa-ai-instructor';
     var courses = ['*'];   // every course (current and future); the server still checks each course's own Asha settings (sa_ai_settings)
