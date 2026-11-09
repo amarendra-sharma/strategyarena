@@ -4,6 +4,7 @@
 import { buildFigure } from './figure-render.js?v=20261021a';
 import { buildScan } from './scan-render.js?v=20261021c';
 import { buildMissed } from './missed-render.js?v=20261025d';
+import { matrixSvg, treeSvg } from './diagrams.js?v=20261109a';
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fin = (v) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= 1e6;
 const COLORS = ['#1f5fbf', '#c2410c', '#15803d', '#7e22ce', '#b45309', '#0e7490'];
@@ -77,6 +78,7 @@ export function mountVisual(spec, host, katex) {
     fg.svgs.forEach(function (sv) { sv.style.cssText += ';width:100%;height:auto;display:block'; box.appendChild(sv); });
   }
   else if (spec.kind === 'equation') { if (!renderEquation(spec, box, katex)) return null; }
+  else if (spec.kind === 'matrix' || spec.kind === 'tree') { var dg = (spec.kind === 'matrix' ? matrixSvg : treeSvg)(spec, { board: false }); if (!dg) return null; box.innerHTML = dg.svg; }   // game-theory diagrams: built only from escaped labels and checked numbers
   else return null;
   host.appendChild(box); return box;
 }

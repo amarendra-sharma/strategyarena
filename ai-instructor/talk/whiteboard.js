@@ -4,6 +4,7 @@
 import { buildFigure } from '../figure-render.js?v=20261021a';
 import { buildScan } from '../scan-render.js?v=20261021c';
 import { buildMissed } from '../missed-render.js?v=20261025d';
+import { matrixSvg, treeSvg } from '../diagrams.js?v=20261109a';
 var CSS = [
 '.mnai-board{order:1;display:flex;flex-direction:column;min-width:0;background:#15302c;color:#f3f1e7;border:7px solid #7b5b3a;border-radius:12px;box-shadow:inset 0 0 40px rgba(0,0,0,.45),0 6px 20px rgba(0,0,0,.4);padding:8px 10px 10px}',
 '.mnai-board[hidden]{display:none}',
@@ -123,6 +124,14 @@ Whiteboard.prototype.add = function (spec, katex, baseline) {
       var cap = d.createElement('div'); cap.className = 'wb-cap'; cap.setAttribute('aria-live', 'polite');
       holder.querySelectorAll('[data-s]').forEach(function (n) { n._cap = cap; this.steps.push(n); }, this);
       this.body.appendChild(holder); this.body.appendChild(cap); ok = this.steps.length > base;
+    }
+  } else if (spec && (spec.kind === 'matrix' || spec.kind === 'tree')) {
+    var dg = (spec.kind === 'matrix' ? matrixSvg : treeSvg)(spec, { board: true });
+    if (dg) {
+      var dh = d.createElement('div'); dh.innerHTML = dg.svg;                  // built only from escaped labels and checked numbers
+      var dbase = this.steps.length, dcap = d.createElement('div'); dcap.className = 'wb-cap'; dcap.setAttribute('aria-live', 'polite');
+      dh.querySelectorAll('[data-s]').forEach(function (n) { n._cap = dcap; this.steps.push(n); }, this);
+      this.body.appendChild(dh); this.body.appendChild(dcap); ok = this.steps.length > dbase;
     }
   } else if (spec && spec.kind === 'figure') {
     var fg = buildFigure(spec, d, ++this.uid, { animate: true });

@@ -20,7 +20,7 @@
       } catch (e) {}
     }, 2000);
     ['widget.js', 'teach-panel.js'].forEach(function (f) {
-      var s = document.createElement('script'); s.type = 'module'; s.src = base + f + '?v=20261101b'; document.head.appendChild(s);
+      var s = document.createElement('script'); s.type = 'module'; s.src = base + f + '?v=20261109a'; document.head.appendChild(s);
     });
   } catch (e) {}
 })();
