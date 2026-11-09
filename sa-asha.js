@@ -1,5 +1,5 @@
 /* MacroNations AI instructor (Asha) for Game Theory. Own file so replacing index.html cannot remove it.
-   Test course only for now; real sections are added to `courses` when the instructor decides.
+   On for all courses; each course's sa_ai_settings row decides whether Asha is actually enabled.
    Widget code is shared with Microeconomics and loaded from there. It needs window.sb (global var in this portal) and window.State ({user, role, currentCourseId, payCourseId, teachCourseId}). */
 (function () {
   try {
@@ -7,16 +7,16 @@
     var base = 'https://microeconomics.macronations.com/ai-instructor/';
     var url = 'https://qgelvmefyexyzpwqupev.supabase.co';
     var fn = url + '/functions/v1/sa-ai-instructor';
-    var courses = ['5a000000-0000-4000-8000-0000000000a1'];   // Asha TEST course. Each course's own Asha settings (sa_ai_settings) still decide what is on.
+    var courses = ['*'];   // every course (current and future); the server still checks each course's own Asha settings (sa_ai_settings)
     window.AI_INSTRUCTOR_CONFIG = { supabaseUrl: url, functionUrl: fn };
-    window.AI_INSTRUCTOR_WIDGET = { courseIds: courses, functionUrl: fn, enrollTable: 'sa_enrollments', courseTable: 'sa_courses' };
+    window.AI_INSTRUCTOR_WIDGET = { courseIds: courses, talkCourseIds: ['*'], functionUrl: fn, enrollTable: 'sa_enrollments', courseTable: 'sa_courses' };
     // staff pages look at State.teachCourseId: point it at a listed course the signed-in staff member can see
     setInterval(function () {
       try {
         var st = window.State; if (!st || !st.user || st.role === 'student') return;
         var mine = (st.courses || []).map(function (c) { return c.id; });
-        var hit = courses.filter(function (id) { return mine.indexOf(id) >= 0; })[0];
-        if (hit && st.teachCourseId !== hit && (st.currentCourseId === hit || !st.currentCourseId)) st.teachCourseId = hit;
+        var hit = st.currentCourseId || mine[0];
+        if (hit && st.teachCourseId !== hit) st.teachCourseId = hit;
       } catch (e) {}
     }, 2000);
     ['widget.js', 'teach-panel.js'].forEach(function (f) {
